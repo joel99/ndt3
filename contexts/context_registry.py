@@ -101,9 +101,6 @@ class ContextRegistry:
 
 context_registry = ContextRegistry()
 
-def suppress_default_registry():
-    os.environ['NDT_SUPPRESS_DEFAULT_REGISTRY'] = '1'
-
 if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
     context_registry.register([
         PassiveICMSContextInfo.build(906, 1, 'stim_trains_gen4-02b-ant_chan14-19-20-25_80uA_0.5ITI_6cond/'),

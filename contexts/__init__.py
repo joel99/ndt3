@@ -1,2 +1,2 @@
 from .context_info import ContextInfo
-from .context_registry import context_registry, suppress_default_registry
+from .context_registry import context_registry
