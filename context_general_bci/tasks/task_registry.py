@@ -4,9 +4,9 @@ from enum import Enum
 from pathlib import Path
 import pandas as pd
 
-from ..config import DatasetConfig
-from ..subjects import SubjectInfo
-from ..tasks import ExperimentalTask
+from context_general_bci.config import DatasetConfig
+from context_general_bci.subjects import SubjectInfo
+from context_general_bci.tasks import ExperimentalTask
 
 r"""
     Super light wrapper to define task/loader interface.

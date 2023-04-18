@@ -28,11 +28,11 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 import wandb
 
-from config import RootConfig, Metric, hp_sweep_space, propagate_config
-from data import SpikingDataset, SpikingDataModule
-from model import BrainBertInterface, load_from_checkpoint
-from callbacks import ProbeToFineTuneEarlyStopping
-from utils import (
+from context_general_bci.config import RootConfig, Metric, hp_sweep_space, propagate_config
+from context_general_bci.data import SpikingDataset, SpikingDataModule
+from context_general_bci.model import BrainBertInterface, load_from_checkpoint
+from context_general_bci.callbacks import ProbeToFineTuneEarlyStopping
+from context_general_bci.utils import (
     generate_search,
     grid_search,
     get_best_ckpt_from_wandb_id,

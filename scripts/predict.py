@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+from copy import deepcopy
 
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -15,13 +16,12 @@ import pytorch_lightning as pl
 from nlb_tools.make_tensors import save_to_h5
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from model import BrainBertInterface
-from data import SpikingDataset, DataAttrs
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from contexts import context_registry
-from copy import deepcopy
+from context_general_bci.model import BrainBertInterface
+from context_general_bci.data import SpikingDataset, DataAttrs
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.contexts import context_registry
 
-from analyze_utils import get_wandb_run, load_wandb_run
+from context_general_bci.analyze_utils import get_wandb_run, load_wandb_run
 
 # dataset_name = 'mc_rtt'
 # dataset_name = 'mc_maze$'

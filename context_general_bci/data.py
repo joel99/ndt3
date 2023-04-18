@@ -21,10 +21,10 @@ from einops import rearrange, repeat
 
 import pytorch_lightning as pl
 
-from .config import DatasetConfig, MetaKey, DataKey
-from .subjects import SubjectArrayRegistry
-from .contexts import context_registry, ContextInfo
-from .tasks import ExperimentalTask
+from context_general_bci.config import DatasetConfig, MetaKey, DataKey
+from context_general_bci.subjects import SubjectArrayRegistry
+from context_general_bci.contexts import context_registry, ContextInfo
+from context_general_bci.tasks import ExperimentalTask
 
 r"""
     Stores range of contexts provided by a dataset.

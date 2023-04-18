@@ -4,8 +4,8 @@ import torch
 import torch.nn as nn
 
 from einops import rearrange, reduce
-from ..config import DatasetConfig
-from ..subjects import SubjectName, SubjectInfo, ArrayID, ArrayInfo, AliasArrayInfo, GeometricArrayInfo
+from context_general_bci.config import DatasetConfig
+from context_general_bci.subjects import SubjectName, SubjectInfo, ArrayID, ArrayInfo, AliasArrayInfo, GeometricArrayInfo
 
 class SubjectArrayRegistry:
     instance = None

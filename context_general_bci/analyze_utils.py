@@ -18,10 +18,10 @@ from torch.utils.data import DataLoader
 import itertools
 from dacite import from_dict
 
-from utils import get_best_ckpt_from_wandb_id
-from model import BrainBertInterface, load_from_checkpoint
-from data import DataAttrs, SpikingDataset
-from config import RootConfig
+from context_general_bci.utils import get_best_ckpt_from_wandb_id
+from context_general_bci.model import BrainBertInterface, load_from_checkpoint
+from context_general_bci.data import DataAttrs, SpikingDataset
+from context_general_bci.config import RootConfig
 
 WandbRun = Any
 

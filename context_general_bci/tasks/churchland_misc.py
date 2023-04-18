@@ -18,9 +18,9 @@ try:
 except:
     logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
-from ..config import DataKey, DatasetConfig
-from ..subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
-from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
+from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
 
 

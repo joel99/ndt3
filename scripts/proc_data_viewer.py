@@ -5,17 +5,17 @@ import h5py
 import torch
 
 import logging
-
-from contexts import context_registry
-from config import DatasetConfig, DataKey, MetaKey
-from config.presets import FlatDataConfig
-from data import SpikingDataset
-
 from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
-from analyze_utils import prep_plt
-from tasks import ExperimentalTask
+
+from context_general_bci.contexts import context_registry
+from context_general_bci.config import DatasetConfig, DataKey, MetaKey
+from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.data import SpikingDataset
+
+from context_general_bci.analyze_utils import prep_plt
+from context_general_bci.tasks import ExperimentalTask
 # context_registry.query(task=ExperimentalTask.fbc)
 
 # dataset_name = 'mc_maze_large' # 122 sorted units

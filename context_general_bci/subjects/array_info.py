@@ -3,7 +3,7 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Type, Tuple, Optional, Union
 import numpy as np
 
-from ..subjects import SubjectName
+from context_general_bci.subjects import SubjectName
 
 ArrayID = str
 @dataclass

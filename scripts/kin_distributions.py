@@ -10,13 +10,13 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
-from contexts import context_registry
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.data import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
+from context_general_bci.contexts import context_registry
 
-from analyze_utils import stack_batch, get_wandb_run, load_wandb_run, wandb_query_latest
-from analyze_utils import prep_plt
+from context_general_bci.analyze_utils import stack_batch, get_wandb_run, load_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import prep_plt
 
 query = "robust_joint_unsup_tune_800-t1dtvj2p"
 query = "mc_rtt_direct_pool_800"

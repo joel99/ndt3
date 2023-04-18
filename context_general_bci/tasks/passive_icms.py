@@ -7,9 +7,9 @@ import torch
 
 import logging
 
-from ..config import DataKey, MetaKey, DatasetConfig
-from ..subjects import ArrayID, SubjectInfo, SubjectArrayRegistry, SubjectName
-from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.config import DataKey, MetaKey, DatasetConfig
+from context_general_bci.subjects import ArrayID, SubjectInfo, SubjectArrayRegistry, SubjectName
+from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
 TrialNum = int
 MetadataKey = str

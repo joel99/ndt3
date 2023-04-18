@@ -26,9 +26,9 @@ except:
     make_eval_input_tensors = None
     make_eval_target_tensors = None
 
-from ..config import DataKey, DatasetConfig, MetaKey
-from ..subjects import SubjectInfo, SubjectName, SubjectArrayRegistry, create_spike_payload
-from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.config import DataKey, DatasetConfig, MetaKey
+from context_general_bci.subjects import SubjectInfo, SubjectName, SubjectArrayRegistry, create_spike_payload
+from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
 TrialNum = int
 MetadataKey = str
