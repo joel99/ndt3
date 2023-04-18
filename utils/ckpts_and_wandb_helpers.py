@@ -9,10 +9,10 @@ import numpy as np
 
 import wandb
 
-from config import RootConfig
+from ..config import RootConfig
 
 def wandb_query_experiment(
-    experiment: str | List[str],
+    experiment: Union[str, List[str]],
     wandb_user="joelye9",
     wandb_project="context_general_bci",
     order='created_at',

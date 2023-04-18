@@ -1,5 +1,5 @@
 import numpy as np
-from subjects import SubjectName, SortedArrayInfo, SubjectInfo, SubjectArrayRegistry, GeometricArrayInfo
+from ..subjects import SubjectName, SortedArrayInfo, SubjectInfo, SubjectArrayRegistry, GeometricArrayInfo
 
 @SubjectArrayRegistry.register
 class Jenkins(SubjectInfo):

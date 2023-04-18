@@ -7,10 +7,10 @@ import numpy as np
 import yaml
 import logging
 
-from config import DatasetConfig
-from subjects import SubjectArrayRegistry, SubjectInfo, SubjectName
-from subjects.pitt_chicago import CRS02b, CRS07
-from tasks import ExperimentalTask, ExperimentalTaskRegistry, churchland_misc
+from ..config import DatasetConfig
+from ..subjects import SubjectArrayRegistry, SubjectInfo, SubjectName
+from ..subjects.pitt_chicago import CRS02b, CRS07
+from ..tasks import ExperimentalTask, ExperimentalTaskRegistry, churchland_misc
 
 # FYI: Inherited dataclasses don't call parent's __init__ by default. This is a known issue/feature:
 # https://bugs.python.org/issue43835

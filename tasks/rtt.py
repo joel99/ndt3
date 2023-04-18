@@ -6,18 +6,22 @@ from pathlib import Path
 import numpy as np
 import torch
 import pandas as pd
-import h5py
 from scipy.interpolate import interp1d
 import scipy.signal as signal
-
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from einops import rearrange, reduce
 
 import logging
-
 logger = logging.getLogger(__name__)
+try:
+    import h5py
+except:
+    logger.info("h5py not installed, please install with `conda install -c anaconda h5py`")
+
+from ..config import DataKey, DatasetConfig
+from ..subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+
+
 
 @ExperimentalTaskRegistry.register
 class ODohertyRTTLoader(ExperimentalTaskLoader):

@@ -9,14 +9,20 @@ from scipy.interpolate import interp1d
 from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter1d
 from scipy.signal import convolve
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from einops import rearrange, reduce
 
 import logging
-
 logger = logging.getLogger(__name__)
+try:
+    from pynwb import NWBHDF5IO
+except:
+    logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
+
+from ..config import DataKey, DatasetConfig
+from ..subjects import SubjectInfo, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+
+
 
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.

@@ -2,7 +2,7 @@ from typing import List
 from dataclasses import dataclass
 import numpy as np
 
-from subjects import SubjectName, ArrayInfo, SubjectInfo, GeometricArrayInfo, SubjectArrayRegistry
+from ..subjects import SubjectName, ArrayInfo, SubjectInfo, GeometricArrayInfo, SubjectArrayRegistry
 
 r"""
     For human BCI experiments at Pitt/Chicago sites.

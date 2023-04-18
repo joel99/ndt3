@@ -4,7 +4,7 @@ from pathlib import Path
 import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
-from matplotlib import pyplot as plt
+# from matplotlib import pyplot as plt
 import numpy as np
 import torch
 
@@ -64,6 +64,7 @@ import time
 loop_times = []
 # mode = 'cpu'
 mode = 'gpu'
+
 compile_flag = ''
 # compile_flag = 'torchscript'
 # compile_flag = 'onnx'
@@ -79,8 +80,8 @@ if compile_flag == 'onnx' and Path(onnx_file).exists():
     import onnxruntime
     ort_session = onnxruntime.InferenceSession(onnx_file)
     input_name = ort_session.get_inputs()[0].name
-    input_sample = torch.load('samples.pt')
-    ort_inputs = {input_name: input_sample}
+    input_sample = torch.load('samples.pt', map_location='cpu')
+    ort_inputs = {input_name: input_sample.numpy()}
     do_onnx = True
 else:
     do_onnx = False

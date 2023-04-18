@@ -16,20 +16,24 @@ https://github.com/NeuralAnalysis/PyalData
 """
 from typing import List
 from pathlib import Path
+import logging
+logger = logging.getLogger(__name__)
 
 import numpy as np
 import pandas as pd
 import torch
-import pyaldata
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+try:
+    import pyaldata
+except:
+    logging.info("Pyaldata not installed, please install from https://github.com/NeuralAnalysis/PyalData. Import will fail")
 
-import logging
 from einops import reduce
 from scipy.signal import decimate
 
-logger = logging.getLogger(__name__)
+from ..config import DataKey, DatasetConfig
+from ..subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+
 
 @ExperimentalTaskRegistry.register
 class GallegoCOLoader(ExperimentalTaskLoader):

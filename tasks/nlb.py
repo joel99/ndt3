@@ -6,30 +6,32 @@ import numpy as np
 import torch
 from einops import rearrange
 
-from nlb_tools.nwb_interface import NWBDataset
-from nlb_tools.make_tensors import (
-    make_train_input_tensors,
-    make_eval_input_tensors,
-    make_eval_target_tensors,
+import logging
+logger = logging.getLogger(__name__)
 
-    PARAMS,
-    _prep_mask,
-    make_stacked_array
-)
+try:
+    from nlb_tools.nwb_interface import NWBDataset
+    from nlb_tools.make_tensors import (
+        make_train_input_tensors,
+        make_eval_input_tensors,
+        make_eval_target_tensors,
+        PARAMS,
+        _prep_mask,
+        make_stacked_array
+    )
+except:
+    logger.info("nlb_tools not installed, please install with `pip install nlb-tools`")
+    NWBDataset = None
 
-from pynwb import NWBFile, NWBHDF5IO, TimeSeries, ProcessingModule
-from pynwb.core import MultiContainerInterface, NWBDataInterface
+from ..config import DataKey, DatasetConfig, MetaKey
+from ..subjects import SubjectInfo, SubjectName, SubjectArrayRegistry, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
-from config import DataKey, DatasetConfig, MetaKey
-from subjects import SubjectInfo, SubjectName, SubjectArrayRegistry, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 TrialNum = int
 MetadataKey = str
 
 
-import logging
 
-logger = logging.getLogger(__name__)
 
 # Core loading strategy pulled from https://github.com/neurallatents/nlb_tools/blob/main/examples/tutorials/basic_example.ipynb
 

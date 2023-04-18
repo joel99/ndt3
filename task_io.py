@@ -10,15 +10,15 @@ from einops.layers.torch import Rearrange
 from sklearn.metrics import r2_score
 import logging
 
-from config import (
+from .config import (
     ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey,
 )
 
-from data import DataAttrs, LENGTH_KEY, CHANNEL_KEY, HELDOUT_CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
-from contexts import context_registry, ContextInfo
-from subjects import subject_array_registry, SortedArrayInfo
+from .data import DataAttrs, LENGTH_KEY, CHANNEL_KEY, HELDOUT_CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
+from .contexts import context_registry, ContextInfo
+from .subjects import subject_array_registry, SortedArrayInfo
 
-from components import SpaceTimeTransformer
+from .components import SpaceTimeTransformer
 
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
 # through most of data collection (certainly good if we aggregate sensor/sessions)

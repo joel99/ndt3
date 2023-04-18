@@ -16,9 +16,9 @@ from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
 from omegaconf import OmegaConf, ListConfig, DictConfig
 import logging
 from pprint import pformat
-from model import unflatten, transfer_cfg, recursive_diff_log, BrainBertInterface
+from .model import unflatten, transfer_cfg, recursive_diff_log, BrainBertInterface
 
-from config import (
+from .config import (
     ModelConfig,
     ModelTask,
     Metric,
@@ -29,11 +29,11 @@ from config import (
     Architecture,
 )
 
-from data import DataAttrs, LENGTH_KEY, CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
-from subjects import subject_array_registry, SortedArrayInfo
+from .data import DataAttrs, LENGTH_KEY, CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
+from .subjects import subject_array_registry, SortedArrayInfo
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
 # through most of data collection (certainly good if we aggregate sensor/sessions)
-from components import (
+from .components import (
     SpaceTimeTransformer,
     SpaceTimeTransformerEncoderScript,
     SpaceTimeTransformerDecoderScript,
@@ -41,7 +41,7 @@ from components import (
     ReadinCrossAttention,
     ContextualMLP,
 )
-from task_io import task_modules, SHUFFLE_KEY, create_temporal_padding_mask, TaskPipeline
+from .task_io import task_modules, SHUFFLE_KEY, create_temporal_padding_mask, TaskPipeline
 
 logger = logging.getLogger(__name__)
 

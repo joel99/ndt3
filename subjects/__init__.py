@@ -34,5 +34,5 @@ from .array_registry import SubjectArrayRegistry, create_spike_payload
 subject_array_registry = SubjectArrayRegistry()
 
 # These import lines ensure registration
-import subjects.pitt_chicago as pitt_chicago
-import subjects.nlb_monkeys as nlb_monkeys
+from . import pitt_chicago
+from . import nlb_monkeys

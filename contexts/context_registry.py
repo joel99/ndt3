@@ -22,7 +22,7 @@ from .context_info import (
     BatistaContextInfo,
 )
 
-from tasks import ExperimentalTask
+from ..tasks import ExperimentalTask
 r"""
     ContextInfo class is an interface for storing meta-information needed by several consumers, mainly the model, that may not be logged in data from various sources.
     ContextRegistry allows consumers to query for this information from various identifying sources.

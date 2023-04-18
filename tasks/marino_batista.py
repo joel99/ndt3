@@ -10,11 +10,11 @@ import pandas as pd
 import torch
 from scipy.signal import decimate
 
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from ..config import DataKey, DatasetConfig
+from ..subjects import SubjectInfo, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
-from utils import loadmat
+from ..utils import loadmat
 
 import logging
 

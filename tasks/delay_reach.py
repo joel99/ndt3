@@ -4,16 +4,21 @@ from pathlib import Path
 import numpy as np
 import torch
 import pandas as pd
-from pynwb import NWBHDF5IO
-
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from einops import rearrange, reduce
 
 import logging
-
 logger = logging.getLogger(__name__)
+
+try:
+    from pynwb import NWBHDF5IO
+except:
+    logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
+
+from ..config import DataKey, DatasetConfig
+from ..subjects import SubjectInfo, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+
+
 
 @ExperimentalTaskRegistry.register
 class DelayReachLoader(ExperimentalTaskLoader):

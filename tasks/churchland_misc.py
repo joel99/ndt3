@@ -5,19 +5,24 @@ import math
 import numpy as np
 import torch
 import pandas as pd
-from pynwb import NWBHDF5IO
 from scipy.interpolate import interp1d
 from scipy.io import loadmat
 from scipy.sparse import csc_matrix
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from einops import rearrange, reduce
 
 import logging
-import h5py
-
 logger = logging.getLogger(__name__)
+try:
+    from pynwb import NWBHDF5IO
+    import h5py
+except:
+    logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
+
+from ..config import DataKey, DatasetConfig
+from ..subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
+from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+
+
 
 # Note these comrpise a bunch of different tasks, perhaps worth denoting/splitting them
 gdown_ids = {

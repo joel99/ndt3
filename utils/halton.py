@@ -17,7 +17,7 @@ import itertools
 import math
 from typing import Any, Callable, Dict, List, Sequence, Text, Tuple, Union
 
-from absl import logging
+import logging
 from numpy import random
 
 _SweepSequence = List[Dict[Text, Any]]
