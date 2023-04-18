@@ -13,11 +13,11 @@ import numpy as np
 import pandas as pd
 import torch
 
-from ..utils import loadmat
+from context_general_bci.utils import loadmat
 
-from ..config import DataKey, DatasetConfig
-from ..subjects import SubjectInfo, create_spike_payload
-from ..tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.subjects import SubjectInfo, create_spike_payload
+from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
 
 import logging

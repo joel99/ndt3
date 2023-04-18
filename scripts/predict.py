@@ -17,7 +17,7 @@ from nlb_tools.make_tensors import save_to_h5
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.model import BrainBertInterface
-from context_general_bci.data import SpikingDataset, DataAttrs
+from context_general_bci.dataset import SpikingDataset, DataAttrs
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from context_general_bci.contexts import context_registry
 

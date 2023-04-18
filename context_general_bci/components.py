@@ -9,7 +9,7 @@ from einops import rearrange, pack, unpack, repeat, reduce
 import logging
 
 from context_general_bci.config import TransformerConfig, ModelConfig
-from context_general_bci.data import DataAttrs, MetaKey
+from context_general_bci.dataset import DataAttrs, MetaKey
 
 logger = logging.getLogger(__name__)
 

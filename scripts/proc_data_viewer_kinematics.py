@@ -11,7 +11,7 @@ from omegaconf import OmegaConf
 
 from context_general_bci.contexts import context_registry
 from context_general_bci.config import DatasetConfig, DataKey, MetaKey
-from context_general_bci.data import SpikingDataset
+from context_general_bci.dataset import SpikingDataset
 from context_general_bci.tasks import ExperimentalTask
 
 from context_general_bci.analyze_utils import prep_plt, wandb_query_latest, load_wandb_run

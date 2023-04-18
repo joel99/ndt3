@@ -20,7 +20,7 @@ from dacite import from_dict
 
 from context_general_bci.utils import get_best_ckpt_from_wandb_id
 from context_general_bci.model import BrainBertInterface, load_from_checkpoint
-from context_general_bci.data import DataAttrs, SpikingDataset
+from context_general_bci.dataset import DataAttrs, SpikingDataset
 from context_general_bci.config import RootConfig
 
 WandbRun = Any

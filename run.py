@@ -29,7 +29,7 @@ from pytorch_lightning.utilities.rank_zero import rank_zero_only
 import wandb
 
 from context_general_bci.config import RootConfig, Metric, hp_sweep_space, propagate_config
-from context_general_bci.data import SpikingDataset, SpikingDataModule
+from context_general_bci.dataset import SpikingDataset, SpikingDataModule
 from context_general_bci.model import BrainBertInterface, load_from_checkpoint
 from context_general_bci.callbacks import ProbeToFineTuneEarlyStopping
 from context_general_bci.utils import (

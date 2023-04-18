@@ -11,7 +11,7 @@ from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from context_general_bci.data import SpikingDataset, DataAttrs
+from context_general_bci.dataset import SpikingDataset, DataAttrs
 from context_general_bci.model import transfer_model, logger
 
 from context_general_bci.analyze_utils import stack_batch, get_wandb_run, load_wandb_run, wandb_query_latest
