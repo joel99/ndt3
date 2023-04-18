@@ -1,4 +1,4 @@
-from typing import List, Any, Optional, Dict
+from typing import List, Any, Optional, Dict, Union
 import copy
 import json
 import os
@@ -188,12 +188,12 @@ class SpikingDataset(Dataset):
         return current != cached_preproc_version
 
     @staticmethod
-    def list_alias_to_contexts(path_or_alias_list: List[Path | str]) -> List[ContextInfo]:
+    def list_alias_to_contexts(path_or_alias_list: List[Union[Path, str]]) -> List[ContextInfo]:
         # sorted wrapper for more safety
         return sorted([c for p in path_or_alias_list for c in SpikingDataset.aliases_to_contexts(p)])
 
     @staticmethod
-    def aliases_to_contexts(session_path_or_alias: Path | str) -> List[ContextInfo]:
+    def aliases_to_contexts(session_path_or_alias: Union[Path, str]) -> List[ContextInfo]:
         if isinstance(session_path_or_alias, str):
             # Try alias
             context_meta = context_registry.query(alias=session_path_or_alias)
@@ -549,7 +549,7 @@ class SpikingDataset(Dataset):
         return self.meta_df[self.meta_df[key].isin(key_values)].index
 
     def subset_by_key(self,
-        key_values: List[Any], key: MetaKey | str=MetaKey.unique, allow_second_subset=True, na=None,
+        key_values: List[Any], key: Union[MetaKey, str]=MetaKey.unique, allow_second_subset=True, na=None,
         keep_index=False, message_prefix="",
     ):
         r"""

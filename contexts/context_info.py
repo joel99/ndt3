@@ -19,23 +19,31 @@ CommandPayload = Dict[Path, StimCommand]
 
 logger = logging.getLogger(__name__)
 
-@dataclass(kw_only=True)
-class ContextInfo:
+# Onnx requires 3.9, kw_only was added in 3.10. We patch with this suggestion https://stackoverflow.com/questions/51575931/class-inheritance-in-python-3-7-dataclasses/53085935#53085935
+@dataclass
+class _ContextInfoBase:
+    subject: SubjectInfo # note this is an object/value
+    task: ExperimentalTask # while this is an enum/key, currently
+
+@dataclass
+class _ContextInfoDefaultsBase:
+    _arrays: List[str] = field(default_factory=lambda: []) # arrays (without subject handles) that were active in this context. Defaults to all known arrays for subject
+    datapath: Path = Path("fake_path") # path to raws - to be provided by subclass (not defaulting to None for typing)
+    alias: str = ""
+
+
+# Regress for py 3.9 compat
+# @dataclass(kw_only=True)
+@dataclass
+class ContextInfo(_ContextInfoDefaultsBase, _ContextInfoBase):
     r"""
         Base (abstract) class for static info for a given dataset.
         Subclasses should specify identity and datapath
     """
     # Context items - this info should be provided in all datasets.
-    subject: SubjectInfo # note this is an object/value
-    task: ExperimentalTask # while this is an enum/key, currently
 
     # These should be provided as denoted in SubjectArrayRegistry WITHOUT subject specific handles.
     # Dropping subject handles is intended to be a convenience since these contexts are essentially metadata management. TODO add some safety in case we decide to start adding handles explicitly as well...
-    _arrays: List[str] = field(default_factory=lambda: []) # arrays (without subject handles) that were active in this context. Defaults to all known arrays for subject
-
-
-    datapath: Path = Path("fake_path") # path to raws - to be provided by subclass (not defaulting to None for typing)
-    alias: str = ""
 
     def __init__(self,
         subject: SubjectInfo,
@@ -124,14 +132,19 @@ class ContextInfo:
             return NotImplemented
         return self.id > other.id
 
+
 @dataclass
-class PassiveICMSContextInfo(ContextInfo):
+class _PassiveICMSContextInfoBase:
     session: int
     set: int
 
     train_dir: Path
     stim_banks: Tuple[int]
     stimsync_banks: Tuple[int]
+
+
+@dataclass
+class PassiveICMSContextInfo(ContextInfo, _PassiveICMSContextInfoBase):
 
     _bank_to_array_name = {
         2: "lateral_s1",
@@ -242,9 +255,11 @@ class PassiveICMSContextInfo(ContextInfo):
         }
 
 @dataclass
-class ReachingContextInfo(ContextInfo):
-    # NLB barebones
+class _ReachingContextInfoBase:
     session: int
+
+@dataclass
+class ReachingContextInfo(ContextInfo, _ReachingContextInfoBase):
 
     def _id(self):
         return f"{self.session}-{self.alias}" # All reaching data get alias
@@ -408,7 +423,9 @@ class GallegoCOContextInfo(ReachingContextInfo):
 
 # read task subtype from `contexts/pitt_type.yaml`
 pitt_metadata = {}
-with open('contexts/pitt_type.yaml') as f:
+# get path relative to this file
+
+with open(Path(__file__).parent / 'pitt_type.yaml') as f:
     pitt_task_subtype = yaml.load(f, Loader=yaml.FullLoader)
     for date in pitt_task_subtype:
         for session in pitt_task_subtype[date]:
@@ -416,7 +433,7 @@ with open('contexts/pitt_type.yaml') as f:
             session_type = list(session.values())[0]
             pitt_metadata[f'CRS02bHome.data.{session_num:05d}'] = session_type
 
-with open('contexts/pitt_blacklist.csv') as f:
+with open(Path(__file__).parent / 'pitt_blacklist.csv') as f:
     for line in f:
         non_co_sessions = line.strip().split(',')
         for session in non_co_sessions:
@@ -501,11 +518,14 @@ RTT_SESSION_ARRAYS = {
 
 
 @dataclass
-class RTTContextInfo(ContextInfo):
+class _RTTContextInfoBase:
+    date_hash: str
+
+@dataclass
+class RTTContextInfo(ContextInfo, _RTTContextInfoBase):
     r"""
         We make this separate from regular ReachingContextInfo as subject hash isn't unique enough.
     """
-    date_hash: str
 
     def _id(self):
         return f"{self.date_hash}"

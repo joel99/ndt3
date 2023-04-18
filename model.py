@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, List, Optional, Any, Mapping
+from typing import Tuple, Dict, List, Optional, Any, Mapping, Union
 import dataclasses
 import time
 import math
@@ -780,7 +780,7 @@ class BrainBertInterface(pl.LightningModule):
             self.novel_params = state['novel_params']
 
     # ==================== Utilities ====================
-    def unpad_and_transform_rates(self, logrates: torch.Tensor, lengths: torch.Tensor | None = None, channels: torch.Tensor | None = None) -> torch.Tensor:
+    def unpad_and_transform_rates(self, logrates: torch.Tensor, lengths: Optional[torch.Tensor] = None, channels: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""
             logrates: raw, padded predictions from model, B T A H
             out: B T C
@@ -807,7 +807,7 @@ class BrainBertInterface(pl.LightningModule):
 
     def transform_rates(
         self,
-        logrates: List[torch.Tensor] | torch.Tensor,
+        logrates: Union[List[torch.Tensor], torch.Tensor],
         exp=True,
         normalize_hz=False
     ) -> torch.Tensor:
@@ -1031,8 +1031,8 @@ def transfer_cfg(src_cfg: ModelConfig, target_cfg: ModelConfig):
 # Note - I tried coding this as an override, but PTL `save_hyperparams()` acts up (trying to the save the `self` parameter, apparently) - even when passing explicitly that I just want to save `cfg` and `data_attrs`.
 def load_from_checkpoint(
     checkpoint_path: str,
-    cfg: ModelConfig | None = None,
-    data_attrs: DataAttrs | None = None,
+    cfg: Optional[ModelConfig] = None,
+    data_attrs: Optional[DataAttrs] = None,
     use_ckpt_model_cfg: bool = False,
 ):
     r"""
@@ -1085,7 +1085,7 @@ def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data
 
 # Utilities
 
-def recursive_diff_log(cfg1: DictConfig | ListConfig, cfg2: DictConfig | ListConfig, prefix=""):
+def recursive_diff_log(cfg1: Union[DictConfig, ListConfig], cfg2: Union[DictConfig, ListConfig], prefix=""):
     # cfg intended as new, semantically
     if not isinstance(cfg1, DictConfig): # Don't step into ListConfigs
         if cfg1 != cfg2:

@@ -22,6 +22,9 @@ try:
 except:
     logger.info("nlb_tools not installed, please install with `pip install nlb-tools`")
     NWBDataset = None
+    make_train_input_tensors = None
+    make_eval_input_tensors = None
+    make_eval_target_tensors = None
 
 from ..config import DataKey, DatasetConfig, MetaKey
 from ..subjects import SubjectInfo, SubjectName, SubjectArrayRegistry, create_spike_payload

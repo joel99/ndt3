@@ -231,7 +231,7 @@ class RatePrediction(TaskPipeline):
         channel_count: int,
         cfg: ModelConfig,
         data_attrs: DataAttrs,
-        decoder: nn.Module | None = None,
+        decoder: Optional[nn.Module] = None,
     ):
         super().__init__(
             backbone_out_size=backbone_out_size,

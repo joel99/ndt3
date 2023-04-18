@@ -370,7 +370,7 @@ class SpaceTimeTransformer(nn.Module):
         )
 
     # === Masks ===
-    def make_src_mask(self, src: torch.Tensor, temporal_context: torch.Tensor | None, trial_context: torch.Tensor | None, times: torch.Tensor, t: int, s: int=1, causal=True):
+    def make_src_mask(self, src: torch.Tensor, temporal_context: Optional[torch.Tensor], trial_context: Optional[torch.Tensor], times: torch.Tensor, t: int, s: int=1, causal=True):
         r"""
             args:
                 temporal_context: b t temp_c h
@@ -425,7 +425,7 @@ class SpaceTimeTransformer(nn.Module):
         return src_mask
 
     def make_padding_mask(
-        self, b, t, s, src: torch.Tensor, temporal_context: torch.Tensor | None, space_padding_mask: torch.Tensor | None, temporal_padding_mask: torch.Tensor | None,
+        self, b, t, s, src: torch.Tensor, temporal_context: Optional[torch.Tensor], space_padding_mask: Optional[torch.Tensor], temporal_padding_mask: Optional[torch.Tensor],
         has_array_dim: bool = False, s_a: int = 0
     ):
         r"""

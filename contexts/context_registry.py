@@ -4,7 +4,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Union
 from pathlib import Path
 import numpy as np
 import pandas as pd
@@ -70,7 +70,7 @@ class ContextRegistry:
         for item in context_info:
             self._registry[item.id] = item
 
-    def query(self, **search) -> ContextInfo | List[ContextInfo] | None:
+    def query(self, **search) -> Union[ContextInfo, List[ContextInfo], None]:
         def search_query(df):
             non_str_search = [k for k in search if k != 'alias']
             if non_str_search:
@@ -89,7 +89,7 @@ class ContextRegistry:
             return sorted(out)
         return self._registry[queried['id'].values[0]]
 
-    def query_by_datapath(self, datapath: Path | str) -> ContextInfo:
+    def query_by_datapath(self, datapath: Union[Path, str]) -> ContextInfo:
         if not isinstance(datapath, Path):
             datapath = Path(datapath)
         found = self.search_index[self.search_index.datapath == datapath.resolve()]
