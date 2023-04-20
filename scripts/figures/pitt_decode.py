@@ -58,9 +58,9 @@ comp_df['data_id'] = comp_df['subject'] + '_' + comp_df['session'].astype(str) +
 
 
 EVAL_DATASETS = [
-    # 'observation_CRS02bLab_session_19.*',
-    'observation_CRS07Lab_session_15.*',
-    'observation_CRS07Lab_session_16.*',
+    'observation_CRS02bLab_session_19.*',
+    # 'observation_CRS07Lab_session_15.*',
+    # 'observation_CRS07Lab_session_16.*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
@@ -75,9 +75,9 @@ EXPERIMENTS_KIN = [
 queries = [
     # 'human_obs_limit',
     'human_obs',
-    'human_obs_m5',
+    # 'human_obs_m5',
     # 'human_obs_m75',
-    # 'human',
+    'human',
     # 'human_m5',
     # 'human_unsup',
 ]
@@ -90,7 +90,7 @@ print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.'
 
 #%%
 USE_THRESH = False
-USE_THRESH = True
+# USE_THRESH = True
 def get_evals(model, dataloader, runs=8, mode='nll'):
     evals = []
     for i in range(runs):
@@ -215,7 +215,7 @@ df = pd.concat([kin_df, comp_df])
 # Are we actually better or worse than Pitt baselines?
 # intersect unique data ids, to get the relevant test set. Also, only compare nontrivial KF slots
 kf_ids = df[df['variant'] == 'kf_base']['data_id'].unique()
-model_ids = df[df['variant'] == 'human_obs']['data_id'].unique()
+model_ids = df[df['variant'] != 'kf_base']['data_id'].unique()
 nontrivial_ids = df[(df['variant'] == 'kf_base') & (df['kin_r2'] > 0)]['data_id'].unique()
 intersect_ids = np.intersect1d(kf_ids, model_ids)
 intersect_ids = np.intersect1d(intersect_ids, nontrivial_ids)
