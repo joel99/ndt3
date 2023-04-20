@@ -1046,7 +1046,14 @@ def load_from_checkpoint(
         cfg level changes are _expected_ to not affect topology,
         BUT TODO e.g. it's unclear if novel weight decay declaration means optimizer is reinitialized?
     """
-    old_model = BrainBertInterface.load_from_checkpoint(checkpoint_path)
+    try:
+        old_model = BrainBertInterface.load_from_checkpoint(checkpoint_path)
+    except: # we migrated library directory into a subfolder and old checkpoints may need paths to project dir registered
+        import sys
+        import os
+        sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+        old_model = BrainBertInterface.load_from_checkpoint(checkpoint_path)
+
     if cfg is None and data_attrs is None:
         return old_model
     if cfg is not None:

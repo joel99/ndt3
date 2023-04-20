@@ -114,7 +114,6 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
 
 @hydra.main(version_base=None, config_path='context_general_bci/config', config_name="config")
 def run_exp(cfg : RootConfig) -> None:
-    import pdb;pdb.set_trace()
     # Check for sweeping. Note we process data above because I never intend to sweep over data config.
     if cfg.tag == "":
         r"""
