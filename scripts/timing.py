@@ -14,16 +14,16 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from data import SpikingDataset, DataAttrs
-from config import ModelTask, Output, DataKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.config import ModelTask, Output, DataKey
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import stack_batch, load_wandb_run
+from context_general_bci.analyze_utils import prep_plt, get_dataloader
+from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
 
 
 # from model import transfer_model
-from model_decode import transfer_model
+from context_general_bci.model_decode import transfer_model
 # pl.seed_everything(0)
 
 # UNSORT = True

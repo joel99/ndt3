@@ -11,7 +11,7 @@ from pynwb import TimeSeries, ProcessingModule, NWBFile, NWBHDF5IO
 from pynwb.core import MultiContainerInterface
 
 from nlb_tools.make_tensors import make_train_input_tensors, PARAMS, _prep_mask, make_stacked_array
-from contexts import context_registry
+from context_general_bci.contexts import context_registry
 
 ## Load dataset
 # From this investigation, it seems like unit 1 is busted

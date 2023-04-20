@@ -5,21 +5,20 @@ import h5py
 import torch
 
 import logging
-
-from contexts import context_registry
-from config import RootConfig, DatasetConfig, DataKey, MetaKey
-from data import SpikingDataset
-from config.presets import FlatDataConfig
-from tasks import ExperimentalTask
-
 from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
-from analyze_utils import prep_plt, load_wandb_run
-from utils import wandb_query_latest
 
-sample_query = 'test' # just pull the latest run
-sample_query = 'human-sweep-simpler_lr_sweep'
+from context_general_bci.contexts import context_registry
+from context_general_bci.config import RootConfig, DatasetConfig, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset
+from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.tasks import ExperimentalTask
+from context_general_bci.analyze_utils import prep_plt, load_wandb_run
+from context_general_bci.utils import wandb_query_latest
+
+# sample_query = 'test' # just pull the latest run
+# sample_query = 'human-sweep-simpler_lr_sweep'
 # sample_query =
 
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
