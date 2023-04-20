@@ -9,6 +9,7 @@ import torch.nn.functional as F
 import pytorch_lightning as pl
 from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
 from omegaconf import OmegaConf, ListConfig, DictConfig
+from dacite import from_dict
 import logging
 from pprint import pformat
 
@@ -34,6 +35,7 @@ from context_general_bci.components import (
     ContextualMLP,
 )
 from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_temporal_padding_mask
+from context_general_bci.utils import enum_backport
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +46,43 @@ class BrainBertInterface(pl.LightningModule):
     def __init__(self, cfg: ModelConfig, data_attrs: DataAttrs):
         super().__init__() # store cfg
         self.save_hyperparameters(logger=False)
+        if not isinstance(cfg, ModelConfig):
+            # attempt forward port
+            conf_container = OmegaConf.to_container(cfg)
+            for item in [
+                'session_embed_strategy',
+                'subject_embed_strategy',
+                'task_embed_strategy',
+                'array_embed_strategy',
+                'readin_strategy',
+                'readout_strategy',
+                'stim_embed_strategy',
+                'heldout_neuron_embed_strategy',
+                'spike_embed_style',
+            ]:
+                conf_container[item] = enum_backport(conf_container[item], EmbedStrat)
+            conf_container['arch'] = enum_backport(conf_container['arch'], Architecture)
+            for item, class_remap in [
+                ('decode_strategy', EmbedStrat),
+                ('tasks', ModelTask),
+                ('metrics', Metric),
+                ('outputs', Output),
+                ('behavior_target', DataKey),
+            ]:
+                if isinstance(conf_container['task'][item], list):
+                    conf_container['task'][item] = [
+                        enum_backport(x, class_remap) for x in conf_container['task'][item]
+                    ]
+                else:
+                    conf_container['task'][item] = enum_backport(conf_container['task'][item], class_remap)
+            cfg = OmegaConf.merge(ModelConfig(), from_dict(data_class=ModelConfig, data=conf_container))
         self.cfg = cfg
         self.data_attrs = data_attrs
+
+        r"""
+            Make cfg use correct module refs for enums via a backport after migration
+        """
+
         assert self.data_attrs.max_channel_count % self.cfg.neurons_per_token == 0, "Neurons per token must divide max channel count"
         if self.data_attrs.serve_tokens:
             assert self.cfg.array_embed_strategy == EmbedStrat.none, 'array IDs serving not implemented for spatially tokenized data'
@@ -123,22 +160,11 @@ class BrainBertInterface(pl.LightningModule):
 
             Ideally, we will just bind embedding layers here, but there may be some MLPs.
         """
-        if self.cfg.session_embed_strategy is not EmbedStrat.none:
-            assert self.data_attrs.context.session, "Session embedding strategy requires session in data"
-            if len(self.data_attrs.context.session) == 1:
-                logger.warning('Using session embedding strategy with only one session. Expected only if tuning.')
-        if self.cfg.subject_embed_strategy is not EmbedStrat.none:
-            assert self.data_attrs.context.subject, "Subject embedding strategy requires subject in data"
-            if len(self.data_attrs.context.subject) == 1:
-                logger.warning('Using subject embedding strategy with only one subject. Expected only if tuning.')
-        if self.cfg.array_embed_strategy is not EmbedStrat.none:
-            assert self.data_attrs.context.array, "Array embedding strategy requires array in data"
-            if len(self.data_attrs.context.array) == 1:
-                logger.warning('Using array embedding strategy with only one array. Expected only if tuning.')
-        if self.cfg.task_embed_strategy is not EmbedStrat.none:
-            assert self.data_attrs.context.task, "Task embedding strategy requires task in data"
-            if len(self.data_attrs.context.task) == 1:
-                logger.warning('Using task embedding strategy with only one task. Expected only if tuning.')
+        for attr in ['session', 'subject', 'task', 'array']:
+            if getattr(self.cfg, f'{attr}_embed_strategy') is not EmbedStrat.none:
+                assert getattr(self.data_attrs.context, attr), f"{attr} embedding strategy requires {attr} in data"
+                if len(getattr(self.data_attrs.context, attr)) == 1:
+                    logger.warning(f'Using {attr} embedding strategy with only one {attr}. Expected only if tuning.')
 
         # We write the following repetitive logic explicitly to maintain typing
         project_size = self.cfg.hidden_size
@@ -1049,6 +1075,7 @@ def load_from_checkpoint(
     try:
         old_model = BrainBertInterface.load_from_checkpoint(checkpoint_path)
     except: # we migrated library directory into a subfolder and old checkpoints may need paths to project dir registered
+        logger.warning("Failed to load checkpoint, assuming old format and retrying after registering project dir...")
         import sys
         import os
         sys.path.append(os.path.dirname(os.path.abspath(__file__)))

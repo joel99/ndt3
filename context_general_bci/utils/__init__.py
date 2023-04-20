@@ -8,3 +8,8 @@ from .ckpts_and_wandb_helpers import *
 
 def suppress_default_registry():
     os.environ['NDT_SUPPRESS_DEFAULT_REGISTRY'] = '1'
+
+def enum_backport(old_inst, new_enum_cls):
+    # We run many enum checks but also migrated class modules at some point -- python doesn't recognize them as equal
+    # so we add a cast
+    return new_enum_cls[old_inst.name]
