@@ -275,6 +275,17 @@ class SpikingDataset(Dataset):
         meta[MetaKey.unique] = meta[MetaKey.session] + '-' + meta.index.astype(str) # unique per _trial_ INDEX in dataset
         self.validate_meta(meta)
 
+        # invalid_paths = []
+        # for k in self.cfg.data_keys:
+        #     if k == DataKey.bhvr_vel:
+        #         # load all and check bhvr exists, drop trials that don't
+        #         for trial_path in meta.path:
+        #             payload = torch.load(trial_path)
+        #             if DataKey.bhvr_vel not in payload:
+        #                 invalid_paths.append(trial_path)
+        # if invalid_paths:
+        #     logger.warning(f"Removing {len(invalid_paths)} of {len(meta)} trials from {context_meta.datapath} because they lack requested behavior velocity")
+        #     meta = meta[~meta.path.isin(invalid_paths)]
         return meta
 
     @property

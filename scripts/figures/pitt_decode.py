@@ -59,9 +59,9 @@ comp_df['data_id'] = comp_df['subject'] + '_' + comp_df['session'].astype(str) +
 
 
 EVAL_DATASETS = [
-    'observation_CRS02bLab_session_19.*',
-    # 'observation_CRS07Lab_session_15.*',
-    # 'observation_CRS07Lab_session_16.*',
+    # 'observation_CRS02bLab_session_19.*',
+    'observation_CRS07Lab_session_15.*',
+    'observation_CRS07Lab_session_16.*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)

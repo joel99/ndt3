@@ -40,6 +40,11 @@ from context_general_bci.utils import (
     wandb_run_exists
 )
 
+# ! Remove this eventually -- needed while we're still using pre-packaging ckpts
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 r"""
     For this script
     - if you're in a slurm interactive job, or want to launch a script, directly invoke

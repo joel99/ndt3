@@ -1,6 +1,10 @@
 # @package _global_
 defaults:
-  - _obs_ortho
+  - _default
+dataset:
+  datasets:
+    - observation_.*
+    - ortho_.*
 train:
   autoscale_batch_size: false
   batch_size: 16
