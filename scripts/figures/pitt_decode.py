@@ -4,6 +4,7 @@ import sys
 logging.basicConfig(stream=sys.stdout, level=logging.WARNING) # needed to get `logger` to print
 # logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
 from matplotlib import pyplot as plt
+from sklearn.metrics import r2_score
 import seaborn as sns
 import numpy as np
 import torch
@@ -15,7 +16,7 @@ from einops import rearrange
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from context_general_bci.dataset import SpikingDataset, DataAttrs
-from context_general_bci.model import transfer_model, logger
+from context_general_bci.model import transfer_model, logger, BrainBertInterface
 
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run
 from context_general_bci.analyze_utils import prep_plt, get_dataloader
@@ -91,10 +92,28 @@ print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.'
 #%%
 USE_THRESH = False
 # USE_THRESH = True
-def get_evals(model, dataloader, runs=8, mode='nll'):
+def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
     evals = []
     for i in range(runs):
         pl.seed_everything(i)
+        if 'kin_r2' in mode:
+            # ? Ehm... not sure if buggy.
+            model.cfg.task.outputs = [Output.behavior, Output.behavior_pred]
+            heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+            offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
+            pred = heldin_outputs[Output.behavior_pred]
+            pred = [p[offset_bins:] for p in pred]
+            true = heldin_outputs[Output.behavior]
+            true = [t[offset_bins:] for t in true]
+            flat_pred = np.concatenate(pred) if isinstance(pred, list) else pred.flatten()
+            flat_true = np.concatenate(true) if isinstance(true, list) else true.flatten()
+            pad_value = 5
+            flat_pred = flat_pred[(flat_true != pad_value).any(-1)]
+            flat_true = flat_true[(flat_true != pad_value).any(-1)]
+            # compute r2
+            r2 = r2_score(flat_true, flat_pred)
+            return r2
+
         heldin_metrics = stack_batch(trainer.test(model, dataloader, verbose=False))
         if mode == 'nll':
             test = heldin_metrics['test_infill_loss'] if 'test_infill_loss' in heldin_metrics else heldin_metrics['test_shuffle_infill_loss']
