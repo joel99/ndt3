@@ -73,11 +73,13 @@ EXPERIMENTS_KIN = [
 ]
 
 queries = [
-    'human_obs_limit',
+    # 'human_obs_limit',
     'human_obs',
-    # 'human_obs_m5',
-    'human',
+    'human_obs_m5',
+    'human_obs_m75',
+    # 'human',
     # 'human_m5',
+    # 'human_unsup',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -87,6 +89,8 @@ runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
 print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.')
 
 #%%
+USE_THRESH = False
+USE_THRESH = True
 def get_evals(model, dataloader, runs=8, mode='nll'):
     evals = []
     for i in range(runs):
@@ -95,7 +99,10 @@ def get_evals(model, dataloader, runs=8, mode='nll'):
         if mode == 'nll':
             test = heldin_metrics['test_infill_loss'] if 'test_infill_loss' in heldin_metrics else heldin_metrics['test_shuffle_infill_loss']
         else:
-            test = heldin_metrics['test_kinematic_r2']
+            if USE_THRESH:
+                test = heldin_metrics['test_kinematic_r2_thresh']
+            else:
+                test = heldin_metrics['test_kinematic_r2']
         test = test.mean().item()
         evals.append({
             'seed': i,
@@ -111,6 +118,9 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
     data_attrs = dataset.get_data_attrs()
     set_limit = run.config['dataset']['scale_limit_per_eval_session']
     cfg.model.task.tasks = [ModelTask.kinematic_decoding] # remove stochastic shuffle
+    if USE_THRESH:
+        cfg.model.task.metrics = [Metric.kinematic_r2, Metric.kinematic_r2_thresh]
+        cfg.model.task.behavior_fit_thresh = 0.1
     model = transfer_model(src_model, cfg.model, data_attrs)
     dataloader = get_dataloader(dataset)
 
@@ -177,8 +187,6 @@ def build_df(runs, mode='nll'):
             # inst_df.subset_split(splits=['eval'])
 
             # val.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
-
-
             experiment_set = run.config['experiment_set']
             if variant.startswith('sup') or variant.startswith('unsup'):
                 experiment_set = experiment_set + '_' + variant.split('_')[0]
@@ -222,14 +230,14 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 subject = 'CRS02bLab'
 # subject = 'CRS07Lab'
 subject_df = sub_df[sub_df['subject'] == subject]
-
 sns.set_theme(style="whitegrid")
 # boxplot
-ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2')
+order = sorted(subject_df.variant.unique())
+ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2', order=order)
 ax.set_ylim(0, 1)
 ax.set_ylabel('Vel R2')
 ax.set_xlabel('Model variant')
-ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]})')
+ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]}) ({"thresh" if USE_THRESH else ""})')
 # Rotate xlabels
 ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
 

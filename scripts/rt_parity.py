@@ -56,8 +56,8 @@ loop_times = []
 mode = 'gpu'
 compile_flag = ''
 # compile_flag = 'torchscript'
-# compile_flag = 'onnx'
-# onnx_file = 'model.onnx'
+compile_flag = 'onnx'
+onnx_file = 'model.onnx'
 
 if mode == 'gpu':
     model = model.to('cuda:0')
@@ -86,6 +86,7 @@ pl.seed_everything(0)
 # if mode == 'gpu':
 #     model = model.to('cuda:0')
 
+test_ins = []
 test_outs = []
 backbone_payloads = []
 with torch.no_grad():
@@ -97,7 +98,8 @@ with torch.no_grad():
             spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
             # equivalent to loading a single trial for Pitt data.
         # spikes = trial[DataKey.spikes].flatten(1,2).unsqueeze(0) # simulate normal trial
-        # spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
+        spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
+        test_ins.append(spikes)
         start = time.time()
         if do_onnx:
             out = ort_session.run(None, ort_inputs)
@@ -109,19 +111,11 @@ with torch.no_grad():
                     for k in batch:
                         batch[k] = batch[k].to('cuda:0')
 
-            # out = model(spikes)
             if parity_mode == 'new':
-                # backbone, out = model(spikes)
-                # backbone_payloads.append(backbone)
                 out = model(spikes)
-                # import pdb;pdb.set_trace()
 
             if parity_mode == 'old':
                 out = model(batch)
-                # backbone, out = model(batch)
-                # backbone['backbone'] = out
-                # backbone_payloads.append(backbone)
-                # import pdb;pdb.set_trace()
                 out = model.task_pipelines[ModelTask.kinematic_decoding.value](
                     batch,
                     out,
@@ -135,6 +129,7 @@ with torch.no_grad():
         test_outs.append(out)
         print(out.shape)
         if compile_flag == 'onnx' and not Path(onnx_file).exists():
+            spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
             model = model.to_onnx("model.onnx", spikes, export_params=True)
             torch.save(spikes, 'samples.pt')
             exit(0)
@@ -166,6 +161,10 @@ for i in range(trial_vel.shape[1]):
     ax.plot(trial_vel[:,i].cumsum())
 ax.set_title(f'Velocity {parity_mode} {trial_vel.shape}')
 torch.save(trial_vel, f'trial_vel_{parity_mode}.pt')
+torch.save({
+    'in': test_ins,
+    'out': test_outs
+}, 'onnx_parity.pt')
 #%%
 
 print(backbone_payloads[0][0].shape)

@@ -25,13 +25,14 @@ from utils import get_wandb_run, wandb_query_latest
 mode = 'train'
 mode = 'test'
 
-query = "human-sweep-simpler_lr_sweep-dgnx7mn9"
-query = "human_only-5a62oz96"
+# query = "human-sweep-simpler_lr_sweep-dgnx7mn9"
+# query = "human_only-5a62oz96"
 # query = 'session_cross_noctx-wc24ulkl'
 
 # query = 'human_sum_contrast-3inx20gs'
 # query = 'human_sum_contrast-l2zg9sju'
-query = 'human_sum_contrast-lheohfzn'
+# query = 'human_sum_contrast-lheohfzn'
+query = 'sup_3200-frag-odoherty_rtt-Indy-20160627_01-sweep-simpler_lr_sweep-iy1xf1bc'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -49,9 +50,9 @@ if pipeline_model:
     pipeline_model = load_wandb_run(wandb_query_latest(pipeline_model, allow_running=True, use_display=True)[0], tag='val_loss')[0]
     cfg.model.task = pipeline_model.cfg.task
 
-target_dataset = 'observation_CRS02bLab_session_1908_set_1'
-target_dataset = 'observation_CRS02bLab_session_1913_set_1'
-target_dataset = 'observation_CRS02bLab_session_1827.*'
+# target_dataset = 'observation_CRS02bLab_session_1908_set_1'
+# target_dataset = 'observation_CRS02bLab_session_1913_set_1'
+# target_dataset = 'observation_CRS02bLab_session_1827.*'
 # target_dataset = 'observation_CRS02bLab_session_1922_set_6'
 # target_dataset = 'observation_CRS02bLab_session_1904_set_6'
 # target_dataset = 'observation_CRS02bLab_session_1925_set_3'
@@ -59,12 +60,13 @@ target_dataset = 'observation_CRS02bLab_session_1827.*'
 # cfg.dataset.datasets = ["observation_CRS02bLab_session_1908_set_1"]
 # cfg.dataset.eval_datasets = ["observation_CRS02bLab_session_1908_set_1"]
 
+target_dataset = 'odoherty_rtt-Indy-20160627_01'
 # cfg.dataset.datasets = ["odoherty_rtt-Indy-20160627_01"]
 # cfg.dataset.eval_datasets = ["odoherty_rtt-Indy-20160627_01"]
 
 cfg.dataset.datasets = [target_dataset]
 cfg.dataset.eval_datasets = [target_dataset]
-cfg.dataset.eval_ratio = 0.5
+# cfg.dataset.eval_ratio = 0.5
 # cfg.model.task.decode_normalizer = 'pitt_obs_zscore.pt'
 
 dataset = SpikingDataset(cfg.dataset)
@@ -157,10 +159,11 @@ g.fig.suptitle(f'{mode} {target_dataset} Velocity R2: {heldin_metrics["test_kine
 # ax.set_title('Distribution of velocity targets')
 # ax.set_yscale('log')
 #%%
-ax = prep_plt()
+f = plt.figure(figsize=(10, 10))
+ax = prep_plt(f.gca())
 trials = range(4)
-trials = range(2)
-# trials = torch.arange(6)
+# trials = range(2)
+trials = torch.arange(0, 12, 2)
 
 colors = sns.color_palette('colorblind', len(trials))
 def plot_trial(trial, ax, color, label=False):
@@ -175,8 +178,12 @@ def plot_trial(trial, ax, color, label=False):
 
     pos_true = vel_true.cumsum(0)
     pos_pred = vel_pred.cumsum(0)
-    # ax.plot(pos_true[:,0], pos_true[:,1], label='true' if label else '', linestyle='-', color=color)
+    ax.plot(pos_true[:,0], pos_true[:,1], label='true' if label else '', linestyle='-', color=color)
     ax.plot(pos_pred[:,0], pos_pred[:,1], label='pred' if label else '', linestyle='--', color=color)
+    ax.set_xlabel('X-pos')
+    ax.set_ylabel('Y-pos')
+    # make limits square
+    ax.set_aspect('equal', 'box')
 
 
 for i, trial in enumerate(trials):
