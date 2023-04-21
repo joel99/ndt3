@@ -361,7 +361,7 @@ class NLBConfig(ExperimentalConfig):
 
 @dataclass
 class PittConfig(ExperimentalConfig):
-    chop_size_ms: int = 2000
+    chop_size_ms: int = 2500
 
 @dataclass
 class DatasetConfig:
