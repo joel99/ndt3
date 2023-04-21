@@ -433,6 +433,7 @@ with open(Path(__file__).parent / 'pitt_type.yaml') as f:
             session_type = list(session.values())[0]
             pitt_metadata[f'CRS02bHome.data.{session_num:05d}'] = session_type
 
+# frankly JY no longer remembers how this was sourced
 with open(Path(__file__).parent / 'pitt_blacklist.csv') as f:
     for line in f:
         non_co_sessions = line.strip().split(',')
@@ -444,7 +445,7 @@ class BCIContextInfo(ReachingContextInfo):
     session_set: int = 0
 
     @classmethod
-    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"]):
+    def build_from_dir_varied(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"]):
         if not Path(root).exists():
             logger.warning(f"Datapath not found, skipping ({root})")
             return []
@@ -466,6 +467,48 @@ class BCIContextInfo(ReachingContextInfo):
             elif subject.endswith('Lab'):
                 subject = subject[:-3]
             alias = f'{task_map.get(session_type).value}_{alias}'
+            return BCIContextInfo(
+                subject=SubjectArrayRegistry.query_by_subject(subject),
+                task=task_map.get(session_type),
+                _arrays=[
+                    'lateral_s1', 'medial_s1',
+                    'lateral_m1', 'medial_m1',
+                ],
+                alias=alias,
+                session=int(session),
+                datapath=datapath,
+                session_set=session_set
+            )
+        infos = map(make_info, Path(root).glob("*"))
+        return filter(lambda x: x is not None, infos)
+
+
+    @classmethod
+    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"]):
+        if not Path(root).exists():
+            logger.warning(f"Datapath not found, skipping ({root})")
+            return []
+        def make_info(datapath: Path):
+            if datapath.is_dir():
+                alias = datapath.name
+                subject, _, session = alias.split('.')
+                session_set = 0
+                session_type = pitt_metadata.get(alias, 'default')
+            else: # matlab file
+                alias = datapath.stem
+                pieces = alias.split('_')
+                pieces = list(filter(lambda x: x != '', pieces))
+                subject, _, session, _, session_set, _, *session_type, control = pieces
+                session_type = '_'.join(session_type)
+                blacklist_check_key = f'{subject}_session_{session}_set_{session_set}'
+                if blacklist_check_key in pitt_metadata:
+                    session_type = pitt_metadata[blacklist_check_key]
+            if subject.endswith('Home'):
+                subject = subject[:-4]
+            elif subject.endswith('Lab'):
+                subject = subject[:-3]
+            alias = f'{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
+            print(alias)
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
                 task=task_map.get(session_type),

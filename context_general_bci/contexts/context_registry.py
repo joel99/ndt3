@@ -139,7 +139,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
 
         *GallegoCOContextInfo.build_from_dir('./data/gallego_co', task=ExperimentalTask.gallego_co),
         *GDrivePathContextInfo.build_from_dir('./data/churchland_misc'),
-        *BCIContextInfo.build_from_dir('./data/pitt_co/mat', task_map={
+        *BCIContextInfo.build_from_dir('./data/pitt_co', task_map={
             'obs': ExperimentalTask.observation,
             'ortho': ExperimentalTask.ortho,
             'ortho/fbc': ExperimentalTask.fbc, # when both types are used, opt for more expressive
@@ -150,7 +150,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'default': ExperimentalTask.pitt_co,
             'unk': ExperimentalTask.pitt_co,
         }),
-        *BCIContextInfo.build_from_dir('./data/pitt_varied', task_map={
+        *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
             'unstructured': ExperimentalTask.unstructured,
             'free_play': ExperimentalTask.unstructured,
             'default': ExperimentalTask.pitt_co,

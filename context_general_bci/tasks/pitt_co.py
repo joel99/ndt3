@@ -169,6 +169,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 for i, trial_spikes in enumerate(spikes):
                     save_trial_spikes(trial_spikes, i)
             else:
+                import pdb;pdb.set_trace()
                 # Iterate by trial, assumes continuity
                 for i in payload['trial_num'].unique():
                     session_spikes = payload['spikes'][payload['trial_num'] == i]
