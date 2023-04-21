@@ -1,8 +1,8 @@
 #!/bin/bash
-#SBATCH --job-name=ndt2_2x
+#SBATCH --job-name=ndt2_4x
 #SBATCH --cluster gpu
 #SBATCH -p a100_nvlink
-#SBATCH -t 16:00:00
+#SBATCH -t 24:00:00
 #SBATCH --mem 200G
 #SBATCH --output=slurm_logs/%j.out
 #SBATCH --nodes=1
