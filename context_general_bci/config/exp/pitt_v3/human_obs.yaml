@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_.*
+  # Our "test set"
+train:
+  autoscale_batch_size: false
+  batch_size: 128

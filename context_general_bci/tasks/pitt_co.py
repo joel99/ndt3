@@ -144,11 +144,11 @@ class PittCOLoader(ExperimentalTaskLoader):
             single_path = cache_root / f'{dataset_alias}_{i}.pth'
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)
-        def get_velocity(position):
+        def get_velocity(position, kernel=np.ones((int(500 / cfg.bin_size_ms), 2))/ (500 / cfg.bin_size_ms)):
+            # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
             # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
             position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
-            # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
-            position = convolve(position, np.ones((int(500 / cfg.bin_size_ms), 2))/ (500 / cfg.bin_size_ms), mode='same')
+            position = convolve(position, kernel, mode='same')
 
             vel = torch.tensor(np.gradient(position, axis=0)).float()
             vel[vel.isnan()] = 0 # extra call to deal with edge values
@@ -169,28 +169,34 @@ class PittCOLoader(ExperimentalTaskLoader):
                 for i, trial_spikes in enumerate(spikes):
                     save_trial_spikes(trial_spikes, i)
             else:
-                import pdb;pdb.set_trace()
                 # Iterate by trial, assumes continuity
                 for i in payload['trial_num'].unique():
                     session_spikes = payload['spikes'][payload['trial_num'] == i]
 
+                    # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
+                    # we assume intent labels are not reliable in this timeframe
                     start_pad = round(500 / cfg.bin_size_ms)
                     end_pad = round(1000 / cfg.bin_size_ms)
                     if session_spikes.size(0) <= start_pad + end_pad: # something's odd about this trial
                         continue
-                    # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
-                    session_spikes = session_spikes[start_pad:-end_pad]
+                    should_clip = False
                     # if 'position' in payload and task in [ExperimentalTask.observation]: # We only "trust" in the labels provided by obs (for now). Note we previously tried ortho to no avail, and loading is buggier.
                     if (
                         'position' in payload and \
-                        task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
+                        task in [ExperimentalTask.observation, ExperimentalTask.ortho] # and \
                     ): # We only "trust" in the labels provided by obs (for now)
                         if len(payload['position']) == len(payload['trial_num']):
-                            session_vel = get_velocity(payload['position'][payload['trial_num'] == i])[start_pad:-end_pad]
+                            session_vel = get_velocity(payload['position'][payload['trial_num'] == i])
+                            if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
+                                should_clip = True
                         else:
                             session_vel = None
                     else:
                         session_vel = None
+                    if should_clip:
+                        session_spikes = session_spikes[start_pad:-end_pad]
+                        if session_vel is not None:
+                            session_vel = session_vel[start_pad:-end_pad]
                     if session_spikes.size(0) < round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms):
                         save_trial_spikes(session_spikes, i, {DataKey.bhvr_vel: session_vel} if session_vel is not None else {})
                     else:
@@ -229,3 +235,4 @@ ExperimentalTaskRegistry.register_manual(ExperimentalTask.observation, PittCOLoa
 ExperimentalTaskRegistry.register_manual(ExperimentalTask.ortho, PittCOLoader)
 ExperimentalTaskRegistry.register_manual(ExperimentalTask.fbc, PittCOLoader)
 ExperimentalTaskRegistry.register_manual(ExperimentalTask.unstructured, PittCOLoader)
+ExperimentalTaskRegistry.register_manual(ExperimentalTask.pitt_co, PittCOLoader)

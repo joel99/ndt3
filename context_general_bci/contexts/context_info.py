@@ -508,10 +508,13 @@ class BCIContextInfo(ReachingContextInfo):
             elif subject.endswith('Lab'):
                 subject = subject[:-3]
             alias = f'{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
-            print(alias)
+            if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit']):
+                task = task_map.get(control, task_map.get('default'))
+            else:
+                task = task_map.get('default')
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
-                task=task_map.get(session_type),
+                task=task,
                 _arrays=[
                     'lateral_s1', 'medial_s1',
                     'lateral_m1', 'medial_m1',

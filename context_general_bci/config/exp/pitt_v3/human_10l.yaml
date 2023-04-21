@@ -1,6 +1,9 @@
 # @package _global_
 defaults:
   - _default
+model:
+  transformer:
+    n_layers: 10
 dataset:
   datasets:
   - observation_.* # pursuit.*
@@ -11,6 +14,6 @@ dataset:
   # Our "test set"
 
 train:
-  # autoscale_batch_size: false
-  batch_size: 128 # guesstimate for 80G nodes
-  accumulate_batches: 2
+  autoscale_batch_size: false
+  batch_size: 64
+  accumulate_batches: 4
