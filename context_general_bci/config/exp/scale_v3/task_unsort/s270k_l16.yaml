@@ -29,3 +29,5 @@ model:
   transformer:
     n_layers: 16
 notes: "Add human."
+load_from_id: s270k_l16-k71vwddc
+# load_from_id: s270k_l16-8y643zmc # Postponed.

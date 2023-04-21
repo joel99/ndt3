@@ -2,11 +2,10 @@
 #SBATCH --job-name=ndt2_2x
 #SBATCH --cluster gpu
 #SBATCH -p a100_nvlink
-#SBATCH -t 16:00:00
+#SBATCH -t 24:00:00
 #SBATCH --mem 200G
 #SBATCH --output=slurm_logs/%j.out
 #SBATCH --nodes=1
-#SBATCH -x gpu-n31
 #SBATCH --gpus-per-node=2
 #SBATCH --ntasks-per-node=2
 #SBATCH --cpus-per-task=16

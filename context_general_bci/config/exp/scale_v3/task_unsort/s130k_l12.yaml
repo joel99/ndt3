@@ -18,4 +18,5 @@ train:
 model:
   transformer:
     n_layers: 12
+load_from_id: s130k_l12-wprsr88j
 notes: "train set 126764."
