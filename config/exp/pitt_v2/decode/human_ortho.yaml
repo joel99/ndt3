@@ -1,7 +1,0 @@
-# @package _global_
-defaults:
-  - _obs_ortho
-train:
-  autoscale_batch_size: false
-  batch_size: 16
-inherit_tag: human

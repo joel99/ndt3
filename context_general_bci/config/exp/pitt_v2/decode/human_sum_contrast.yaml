@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 64 # for mind-1-34
+model:
+  task:
+    tasks: [ModelTask.kinematic_decoding]
+    metrics: [Metric.kinematic_r2]
+    decode_strategy: EmbedStrat.token
+    decode_separate: true
+    # freeze_backbone: True
+    behavior_contrastive: 'sum'
+inherit_tag: human
+notes: 'cross_ent sum'

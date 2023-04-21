@@ -5,18 +5,19 @@ import h5py
 import torch
 
 import logging
-
-from contexts import context_registry
-from config import DatasetConfig, DataKey, MetaKey
-from config.presets import FlatDataConfig
-from data import SpikingDataset
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-
 from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
-from analyze_utils import prep_plt
 from scipy.io import loadmat
+
+
+from context_general_bci.contexts import context_registry
+from context_general_bci.config import DatasetConfig, DataKey, MetaKey
+from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.dataset import SpikingDataset
+from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.analyze_utils import prep_plt
+
 
 # Clean data from the wilds of the lab
 

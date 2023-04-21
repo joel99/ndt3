@@ -57,6 +57,8 @@ queries = [
     'subject_f32',
     'task_f32',
     's90k_l8',
+    's130k_l12',
+    's270k_l16'
 ]
 
 merge_queries = [
@@ -164,14 +166,14 @@ inferred_limits = {
     'subject_f32': 20265, # from https://wandb.ai/joelye9/context_general_bci/runs/ltd2ms0d/overview?workspace=user-joelye9
     'task_f32': 18304, # roughly calculated from https://wandb.ai/joelye9/context_general_bci/runs/0574z9md/overview?workspace=user-joelye9
     's90k_l8': 85218,
+    's130k_l12': 126764,
+    's270k_l16': 270000,
 }
 df['inferred_limit'] = df.apply(
     lambda x: inferred_limits.get(x['variant'], x['limit']),
     axis=1
 )
 
-#%%
-print(df[['variant', 'limit_y']])
 #%%
 # Show just NLL in logscale
 palette = sns.color_palette('colorblind', n_colors=len(df['dataset'].unique()))
@@ -213,8 +215,12 @@ ax.set_title(f'Intra-session scaling ({"unsorted" if UNSORT else "sorted"})')
 
 
 #%%
+# import matplotlib ticker
+from matplotlib import ticker
+
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
 hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+dataset_order = sorted(df['dataset'].unique())
 g = sns.relplot(
     x='inferred_limit',
     y='nll',
@@ -226,19 +232,49 @@ g = sns.relplot(
     kind='scatter',
     facet_kws={'sharex': False, 'sharey': False},
     col='dataset',
+    col_order=dataset_order,
 )
+
+# retitle subplots
+title_remap = {
+    'odoherty_rtt-Indy-20170131_02': 'Final',
+    'odoherty_rtt-Indy-20160407_02': 'Initial',
+    'odoherty_rtt-Indy-20160627_01': 'Middle',
+}
 
 def deco(data, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
     ax.set_yscale('log')
+    ax.set_xlabel('Pretraining trials')
+    ax.set_ylabel('Test loss')
+    # Only use 3 xticks
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
+    ax.yaxis.set_minor_locator(ticker.MaxNLocator(3))
+
+    alias = ax.get_title().split('=')[1].strip()
+    ax.set_title(title_remap.get(alias, alias), fontsize=20)
+
     for i, series in enumerate(hue_order):
         sub_df = data[data['series'] == series]
         plot_dataset_power_law(sub_df, ax, color=palette[i])
 
+# relabel legend
+label_remap = {
+    'intra_unsort': 'Intra',
+    'session_unsort': 'Session',
+    'subject_unsort': 'Subject',
+    'task_unsort': 'Task',
+}
+g._legend.set_title('Series')
+for t, l in zip(g._legend.texts, g._legend.legendHandles):
+    t.set_text(label_remap.get(t.get_text(), t.get_text()))
+
+
 g.map_dataframe(deco)
-g.fig.suptitle(f'100 Trial Transfer NLL ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
+g.fig.suptitle(f'Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=28)
+# g.fig.suptitle(f'Unsupervised Transfer ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
 
 #%%
 
@@ -275,18 +311,40 @@ g = sns.relplot(
     hue_order=hue_order,
     data=df,
     palette=palette,
-    kind='scatter',
+    kind='line',
     facet_kws={'sharex': False, 'sharey': False},
     col='dataset',
-    # row='dataset',
+    col_order=dataset_order,
+    markers=True,
 )
+
 def deco(data, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
-    ax.set_xlabel('Pretraining set size')
-    ax.set_ylabel('Vel R2')
-    # ax.set_yscale('log')
+    ax.set_xlabel('Pretraining trials')
+    ax.set_ylabel(r'Vel $R^2$')
+    # Only use 3 xticks
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
+    ax.yaxis.set_minor_locator(ticker.MaxNLocator(5))
+    if '=' in ax.get_title():
+        alias = ax.get_title().split('=')[1].strip()
+        ax.set_title(title_remap.get(alias, alias), fontsize=20)
+
 
 g.map_dataframe(deco)
-g.fig.suptitle(f'100 Trial Transfer Vel R2 ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
+
+label_remap = {
+    'intra_unsort': 'Intra',
+    'session_unsort': 'Session',
+    'subject_unsort': 'Subject',
+    'task_unsort': 'Task',
+}
+g._legend.set_title('Series')
+for t, l in zip(g._legend.texts, g._legend.legendHandles):
+    t.set_text(label_remap.get(t.get_text(), t.get_text()))
+
+
+g.map_dataframe(deco)
+g.fig.suptitle(f'Sup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=28)
+# g.fig.suptitle(f'100 Trial Transfer Vel R2 ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)

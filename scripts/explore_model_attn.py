@@ -10,12 +10,12 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import stack_batch, get_wandb_run, load_wandb_run, wandb_query_latest
-from analyze_utils import prep_plt
+from context_general_bci.analyze_utils import stack_batch, get_wandb_run, load_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import prep_plt
 
 # wandb_run = get_wandb_run("maze_med-1j0loymb")
 query = "maze_small"

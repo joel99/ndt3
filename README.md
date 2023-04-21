@@ -26,6 +26,14 @@ Env per `env.yaml`:
 conda env create -f env.yaml
 ```
 (Assumes conda is installed, and any necessary cuda packages are available, we use cuda 11.6).
+If non-linux, more manual steps may be needed i.e. as not all packages are available on conda.
+We make several dataloading dependencies optional (but training with said data will fail without them).
+However some packages must be installed via pip:
+- `pip install ordered-enum mat73 dacite`
+-
+
+
+
 Note for slurm jobs, I trigger the necessary env loads with a `load_env.sh` script located outside this repo, samples provided, but you will need to edit them to match your env.
 
 Data setup is not modularized yet, bulk setup is done with:

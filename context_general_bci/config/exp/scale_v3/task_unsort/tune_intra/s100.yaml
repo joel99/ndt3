@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+
+dataset:
+  scale_limit_per_eval_session: 100
+train:
+  batch_size: 32 # parity with `intra_unsort`

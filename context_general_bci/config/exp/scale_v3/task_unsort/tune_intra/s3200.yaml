@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+
+dataset:
+  datasets:
+  - odoherty_rtt-Indy-20160627_01 # 3364s
+  scale_limit_per_eval_session: 3190

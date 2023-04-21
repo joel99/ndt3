@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 16
+inherit_exp: pitt_v2/decode
+inherit_tag: human

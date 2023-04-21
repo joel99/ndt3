@@ -1,0 +1,5 @@
+# @package _global_
+defaults:
+  - _default
+sweep_cfg: ""
+inherit_tag: human

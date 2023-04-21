@@ -1,0 +1,6 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    mask_ratio: 0.75

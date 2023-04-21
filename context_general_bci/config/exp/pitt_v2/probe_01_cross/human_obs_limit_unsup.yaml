@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    blacklist_session_supervision:
+    - observation_CRS02bLab_session_19.* #
+    - observation_CRS07Lab_session_15.*
+    - observation_CRS07Lab_session_16.*
+inherit_tag: human_obs_limit

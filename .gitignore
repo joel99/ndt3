@@ -5,8 +5,6 @@ tmp/
 outputs/
 wandb/
 slurm_logs/
-# wandb folder
-context_general_bci/
 
 # Typically debug
 *.h5

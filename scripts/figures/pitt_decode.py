@@ -4,6 +4,7 @@ import sys
 logging.basicConfig(stream=sys.stdout, level=logging.WARNING) # needed to get `logger` to print
 # logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
 from matplotlib import pyplot as plt
+from sklearn.metrics import r2_score
 import seaborn as sns
 import numpy as np
 import torch
@@ -13,13 +14,13 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger, BrainBertInterface
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import stack_batch, load_wandb_run
+from context_general_bci.analyze_utils import prep_plt, get_dataloader
+from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
 
 pl.seed_everything(0)
 
@@ -58,23 +59,28 @@ comp_df['data_id'] = comp_df['subject'] + '_' + comp_df['session'].astype(str) +
 
 
 EVAL_DATASETS = [
-    'observation_CRS02bLab_session_19.*',
-    # 'observation_CRS07Lab_session_15.*',
-    # 'observation_CRS07Lab_session_16.*',
+    # 'observation_CRS02bLab_session_19.*',
+    'observation_CRS07Lab_session_15.*',
+    'observation_CRS07Lab_session_16.*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
 EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
-    f'pitt_v2/probe',
+    # f'pitt_v2/probe',
+    f'pitt_v2/probe_01_cross',
     # f'pitt_v2/probe_01',
 ]
 
 queries = [
     # 'human_obs_limit',
     'human_obs',
-    # 'human',
+    # 'human_obs_m5',
+    # 'human_obs_m75',
+    'human',
+    # 'human_m5',
+    # 'human_unsup',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -84,15 +90,38 @@ runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
 print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.')
 
 #%%
-def get_evals(model, dataloader, runs=8, mode='nll'):
+USE_THRESH = False
+# USE_THRESH = True
+def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
     evals = []
     for i in range(runs):
         pl.seed_everything(i)
+        if 'kin_r2' in mode:
+            # ? Ehm... not sure if buggy.
+            model.cfg.task.outputs = [Output.behavior, Output.behavior_pred]
+            heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+            offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
+            pred = heldin_outputs[Output.behavior_pred]
+            pred = [p[offset_bins:] for p in pred]
+            true = heldin_outputs[Output.behavior]
+            true = [t[offset_bins:] for t in true]
+            flat_pred = np.concatenate(pred) if isinstance(pred, list) else pred.flatten()
+            flat_true = np.concatenate(true) if isinstance(true, list) else true.flatten()
+            pad_value = 5
+            flat_pred = flat_pred[(flat_true != pad_value).any(-1)]
+            flat_true = flat_true[(flat_true != pad_value).any(-1)]
+            # compute r2
+            r2 = r2_score(flat_true, flat_pred)
+            return r2
+
         heldin_metrics = stack_batch(trainer.test(model, dataloader, verbose=False))
         if mode == 'nll':
             test = heldin_metrics['test_infill_loss'] if 'test_infill_loss' in heldin_metrics else heldin_metrics['test_shuffle_infill_loss']
         else:
-            test = heldin_metrics['test_kinematic_r2']
+            if USE_THRESH:
+                test = heldin_metrics['test_kinematic_r2_thresh']
+            else:
+                test = heldin_metrics['test_kinematic_r2']
         test = test.mean().item()
         evals.append({
             'seed': i,
@@ -108,6 +137,9 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
     data_attrs = dataset.get_data_attrs()
     set_limit = run.config['dataset']['scale_limit_per_eval_session']
     cfg.model.task.tasks = [ModelTask.kinematic_decoding] # remove stochastic shuffle
+    if USE_THRESH:
+        cfg.model.task.metrics = [Metric.kinematic_r2, Metric.kinematic_r2_thresh]
+        cfg.model.task.behavior_fit_thresh = 0.1
     model = transfer_model(src_model, cfg.model, data_attrs)
     dataloader = get_dataloader(dataset)
 
@@ -133,9 +165,11 @@ def build_df(runs, mode='nll'):
     seen_set = {}
     for run in runs:
         variant, _frag, *rest = run.name.split('-')
+        if variant not in queries:
+            continue
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
-
         experiment_set = run.config['experiment_set']
+        pl.seed_everything(seed=cfg.seed)
         # if (
         #     variant,
         #     run.config['dataset']['eval_datasets'][0],
@@ -151,14 +185,27 @@ def build_df(runs, mode='nll'):
         # In order to get the correct eval split, we need to use the same set of datasets as train (splits are not per dataset)
         # So construct this and split it repeatedly
         ref_df = SpikingDataset(cfg.dataset)
+        tv_ref = deepcopy(ref_df)
+        eval_ref = deepcopy(ref_df)
+        eval_ref.subset_split(splits=['eval'])
+        tv_ref.subset_split()
+        train_ref, val_ref = tv_ref.create_tv_datasets()
 
         for i, dataset in enumerate(EVAL_ALIASES):
+            # We use val _and_ eval to try to be generous and match Pitt settings
             inst_df = deepcopy(ref_df)
             inst_df.cfg.eval_datasets = [dataset]
             inst_df.cfg.datasets = [dataset]
             inst_df.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
-            inst_df.subset_split(splits=['eval'])
+            valid_keys = list(val_ref.meta_df[
+                (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            ][MetaKey.unique]) + list(eval_ref.meta_df[
+                (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            ][MetaKey.unique])
+            inst_df.subset_by_key(valid_keys, key=MetaKey.unique)
+            # inst_df.subset_split(splits=['eval'])
 
+            # val.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
             experiment_set = run.config['experiment_set']
             if variant.startswith('sup') or variant.startswith('unsup'):
                 experiment_set = experiment_set + '_' + variant.split('_')[0]
@@ -183,14 +230,11 @@ kin_df.drop(columns=['lr'])
 # print(kin_df)
 
 
-#%%
 df = pd.concat([kin_df, comp_df])
-#%%
 # Are we actually better or worse than Pitt baselines?
-
 # intersect unique data ids, to get the relevant test set. Also, only compare nontrivial KF slots
 kf_ids = df[df['variant'] == 'kf_base']['data_id'].unique()
-model_ids = df[df['variant'] == 'human']['data_id'].unique()
+model_ids = df[df['variant'] != 'kf_base']['data_id'].unique()
 nontrivial_ids = df[(df['variant'] == 'kf_base') & (df['kin_r2'] > 0)]['data_id'].unique()
 intersect_ids = np.intersect1d(kf_ids, model_ids)
 intersect_ids = np.intersect1d(intersect_ids, nontrivial_ids)
@@ -202,15 +246,21 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 #%%
 # make pretty seaborn default
 subject = 'CRS02bLab'
+# subject = 'CRS07Lab'
 subject_df = sub_df[sub_df['subject'] == subject]
-
 sns.set_theme(style="whitegrid")
 # boxplot
-ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2')
+order = sorted(subject_df.variant.unique())
+ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2', order=order)
 ax.set_ylim(0, 1)
 ax.set_ylabel('Vel R2')
 ax.set_xlabel('Model variant')
-ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]})')
+ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]}) ({"thresh" if USE_THRESH else ""})')
+# Rotate xlabels
+ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+
+# 10 yticks
+ax.set_yticks(np.linspace(0, 1, 11))
 
 #%%
 print(kin_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))

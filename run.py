@@ -28,17 +28,22 @@ from pytorch_lightning.strategies import DDPStrategy
 from pytorch_lightning.utilities.rank_zero import rank_zero_only
 import wandb
 
-from config import RootConfig, Metric, hp_sweep_space, propagate_config
-from data import SpikingDataset, SpikingDataModule
-from model import BrainBertInterface, load_from_checkpoint
-from callbacks import ProbeToFineTuneEarlyStopping
-from utils import (
+from context_general_bci.config import RootConfig, Metric, hp_sweep_space, propagate_config
+from context_general_bci.dataset import SpikingDataset, SpikingDataModule
+from context_general_bci.model import BrainBertInterface, load_from_checkpoint
+from context_general_bci.callbacks import ProbeToFineTuneEarlyStopping
+from context_general_bci.utils import (
     generate_search,
     grid_search,
     get_best_ckpt_from_wandb_id,
     get_wandb_lineage,
     wandb_run_exists
 )
+
+# ! Remove this eventually -- needed while we're still using pre-packaging ckpts
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 r"""
     For this script
@@ -112,7 +117,7 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
     print('launching: ', ' '.join(unique_flags))
     subprocess.run(['sbatch', launch_script, *unique_flags])
 
-@hydra.main(version_base=None, config_path='config', config_name="config")
+@hydra.main(version_base=None, config_path='context_general_bci/config', config_name="config")
 def run_exp(cfg : RootConfig) -> None:
     # Check for sweeping. Note we process data above because I never intend to sweep over data config.
     if cfg.tag == "":
@@ -164,7 +169,6 @@ def run_exp(cfg : RootConfig) -> None:
     if cfg.inherit_exp and not inherit_succeeded:
         lineage_run = get_wandb_lineage(cfg)
         cfg.init_from_id = lineage_run.name
-
     if cfg.sweep_cfg: # and os.environ.get('SLURM_JOB_ID') is None: # do not allow recursive launch
         sweep_cfg = hp_sweep_space.sweep_space[cfg.sweep_cfg]
         def run_cfg(cfg_trial):

@@ -5,29 +5,32 @@ import h5py
 import torch
 
 import logging
-
-from contexts import context_registry
-from config import DatasetConfig, DataKey, MetaKey
-from data import SpikingDataset
-from tasks import ExperimentalTask
-
 from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
-from analyze_utils import prep_plt, wandb_query_latest, load_wandb_run
 
-sample_query = 'test' # just pull the latest run
-sample_query = 'pt_parity'
+from context_general_bci.contexts import context_registry
+from context_general_bci.config import RootConfig, DatasetConfig, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset
+from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.tasks import ExperimentalTask
+from context_general_bci.analyze_utils import prep_plt, load_wandb_run
+from context_general_bci.utils import wandb_query_latest
 
-wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
-print(wandb_run)
-_, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
-cfg.dataset.datasets = ['observation_.*']
+# sample_query = 'test' # just pull the latest run
+# sample_query = 'human-sweep-simpler_lr_sweep'
+# sample_query =
+
+# wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
+# print(wandb_run)
+# _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
+cfg = FlatDataConfig()
+cfg.datasets = ['observation_.*']
 # cfg.dataset.datasets = ['observation_CRS07Lab_session_82_set_1']
 # default_cfg: DatasetConfig = OmegaConf.create(DatasetConfig())
 # default_cfg.data_keys = [DataKey.spikes]
-cfg.dataset.data_keys = [DataKey.spikes, DataKey.bhvr_vel]
-dataset = SpikingDataset(cfg.dataset)
+cfg.data_keys = [DataKey.spikes, DataKey.bhvr_vel]
+dataset = SpikingDataset(cfg)
 dataset.build_context_index()
 dataset.subset_split()
 

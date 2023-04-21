@@ -1,0 +1,7 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  transformer:
+    n_layers: 8
+  session_embed_token_count: 8

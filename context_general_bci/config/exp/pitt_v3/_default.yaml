@@ -1,0 +1,29 @@
+# @package _global_
+defaults:
+  - /model:
+    - flat_enc_dec
+  - /dataset: flat
+model:
+  session_embed_token_count: 1 # Keep it low for maybe easier FT?
+  subject_embed_strategy: EmbedStrat.token
+  task_embed_strategy: EmbedStrat.token
+  neurons_per_token: 32
+  causal: True
+  task:
+    mask_ratio: 0.5
+dataset:
+  datasets:
+  - observation_.*
+  - ortho_.*
+  - fbc_.*
+  - unstructured_.*
+  - pitt_co.*
+  exclude_datasets:
+  - observation_CRS02b_19.* #
+  - observation_CRS07_15.*
+  - observation_CRS07_16.*
+  # There are at least 4 test sessions for CRS07 and 8 for CRS02bLab
+train:
+  patience: 250
+  autoscale_batch_size: false
+  batch_size: 512

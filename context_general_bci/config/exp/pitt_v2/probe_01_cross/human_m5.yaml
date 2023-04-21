@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 16
+model:
+  task:
+    mask_ratio: 0.5

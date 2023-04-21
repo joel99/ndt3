@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  transformer:
+    n_layers: 12
+notes: "train set 126764."

@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks: [ModelTask.kinematic_decoding]
+    metrics: [Metric.kinematic_r2]
+    decode_strategy: EmbedStrat.token
+    decode_separate: true
+    # freeze_backbone: True
+notes: 'decode only'

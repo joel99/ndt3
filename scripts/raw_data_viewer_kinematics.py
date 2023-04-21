@@ -12,12 +12,10 @@ from scipy.interpolate import interp1d
 from scipy.ndimage import gaussian_filter1d
 import scipy.signal as signal
 
-from config import DataKey, DatasetConfig
-from subjects import SubjectInfo, SubjectArrayRegistry
-from tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from einops import rearrange, reduce
-
+from nlb_tools.make_tensors import PARAMS, _prep_mask, make_stacked_array
 from nlb_tools.nwb_interface import NWBDataset
+
 import numpy as np
 import pandas as pd
 from pathlib import Path
@@ -25,9 +23,11 @@ import matplotlib.pyplot as plt
 
 import logging
 
-from nlb_tools.make_tensors import PARAMS, _prep_mask, make_stacked_array
-from contexts import context_registry, ContextInfo
-from analyze_utils import prep_plt
+from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry
+from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.contexts import context_registry, ContextInfo
+from context_general_bci.analyze_utils import prep_plt
 
 ## Load dataset
 

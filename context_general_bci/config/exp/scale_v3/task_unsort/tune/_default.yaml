@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+  - /train: trial100_tune_exp2
+model:
+  causal: true
+  task:
+    mask_ratio: 0.5
+  neurons_per_token: 32
+
+dataset:
+  scale_limit_per_eval_session: 100
+  eval_ratio: 0.05
+  datasets:
+  - odoherty_rtt-Indy-20160407_02 # ~816 trials
+  - odoherty_rtt-Indy-20170131_02 #  814 trials
+  - odoherty_rtt-Indy-20160627_01 # 3364s
+  odoherty_rtt:
+    arrays: ['Indy-M1', 'Loco-M1']
+    include_sorted: False
+fragment_datasets: True
+inherit_exp: scale_v3/task_unsort
+successor_exp:
+- scale_v3/task_unsort/probe
+# ? Should I have this config outside?

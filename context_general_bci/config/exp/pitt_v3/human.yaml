@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_.* # pursuit.*
+  - ortho_.* # pursuit.*
+  - fbc_.* # pursuit.*
+  - unstructured_.*
+  - pitt_co.*
+  # Our "test set"
+
+train:
+  # autoscale_batch_size: false
+  batch_size: 128 # guesstimate for 80G nodes
+  accumulate_batches: 2

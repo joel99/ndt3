@@ -34,6 +34,7 @@ DATASET_WHITELIST = [
 EXPERIMENTS_NLL = [
     f'scale_v3/intra{"_unsort" if UNSORT else ""}',
     f'scale_v3/session{"_unsort" if UNSORT else ""}/tune_intra',
+    f'scale_v3/task{"_unsort" if UNSORT else ""}/tune_intra',
 ]
 
 queries = [
@@ -64,7 +65,8 @@ def extract_exp(exp_str: str):
         exp_str = exp_str[:-6]
     if exp_str.endswith('/tune'):
         exp_str = exp_str[:-5]
-    return exp_str.split('/')[-1]
+    return exp_str
+    # return exp_str.split('/')[-2:]
 
 def get_evals(model, dataloader, runs=8, mode='nll'):
     evals = []
@@ -123,7 +125,6 @@ def build_df(runs, mode='nll'):
 nll_df = build_df(runs_nll, mode='nll')
 df = nll_df
 #%%
-#%%
 # Show just NLL in logscale
 palette = sns.color_palette('colorblind', n_colors=len(df['dataset'].unique()))
 dataset_order = df.groupby(['dataset']).mean().sort_values('nll').index
@@ -166,11 +167,13 @@ ax.set_title(f'Intra-session scaling ({"unsorted" if UNSORT else "sorted"})')
 #%%
 
 relabel = {
-    'tune_intra': 'Pretrain Session',
-    'intra_unsort': 'Scratch',
+    'scale_v3/session_unsort/tune_intra': 'Pretrain Session',
+    'scale_v3/task_unsort/tune_intra': 'Pretrain Task',
+    'scale_v3/intra_unsort': 'Scratch',
 }
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
 hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+dataset_order = sorted(df['dataset'].unique())
 g = sns.relplot(
     x='limit',
     y='nll',
@@ -182,7 +185,15 @@ g = sns.relplot(
     kind='scatter',
     facet_kws={'sharex': False, 'sharey': False},
     col='dataset',
+    col_order=dataset_order,
 )
+
+# retitle subplots
+title_remap = {
+    'odoherty_rtt-Indy-20170131_02': 'Final',
+    'odoherty_rtt-Indy-20160407_02': 'Initial',
+    'odoherty_rtt-Indy-20160627_01': 'Middle',
+}
 
 def deco(data, **kws):
     ax = plt.gca()
@@ -194,6 +205,9 @@ def deco(data, **kws):
         sub_df = data[data['series'] == series]
         plot_dataset_power_law(sub_df, ax, color=palette[i])
 
+    alias = ax.get_title().split('=')[1].strip()
+    ax.set_title(title_remap.get(alias, alias), fontsize=20)
+
 # df['series_relabel'] = df['series'].map(relabel)
 # relabel legend
 g._legend.set_title('Pretraining')
@@ -201,5 +215,6 @@ for t, l in zip(g._legend.texts, hue_order):
     t.set_text(relabel[l])
 
 g.map_dataframe(deco)
-g.fig.suptitle(f'Convergence of Pretraining NLL ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
+g.fig.suptitle(f'Pretrain-Positive Regimes', y=1.05, fontsize=28)
+# g.fig.suptitle(f'Convergence of Pretraining  ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
 

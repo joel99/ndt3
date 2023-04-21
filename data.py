@@ -1,4 +1,12 @@
-from typing import List, Any, Optional, Dict
+r"""
+    ! LEGACY patch - old checkpoints will import this definition (see load_from_checkpoint patch)
+    Eventually deprecate this file once we're working with new dirs.
+"""
+
+
+
+
+from typing import List, Any, Optional, Dict, Union
 import copy
 import json
 import os
@@ -21,10 +29,10 @@ from einops import rearrange, repeat
 
 import pytorch_lightning as pl
 
-from config import DatasetConfig, MetaKey, DataKey
-from subjects import SubjectArrayRegistry
-from contexts import context_registry, ContextInfo
-from tasks import ExperimentalTask
+from context_general_bci.config import DatasetConfig, MetaKey, DataKey
+from context_general_bci.subjects import SubjectArrayRegistry
+from context_general_bci.contexts import context_registry, ContextInfo
+from context_general_bci.tasks import ExperimentalTask
 
 r"""
     Stores range of contexts provided by a dataset.
@@ -188,12 +196,12 @@ class SpikingDataset(Dataset):
         return current != cached_preproc_version
 
     @staticmethod
-    def list_alias_to_contexts(path_or_alias_list: List[Path | str]) -> List[ContextInfo]:
+    def list_alias_to_contexts(path_or_alias_list: List[Union[Path, str]]) -> List[ContextInfo]:
         # sorted wrapper for more safety
         return sorted([c for p in path_or_alias_list for c in SpikingDataset.aliases_to_contexts(p)])
 
     @staticmethod
-    def aliases_to_contexts(session_path_or_alias: Path | str) -> List[ContextInfo]:
+    def aliases_to_contexts(session_path_or_alias: Union[Path, str]) -> List[ContextInfo]:
         if isinstance(session_path_or_alias, str):
             # Try alias
             context_meta = context_registry.query(alias=session_path_or_alias)
@@ -495,6 +503,7 @@ class SpikingDataset(Dataset):
     def build_context_index(self):
         if self.context_index is not None:
             logging.info("Building context index; any previous DataAttrs may be invalidated.")
+        assert self.loaded, "Must load data before building context index"
         context = {}
         for k in self.cfg.meta_keys:
             if k == MetaKey.unique:
@@ -548,7 +557,7 @@ class SpikingDataset(Dataset):
         return self.meta_df[self.meta_df[key].isin(key_values)].index
 
     def subset_by_key(self,
-        key_values: List[Any], key: MetaKey | str=MetaKey.unique, allow_second_subset=True, na=None,
+        key_values: List[Any], key: Union[MetaKey, str]=MetaKey.unique, allow_second_subset=True, na=None,
         keep_index=False, message_prefix="",
     ):
         r"""
