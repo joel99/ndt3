@@ -11,9 +11,8 @@ dataset:
   - fbc_.* # pursuit.*
   - unstructured_.*
   - pitt_co.*
-  # Our "test set"
-
 train:
   autoscale_batch_size: false
-  batch_size: 64
+  batch_size: 256 # A100 80G
+  # Use 2 nodes
   accumulate_batches: 4

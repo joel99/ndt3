@@ -8,9 +8,9 @@ dataset:
   - fbc_.* # pursuit.*
   - unstructured_.*
   - pitt_co.*
-  # Our "test set"
-
 train:
-  # autoscale_batch_size: false
-  batch_size: 128 # guesstimate for 80G nodes
+  autoscale_batch_size: false
+  batch_size: 512 # roughly fit 80G nodes at 2.5s, 32 chunk.
+  # Data ~ 100K trials, go for 2K bsz. (4x needed)
+  # Use 2 nodes
   accumulate_batches: 2

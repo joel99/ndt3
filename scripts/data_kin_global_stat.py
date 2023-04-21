@@ -31,8 +31,8 @@ cfg.datasets = ['observation_.*']
 # default_cfg.data_keys = [DataKey.spikes]
 cfg.data_keys = [DataKey.spikes, DataKey.bhvr_vel]
 dataset = SpikingDataset(cfg)
-dataset.build_context_index()
-dataset.subset_split()
+dataset.build_context_index() # Train/val isn't going to bleed in 2 floats.
+# dataset.subset_split()
 
 # import torch
 # lengths = []
@@ -42,10 +42,13 @@ dataset.subset_split()
 print(len(dataset))
 #%%
 print(dataset.list_alias_to_contexts(['observation_CRS07Lab_session_82_set_1_type_obs']))
+
+#%%
 #%%
 from collections import defaultdict
 session_stats = defaultdict(list)
 for t in range(len(dataset)):
+    print(dataset.meta_df.iloc[t][MetaKey.unique])
     session_stats[dataset.meta_df.iloc[t][MetaKey.session]].append(dataset[t][DataKey.bhvr_vel])
 for session in session_stats:
     session_stats[session] = torch.cat(session_stats[session], 0)
@@ -85,10 +88,9 @@ torch.save({
     'mean': vels.mean(0),
     'std': vels.std(0),
 }, 'pitt_obs_zscore.pt')
-# print(vels.mean(0), vels.std(0))
+print(vels.mean(0), vels.std(0))
 # print(vels.min(0), vels.max(0))
 # print((vels / vels.std(0)).min(0), (vels / vels.std(0)).max(0))
-
 #%%
 # trial = 0
 trial = 10

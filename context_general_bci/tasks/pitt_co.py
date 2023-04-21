@@ -212,7 +212,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                             session_vel = chop_vector(session_vel)
                         for j, subtrial_spikes in enumerate(session_spikes):
                             save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: session_vel[j]} if session_vel is not None else {})
-
         else: # folder style, preproc-ed on mind
             for i, fname in enumerate(datapath.glob("*.mat")):
                 if fname.stem.startswith('QL.Task'):
