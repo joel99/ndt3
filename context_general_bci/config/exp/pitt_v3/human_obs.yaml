@@ -4,9 +4,7 @@ defaults:
 dataset:
   data_keys: [DataKey.spikes, DataKey.bhvr_vel]
   datasets:
-  - observation_.*pursuit*
-  # Our "test set"
-  exclude_datasets: []
+  - observation.*
 train:
   autoscale_batch_size: false
   batch_size: 128
