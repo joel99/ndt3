@@ -2,10 +2,9 @@
 defaults:
   - _default
 dataset:
-  data_keys: [DataKey.spikes, DataKey.bhvr_vel]
   datasets:
   - observation.*
 train:
   autoscale_batch_size: false
   batch_size: 128
-# There are about 20K obs trials in the latest poll.
+# There are about 20K obs trials in the latest poll; 14K in train set (6K eval)
