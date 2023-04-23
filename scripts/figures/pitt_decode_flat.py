@@ -22,8 +22,8 @@ from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wan
 pl.seed_everything(0)
 
 EVAL_DATASETS = [
-    # 'observation_CRS02b_19.*',
-    'observation_CRS07_15.*',
+    'observation_CRS02b_19.*',
+    # 'observation_CRS07_15.*',
     # 'observation_CRS07_16.*',
 ]
 # expand by querying alias
@@ -50,6 +50,7 @@ runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
 print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.')
 
 TARGET_ALIAS = 'observation_CRS07_150_1_2d_cursor_center_out'
+TARGET_ALIAS = 'observation_CRS02b_1925_11_2d_cursor_center_out'
 #%%
 USE_THRESH = False
 # USE_THRESH = True
@@ -164,7 +165,6 @@ def build_df(runs, mode='nll'):
             seen_set[(variant, alias, run.config['model']['lr_init']), experiment_set] = True
     return pd.DataFrame(df)
 kin_df = build_df(runs_kin, mode='kin_r2')
-kin_df.drop(columns=['lr'])
 
 #%%
 predictions_session = kin_df['pred'][0] # T x 2
@@ -176,7 +176,6 @@ trial_lengths = kin_df['pad'][0]
 trial_labels = kin_df['trial_split'][0]
 palette_split = {'train': 'tab:blue', 'val': 'tab:orange', 'eval': 'tab:green'}
 
-#%%
 
 # Plot these over time
 # Label ax as x and y decode

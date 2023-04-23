@@ -86,10 +86,11 @@ runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
     "state": {"$in": ['finished', 'failed', 'crashed']},
 })
 print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.')
+USE_THRESH = False
+USE_THRESH = True
+eval_data = f'pitt_kin_df_{"thresh" if USE_THRESH else "unthresh"}.pt'
 
 #%%
-USE_THRESH = False
-# USE_THRESH = True
 def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
     evals = []
     for i in range(runs):
@@ -239,12 +240,11 @@ def abbreviate(data_id):
     return '_'.join(pieces)
 df.loc[df['variant'] == 'kf_base', 'data_id'] = df[df['variant'] == 'kf_base']['data_id'].apply(abbreviate)
 df.loc[df['variant'] == 'kf_base', 'subject'] = df[df['variant'] == 'kf_base']['subject'].apply(abbreviate)
-torch.save(df, 'pitt_kin_df.pt') # for some reason notebook isn't loading, so force it with a shell call and load from here...
+torch.save(df, eval_data) # for some reason notebook isn't loading, so force it with a shell call and load from here...
 #%%
-print(df)
-df = torch.load('pitt_kin_df.pt')
+df = torch.load(eval_data)
+# print(df)
 # map kf ids to the correct abbreviated variant
-#%%
 # Are we actually better or worse than Pitt baselines?
 # intersect unique data ids, to get the relevant test set. Also, only compare nontrivial KF slots
 kf_ids = df[df['variant'] == 'kf_base']['data_id'].unique()
@@ -259,8 +259,8 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
 #%%
 # make pretty seaborn default
-# subject = 'CRS02'
-subject = 'CRS07'
+subject = 'CRS02b'
+# subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
 sns.set_theme(style="whitegrid")
 # boxplot
@@ -280,7 +280,8 @@ ax.set_yticks(np.linspace(0, 1, 11))
 print(kin_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
 #%%
-g = sns.catplot(data=sub_df, col='data_id', x='variant', y='kin_r2', kind='bar', col_wrap=4)
+one_one_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_m5'])]
+g = sns.catplot(data=one_one_df, col='data_id', x='variant', y='kin_r2', kind='bar', col_wrap=4)
 
 def deco(data, **kwargs):
     # set min y to 0
@@ -294,6 +295,30 @@ g.map_dataframe(deco)
 # To facet grid
 # g = sns.FacetGrid(data=sub_df, col='data_id', hue='variant', col_wrap=4)
 # g.map_dataframe(sns.barplot, x='variant', y='kin_r2')
+#%%
+# Reshape the dataframe using pivot_table
+scatter_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_m5'])].pivot_table(index='data_id', columns='variant', values='kin_r2').reset_index()
+# Create scatter plot
+sns.scatterplot(data=scatter_df, x='kf_base', y='human_m5', hue='data_id', legend=False)
+
+# Add labels and diagonal reference line
+plt.xlabel('KF Base Kin R2')
+plt.ylabel('Human M5 Kin R2')
+plt.title('Performance Comparison of KF Base and Human M5')
+plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+# Seems like there might be some data where model has no training data at all, unluckily. But that contributes maybe 0.01 drop at most.
 
 #%%
-print(kin_df)
+from scipy import stats
+
+# Perform paired t-test
+t, p = stats.ttest_rel(scatter_df['human_m5'], scatter_df['kf_base'])
+
+# Print test results
+if p < 0.05:
+    print("Human M5 performance is significantly greater than KF Base performance (p = {:.3f})".format(p))
+else:
+    print("There is no significant difference between Human M5 and KF Base performance (p = {:.3f})".format(p))
+#%%
+print(df[df['data_id'] == 'CRS07_157_5'])
+# %%
