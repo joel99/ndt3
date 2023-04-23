@@ -32,7 +32,8 @@ mode = 'test'
 # query = 'human_sum_contrast-3inx20gs'
 # query = 'human_sum_contrast-l2zg9sju'
 # query = 'human_sum_contrast-lheohfzn'
-query = 'sup_3200-frag-odoherty_rtt-Indy-20160627_01-sweep-simpler_lr_sweep-iy1xf1bc'
+# query = 'sup_3200-frag-odoherty_rtt-Indy-20160627_01-sweep-simpler_lr_sweep-iy1xf1bc'
+query = 'human_obs_m5_lr1e5-2ixlx1c9'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -56,16 +57,18 @@ if pipeline_model:
 # target_dataset = 'observation_CRS02bLab_session_1922_set_6'
 # target_dataset = 'observation_CRS02bLab_session_1904_set_6'
 # target_dataset = 'observation_CRS02bLab_session_1925_set_3'
+target_dataset = 'observation_CRS07_150_1_2d_cursor_center_out'
 
 # cfg.dataset.datasets = ["observation_CRS02bLab_session_1908_set_1"]
 # cfg.dataset.eval_datasets = ["observation_CRS02bLab_session_1908_set_1"]
 
-target_dataset = 'odoherty_rtt-Indy-20160627_01'
+# target_dataset = 'odoherty_rtt-Indy-20160627_01'
 # cfg.dataset.datasets = ["odoherty_rtt-Indy-20160627_01"]
 # cfg.dataset.eval_datasets = ["odoherty_rtt-Indy-20160627_01"]
 
 cfg.dataset.datasets = [target_dataset]
 cfg.dataset.eval_datasets = [target_dataset]
+cfg.dataset.eval_datasets = []
 # cfg.dataset.eval_ratio = 0.5
 # cfg.model.task.decode_normalizer = 'pitt_obs_zscore.pt'
 
@@ -125,39 +128,21 @@ pred = [p[offset_bins:] for p in pred]
 true = heldin_outputs[Output.behavior]
 true = [t[offset_bins:] for t in true]
 
-
 flat_pred = np.concatenate(pred) if isinstance(pred, list) else pred.flatten()
 flat_true = np.concatenate(true) if isinstance(true, list) else true.flatten()
-flat_pred_x = flat_pred[:,0]
-flat_pred_y = flat_pred[:,1]
-flat_true_x = flat_true[:,0]
-flat_true_y = flat_true[:,1]
-
-pad_value = 5
-flat_pred_x = flat_pred_x[flat_true_x != pad_value]
-flat_pred_y = flat_pred_y[flat_true_y != pad_value]
-flat_true_x = flat_true_x[flat_true_x != pad_value]
-flat_true_y = flat_true_y[flat_true_y != pad_value]
+flat_pred = flat_pred[(flat_true != model.data_attrs.pad_token).any(-1)]
+flat_true = flat_true[(flat_true != model.data_attrs.pad_token).any(-1)]
 
 df = pd.DataFrame({
-    'pred': np.concatenate([flat_pred_x, flat_pred_y]),
-    'true': np.concatenate([flat_true_x, flat_true_y]),
-    'coord': len(flat_pred_x) * ['x'] + len(flat_true_y) * ['y'],
+    'pred': flat_pred.flatten(),
+    'true': flat_true.flatten(),
+    'coord': flat_pred.shape[0] * ['x'] + flat_pred.shape[0] * ['y'],
 })
-# ax = prep_plt()
-# sns.scatterplot(x='true', y='pred', hue='coord', data=df, ax=ax, s=3, alpha=0.4)
-
 # plot marginals
 g = sns.jointplot(x='true', y='pred', hue='coord', data=df, s=3, alpha=0.4)
 
 # set title
 g.fig.suptitle(f'{mode} {target_dataset} Velocity R2: {heldin_metrics["test_kinematic_r2"]:.2f}')
-
-# #%%
-# ax = prep_plt()
-# sns.histplot(heldin_outputs[Output.behavior].flatten(), ax=ax, bins=20)
-# ax.set_title('Distribution of velocity targets')
-# ax.set_yscale('log')
 #%%
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca())

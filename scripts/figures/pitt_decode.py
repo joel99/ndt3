@@ -1,7 +1,7 @@
 #%%
 import logging
 import sys
-logging.basicConfig(stream=sys.stdout, level=logging.WARNING) # needed to get `logger` to print
+# logging.basicConfig(stream=sys.stdout, level=logging.WARNING) # needed to get `logger` to print
 # logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
@@ -54,32 +54,30 @@ crs02b_df['subject'] = 'CRS02bLab'
 crs07_df = get_clean_comp('./scripts/figures/CRS07SetInventory.csv')
 crs07_df['subject'] = 'CRS07Lab'
 comp_df = pd.concat([crs02b_df, crs07_df])
-comp_df['data_id'] = comp_df['subject'] + '_' + comp_df['session'].astype(str) + '_' + comp_df['set'].astype(str)
-
+comp_df['data_id'] = comp_df['subject'].replace('Lab', '').replace('Home', '') \
+    + '_' + comp_df['session'].astype(str) + '_' + comp_df['set'].astype(str)
 
 
 EVAL_DATASETS = [
-    # 'observation_CRS02bLab_session_19.*',
-    'observation_CRS07Lab_session_15.*',
-    'observation_CRS07Lab_session_16.*',
+    'observation_CRS02b_19.*',
+    'observation_CRS07_15.*',
+    'observation_CRS07_16.*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
 EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
-    # f'pitt_v2/probe',
-    f'pitt_v2/probe_01_cross',
-    # f'pitt_v2/probe_01',
+    f'pitt_v3/probe_01_cross',
 ]
 
 queries = [
     # 'human_obs_limit',
-    'human_obs',
-    # 'human_obs_m5',
+    'human_obs_m5',
+    'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
     # 'human_obs_m75',
-    'human',
-    # 'human_m5',
+    'human_m5',
+    'human_m5_lr1e5',
     # 'human_unsup',
 ]
 
@@ -102,17 +100,19 @@ def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
             heldin_outputs = stack_batch(trainer.predict(model, dataloader))
             offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
             pred = heldin_outputs[Output.behavior_pred]
-            pred = [p[offset_bins:] for p in pred]
-            true = heldin_outputs[Output.behavior]
-            true = [t[offset_bins:] for t in true]
-            flat_pred = np.concatenate(pred) if isinstance(pred, list) else pred.flatten()
-            flat_true = np.concatenate(true) if isinstance(true, list) else true.flatten()
-            pad_value = 5
-            flat_pred = flat_pred[(flat_true != pad_value).any(-1)]
-            flat_true = flat_true[(flat_true != pad_value).any(-1)]
+            if isinstance(pred, list):
+                pred = np.concatenate([p[offset_bins:] for p in pred])
+                true = np.concatenate([t[offset_bins:] for t in heldin_outputs[Output.behavior]])
+            else:
+                pred = pred[:,offset_bins:].flatten(end_dim=-2)
+                true = heldin_outputs[Output.behavior][:,offset_bins:].flatten(end_dim=-2)
+            pred = pred[(true != model.data_attrs.pad_token).any(-1)]
+            true = true[(true != model.data_attrs.pad_token).any(-1)]
+            if USE_THRESH:
+                pred = pred[(true.abs() > model.cfg.task.behavior_metric_thresh).any(-1)]
+                true = true[(true.abs() > model.cfg.task.behavior_metric_thresh).any(-1)]
             # compute r2
-            r2 = r2_score(flat_true, flat_pred)
-            return r2
+            return r2_score(true, pred)
 
         heldin_metrics = stack_batch(trainer.test(model, dataloader, verbose=False))
         if mode == 'nll':
@@ -145,7 +145,7 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
 
     # the dataset name is of the for {type}_{subject}_session_{session}_set_{set}_....mat
     # parse out the variables
-    _, subject, _, session, _, set_num, *_ = dataset.cfg.eval_datasets[0].split('_')
+    _, subject, session, set_num, *_ = dataset.cfg.eval_datasets[0].split('_')
 
     payload = {
         'limit': set_limit,
@@ -229,8 +229,22 @@ kin_df.drop(columns=['lr'])
 # kin_df.drop(columns=['lr'])
 # print(kin_df)
 
-
 df = pd.concat([kin_df, comp_df])
+def abbreviate(data_id):
+    pieces = data_id.split('_')
+    if pieces[0].endswith('Lab'):
+        pieces[0] = pieces[0].replace('Lab', '')
+    elif data_id[0].endswith('Home'):
+        pieces[0] = pieces[0].replace('Home', '')
+    return '_'.join(pieces)
+df.loc[df['variant'] == 'kf_base', 'data_id'] = df[df['variant'] == 'kf_base']['data_id'].apply(abbreviate)
+df.loc[df['variant'] == 'kf_base', 'subject'] = df[df['variant'] == 'kf_base']['subject'].apply(abbreviate)
+torch.save(df, 'pitt_kin_df.pt') # for some reason notebook isn't loading, so force it with a shell call and load from here...
+#%%
+print(df)
+df = torch.load('pitt_kin_df.pt')
+# map kf ids to the correct abbreviated variant
+#%%
 # Are we actually better or worse than Pitt baselines?
 # intersect unique data ids, to get the relevant test set. Also, only compare nontrivial KF slots
 kf_ids = df[df['variant'] == 'kf_base']['data_id'].unique()
@@ -245,8 +259,8 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
 #%%
 # make pretty seaborn default
-subject = 'CRS02bLab'
-# subject = 'CRS07Lab'
+# subject = 'CRS02'
+subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
 sns.set_theme(style="whitegrid")
 # boxplot

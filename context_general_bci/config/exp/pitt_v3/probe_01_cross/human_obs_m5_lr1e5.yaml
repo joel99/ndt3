@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    mask_ratio: 0.5
+  lr_init: 1e-5
+inherit_tag: human_obs_m5
