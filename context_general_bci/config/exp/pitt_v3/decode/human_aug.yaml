@@ -19,4 +19,6 @@ model:
   task:
     mask_ratio: 0.5
     decode_normalizer: ""
-inherit_exp: ''
+inherit_tag: human_10l
+
+# RTT Pitt Init legacy

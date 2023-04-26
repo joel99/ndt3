@@ -296,8 +296,6 @@ class SpikingDataset(Dataset):
         return self.cfg.pad_value if self.cfg.serve_tokenized else 0
 
     def apply_augment(self, data: Dict[DataKey, torch.Tensor]):
-        breakpoint()
-        # TODO something about randaug
         sampled_ops = np.random.choice(self.cfg.augmentations, self.cfg.randaug_num) # RandAugment
         for op in sampled_ops:
             data = augmentations[op](data)
@@ -334,6 +332,9 @@ class SpikingDataset(Dataset):
         data_items = {}
 
         payload = torch.load(trial.path)
+        # May process redundant data if we are using a subset of arrays, but easier than mucking with logic below
+        if self.augment:
+            payload = self.apply_augment(payload)
 
         channel_counts = [] # 1 value per array in base + serve_tokenized. 1 value per token for `serve_tokenized_flat`
         # Note the main reason we track channel_counts for `serve_tokenized_flat` is because we already implemented the unsplit version for `serve_tokenized` but would now like something easier.
@@ -405,8 +406,7 @@ class SpikingDataset(Dataset):
                     data_items[k] = (payload[k] - per_zscore['mean']) / per_zscore['std']
                 else:
                     data_items[k] = payload[k]
-        if self.augment:
-            data_items = self.apply_augment(data_items)
+
         out = {
             **data_items,
             **meta_items,
