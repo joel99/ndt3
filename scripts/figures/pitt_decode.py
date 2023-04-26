@@ -135,7 +135,7 @@ def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
 
 def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nll', dataset=None):
     if dataset is None:
-        dataset = SpikingDataset(cfg.dataset)
+        dataset = SpikingDataset(cfg.dataset, use_augment=False)
         dataset.subset_split(splits=['eval'])
     dataset.build_context_index()
     data_attrs = dataset.get_data_attrs()
@@ -188,7 +188,7 @@ def build_df(runs, mode='nll'):
         # Don't split into loop, we might be loading train data...
         # In order to get the correct eval split, we need to use the same set of datasets as train (splits are not per dataset)
         # So construct this and split it repeatedly
-        ref_df = SpikingDataset(cfg.dataset)
+        ref_df = SpikingDataset(cfg.dataset, use_augment=False)
         tv_ref = deepcopy(ref_df)
         eval_ref = deepcopy(ref_df)
         eval_ref.subset_split(splits=['eval'])

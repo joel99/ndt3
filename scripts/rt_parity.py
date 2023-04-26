@@ -33,6 +33,7 @@ pl.seed_everything(0)
 run_id = 'human-sweep-simpler_lr_sweep-89111ysu'
 run_id = 'human_m5-s3n89xxv'
 run_id = 'human_rtt_pitt_init-idcfk3rr'
+run_id = 'human_aug-nxy3te61'
 dataset_name = 'observation_CRS02b_19.*'
 
 run = get_wandb_run(run_id)
