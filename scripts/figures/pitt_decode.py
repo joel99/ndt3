@@ -78,6 +78,9 @@ queries = [
     # 'human_obs_m75',
     'human_m5',
     'human_m5_lr1e5',
+    'human_rtt_task_init',
+    'human_rtt_pitt_init',
+    'human_rtt_scratch',
     # 'human_unsup',
 ]
 
@@ -260,7 +263,7 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 #%%
 # make pretty seaborn default
 subject = 'CRS02b'
-# subject = 'CRS07'
+subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
 sns.set_theme(style="whitegrid")
 # boxplot
@@ -280,7 +283,8 @@ ax.set_yticks(np.linspace(0, 1, 11))
 print(kin_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
 #%%
-one_one_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_m5'])]
+one_one_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_rtt_pitt_init'])]
+# one_one_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_m5'])]
 g = sns.catplot(data=one_one_df, col='data_id', x='variant', y='kin_r2', kind='bar', col_wrap=4)
 
 def deco(data, **kwargs):
@@ -297,15 +301,19 @@ g.map_dataframe(deco)
 # g.map_dataframe(sns.barplot, x='variant', y='kin_r2')
 #%%
 # Reshape the dataframe using pivot_table
-scatter_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_m5'])].pivot_table(index='data_id', columns='variant', values='kin_r2').reset_index()
+scatter_df = one_one_df.pivot_table(index='data_id', columns='variant', values='kin_r2').reset_index()
 # Create scatter plot
-sns.scatterplot(data=scatter_df, x='kf_base', y='human_m5', hue='data_id', legend=False)
+scatter_variants = scatter_df.columns[1:]
+if scatter_variants[0] != 'kf_base':
+    scatter_variants = scatter_variants[::-1]
+sns.scatterplot(data=scatter_df, x=scatter_variants[0], y=scatter_variants[1], hue='data_id', legend=False)
+# sns.scatterplot(data=scatter_df, x='kf_base', y='human_m5', hue='data_id', legend=False)
+plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
 
 # Add labels and diagonal reference line
-plt.xlabel('KF Base Kin R2')
-plt.ylabel('Human M5 Kin R2')
+plt.xlabel(f'{scatter_variants[0]} Kin R2')
+plt.ylabel(f'{scatter_variants[1]} Kin R2')
 plt.title('Performance Comparison of KF Base and Human M5')
-plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
 # Seems like there might be some data where model has no training data at all, unluckily. But that contributes maybe 0.01 drop at most.
 
 #%%

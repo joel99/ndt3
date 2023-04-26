@@ -25,6 +25,7 @@ from context_general_bci.config import DatasetConfig, MetaKey, DataKey
 from context_general_bci.subjects import SubjectArrayRegistry
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.tasks import ExperimentalTask
+from context_general_bci.augmentations import augmentations
 
 r"""
     Stores range of contexts provided by a dataset.
@@ -104,7 +105,7 @@ class SpikingDataset(Dataset):
         Other notes:
         - Can we "mixin" time-varying data, or maybe simpler to just be a separate codepath in this class.
     """
-    def __init__(self, cfg: DatasetConfig):
+    def __init__(self, cfg: DatasetConfig, use_augment: bool = True):
         super().__init__()
         if not isinstance(cfg, OmegaConf):
             cfg: DatasetConfig = OmegaConf.create(cfg)
@@ -138,6 +139,8 @@ class SpikingDataset(Dataset):
         self.max_bins = round(self.cfg.max_length_ms / self.cfg.bin_size_ms)
         self.mark_eval_split_if_exists()
         self.cache = {}
+        self.z_score = torch.load(self.cfg.z_score) if self.cfg.z_score else None
+        self.augment = use_augment
 
     @property
     def loaded(self):
@@ -292,6 +295,14 @@ class SpikingDataset(Dataset):
     def pad_value(self):
         return self.cfg.pad_value if self.cfg.serve_tokenized else 0
 
+    def apply_augment(self, data: Dict[DataKey, torch.Tensor]):
+        breakpoint()
+        # TODO something about randaug
+        sampled_ops = np.random.choice(self.cfg.augmentations, self.cfg.randaug_num) # RandAugment
+        for op in sampled_ops:
+            data = augmentations[op](data)
+        return data
+
     def __getitem__(self, index):
         r"""
             dict of arrays
@@ -387,8 +398,15 @@ class SpikingDataset(Dataset):
             else:
                 if k == DataKey.heldout_spikes and getattr(self.cfg, 'heldout_key_spoof_shape', []):
                     data_items[k] = torch.full(list(self.cfg.heldout_key_spoof_shape), fill_value=self.pad_value)
+                elif k == DataKey.bhvr_vel and (
+                    self.z_score and trial[MetaKey.session] in self.z_score
+                ):
+                    per_zscore = self.z_score[trial[MetaKey.session]]
+                    data_items[k] = (payload[k] - per_zscore['mean']) / per_zscore['std']
                 else:
                     data_items[k] = payload[k]
+        if self.augment:
+            data_items = self.apply_augment(data_items)
         out = {
             **data_items,
             **meta_items,

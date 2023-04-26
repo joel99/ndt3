@@ -23,7 +23,7 @@ from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wan
 
 
 parity_mode = 'old'
-# parity_mode = 'new'
+parity_mode = 'new'
 if parity_mode == 'old':
     from context_general_bci.model import transfer_model
 else:
@@ -32,6 +32,7 @@ pl.seed_everything(0)
 
 run_id = 'human-sweep-simpler_lr_sweep-89111ysu'
 run_id = 'human_m5-s3n89xxv'
+run_id = 'human_rtt_pitt_init-idcfk3rr'
 dataset_name = 'observation_CRS02b_19.*'
 
 run = get_wandb_run(run_id)
@@ -151,11 +152,12 @@ print(f"Avg: {np.mean(loop_times)*1000:.4f}ms, Std: {np.std(loop_times) * 1000:.
 #%%
 # plot outputs
 trial = 0
-trial = 1
-trial = 2
-trial = 20
+# trial = 1
+# trial = 2
+# trial = 20
 trial = 10
-trial = 1
+# trial = 10
+# trial = 1
 ax = prep_plt()
 if parity_mode == 'new':
     trial_vel = test_outs[trial].numpy()
@@ -168,6 +170,47 @@ for i in range(trial_vel.shape[1]):
     ax.plot(trial_vel[:,i][2:])
     # ax.plot(trial_vel[:,i].cumsum())
 ax.set_title(f'Velocity random inject {parity_mode}') #  {trial_vel.shape}')
+
+#%%
+# Make a grid that plots 9 trials
+import matplotlib.pyplot as plt
+import numpy as np
+
+def plot_trial_velocities(trial_vel, parity_mode):
+    fig, ax = plt.subplots()
+
+    for i in range(trial_vel.shape[1]):
+        ax.plot(trial_vel[:, i][2:])
+        # ax.plot(trial_vel[:, i][2:])
+
+    ax.set_title(f'Velocity random inject {parity_mode}')
+    plt.show()
+
+def create_grid_plot(test_outs, trials):
+    fig, axes = plt.subplots(3, 3, figsize=(15, 15))
+    fig.tight_layout(pad=4)
+
+    for i, ax in enumerate(axes.flat):
+        trial = trials[i]
+
+        if parity_mode == 'new':
+            trial_vel = test_outs[trial].numpy()
+        if parity_mode == 'old':
+            trial_vel = test_outs[trial][0].numpy()
+
+        for j in range(trial_vel.shape[1]):
+            ax.plot(trial_vel[:, j][2:].cumsum())
+
+        ax.set_title(f'Velocity random inject {parity_mode} (Trial {trial})')
+
+    plt.show()
+
+# Replace this part with your actual data
+trials = [0, 1, 2, 3, 4, 5, 6, 7, 8]
+trials = np.linspace(0, 49, 9, dtype=int)
+
+create_grid_plot(test_outs, trials)
+
 
 #%%
 torch.save(trial_vel, f'trial_vel_{parity_mode}.pt')

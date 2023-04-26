@@ -44,6 +44,7 @@ from context_general_bci.utils import (
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+sys.path.append(f'{os.path.dirname(os.path.abspath(__file__))}/context_general_bci')
 
 r"""
     For this script

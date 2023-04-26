@@ -112,7 +112,7 @@ class SpikingDataset(Dataset):
         Other notes:
         - Can we "mixin" time-varying data, or maybe simpler to just be a separate codepath in this class.
     """
-    def __init__(self, cfg: DatasetConfig):
+    def __init__(self, cfg: DatasetConfig, use_augment: bool = True):
         super().__init__()
         if not isinstance(cfg, OmegaConf):
             cfg: DatasetConfig = OmegaConf.create(cfg)
@@ -146,6 +146,7 @@ class SpikingDataset(Dataset):
         self.max_bins = round(self.cfg.max_length_ms / self.cfg.bin_size_ms)
         self.mark_eval_split_if_exists()
         self.cache = {}
+        self.augment = use_augment and bool(self.cfg.augmentations)
 
     @property
     def loaded(self):

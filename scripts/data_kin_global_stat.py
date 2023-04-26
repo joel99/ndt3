@@ -26,6 +26,11 @@ from context_general_bci.utils import wandb_query_latest
 # _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 cfg = FlatDataConfig()
 cfg.datasets = ['observation_.*']
+
+cfg.odoherty_rtt.include_sorted = False
+cfg.odoherty_rtt.arrays = ['Indy-M1', 'Loco-M1']
+# cfg.datasets = ['odoherty_rtt.*']
+
 # cfg.dataset.datasets = ['observation_CRS07Lab_session_82_set_1']
 # default_cfg: DatasetConfig = OmegaConf.create(DatasetConfig())
 # default_cfg.data_keys = [DataKey.spikes]
@@ -41,10 +46,6 @@ dataset.build_context_index() # Train/val isn't going to bleed in 2 floats.
 # print(torch.tensor(lengths).max(), torch.tensor(lengths).min())
 print(len(dataset))
 #%%
-print(dataset.list_alias_to_contexts(['observation_CRS07Lab_session_82_set_1_type_obs']))
-
-#%%
-#%%
 from collections import defaultdict
 session_stats = defaultdict(list)
 for t in range(len(dataset)):
@@ -58,12 +59,13 @@ sessions = list(session_stats.keys())
 def summarize(s):
     return s.min().item(), s.max().item(), s.mean().item(), s.std().item(), len(s)
 mins, maxes, means, stds, lengths = zip(*[summarize(session_stats[s]) for s in sessions])
-# sns.histplot(mins)
+sns.histplot(mins)
 # sns.histplot(maxes)
 # sns.histplot(stds)
-sns.histplot(means)
+# sns.histplot(means)
 # sns.histplot(lengths)
 
+#%%
 # Create blacklist based on statistic cutoffs
 blacklist = []
 for s in sessions:
@@ -83,6 +85,22 @@ for t in range(len(dataset)):
     vels.append(dataset[t][DataKey.bhvr_vel])
 vels = torch.cat(vels, 0)
 print(vels.shape)
+#%%
+# MetaKey.session
+from pathlib import Path
+kin_pt = 'kin_zscore.pt'
+if Path(kin_pt).exists():
+    kin_payload = torch.load(kin_pt)
+else:
+    kin_payload = {}
+
+zscore = {
+    'mean': vels.mean(0),
+    'std': vels.std(0),
+}
+for alias in sessions:
+    kin_payload[alias] = zscore
+torch.save(kin_payload, kin_pt)
 #%%
 torch.save({
     'mean': vels.mean(0),
