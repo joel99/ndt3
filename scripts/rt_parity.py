@@ -36,8 +36,8 @@ run_id = 'human_rtt_pitt_init-idcfk3rr'
 run_id = 'human_aug-nxy3te61'
 run_id = 'human_aug-xi7wzqoo'
 
-# dataset_name = 'observation_CRS02b_19.*'
-dataset_name = 'odoherty_rtt-Indy-20160627_01'
+dataset_name = 'observation_CRS02b_19.*'
+# dataset_name = 'odoherty_rtt-Indy-20160627_01'
 
 run = get_wandb_run(run_id)
 src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
@@ -102,11 +102,11 @@ with torch.no_grad():
     for batch in dataloader:
     # for trial in dataset:
         # import pdb;pdb.set_trace()
-        # if parity_mode == 'new':
-            # spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
+        if parity_mode == 'new':
+            spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
             # equivalent to loading a single trial for Pitt data.
         # spikes = trial[DataKey.spikes].flatten(1,2).unsqueeze(0) # simulate normal trial
-        spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
+        # spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
         test_ins.append(spikes)
         start = time.time()
         if do_onnx:
@@ -120,7 +120,7 @@ with torch.no_grad():
                         batch[k] = batch[k].to('cuda:0')
 
             if parity_mode == 'new':
-                print('testing rand in')
+                # print('testing rand in')
                 out = model(spikes)
 
             if parity_mode == 'old':
@@ -160,10 +160,10 @@ print(f"Avg: {np.mean(loop_times)*1000:.4f}ms, Std: {np.std(loop_times) * 1000:.
 # plot outputs
 # trial = 0
 # trial = 1
-# trial = 2
-trial = 20
-trial = 10
-trial = 1
+trial = 2
+# trial = 20
+# trial = 10
+# trial = 1
 ax = prep_plt()
 if parity_mode == 'new':
     trial_vel = test_outs[trial].numpy()
@@ -175,6 +175,7 @@ print(trial_vel.shape)
 for i in range(trial_vel.shape[1]):
     ax.plot(trial_vel[:,i][2:])
     # ax.plot(trial_vel[:,i].cumsum())
+ax.set_ylim(-1, 1)
 ax.set_title(f'Velocity random inject {parity_mode}') #  {trial_vel.shape}')
 
 #%%
@@ -208,6 +209,7 @@ def create_grid_plot(test_outs, trials):
             ax.plot(trial_vel[:, j][2:].cumsum())
 
         ax.set_title(f'Velocity random inject {parity_mode} (Trial {trial})')
+        ax.set_ylim(-10, 10)
 
     plt.show()
 
