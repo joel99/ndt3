@@ -73,15 +73,16 @@ EXPERIMENTS_KIN = [
 
 queries = [
     # 'human_obs_limit',
-    'human_obs_m5',
+    # 'human_obs_m5',
     'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
     # 'human_obs_m75',
     'human_m5',
-    'human_m5_lr1e5',
-    'human_rtt_task_init',
+    # 'human_m5_lr1e5',
+    # 'human_rtt_task_init',
     'human_rtt_pitt_init',
-    'human_rtt_scratch',
+    # 'human_rtt_scratch',
     # 'human_unsup',
+    'human_aug',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')

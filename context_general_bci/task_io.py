@@ -1248,12 +1248,12 @@ class BehaviorRegression(TaskPipeline):
 
                 # ! TODO support session blacklist
         else:
-            if getattr(self.cfg, 'behavior_tolerance', 0) > 0:
+            if self.cfg.behavior_tolerance > 0:
                 # Calculate mse with a tolerance floor
-                loss = bhvr - bhvr_tgt
-                loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
-                if getattr(self.cfg, 'behavior_tolerance_ceil', 0) > 0:
-                    loss = torch.where((loss.abs() > self.cfg.behavior_tolerance_ceil).any(1, keepdim=True), torch.zeros_like(loss), loss)
+                loss = torch.clamp((bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
+                # loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
+                if self.cfg.behavior_tolerance_ceil > 0:
+                    loss = torch.clamp(loss, -self.cfg.behavior_tolerance_ceil, self.cfg.behavior_tolerance_ceil)
                 loss = loss.pow(2)
             else:
                 loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')

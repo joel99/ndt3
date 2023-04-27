@@ -34,7 +34,10 @@ run_id = 'human-sweep-simpler_lr_sweep-89111ysu'
 run_id = 'human_m5-s3n89xxv'
 run_id = 'human_rtt_pitt_init-idcfk3rr'
 run_id = 'human_aug-nxy3te61'
-dataset_name = 'observation_CRS02b_19.*'
+run_id = 'human_aug-xi7wzqoo'
+
+# dataset_name = 'observation_CRS02b_19.*'
+dataset_name = 'odoherty_rtt-Indy-20160627_01'
 
 run = get_wandb_run(run_id)
 src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
@@ -92,13 +95,15 @@ pl.seed_everything(0)
 test_ins = []
 test_outs = []
 backbone_payloads = []
+
+# ? Stereotypy may be built into the task -- if we tell the model we're using RTT, maybe it won't be stereotyped, but it is during Pitt?
 with torch.no_grad():
     # for i in range(50):
     for batch in dataloader:
     # for trial in dataset:
         # import pdb;pdb.set_trace()
-        if parity_mode == 'new':
-            spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
+        # if parity_mode == 'new':
+            # spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
             # equivalent to loading a single trial for Pitt data.
         # spikes = trial[DataKey.spikes].flatten(1,2).unsqueeze(0) # simulate normal trial
         spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
@@ -115,6 +120,7 @@ with torch.no_grad():
                         batch[k] = batch[k].to('cuda:0')
 
             if parity_mode == 'new':
+                print('testing rand in')
                 out = model(spikes)
 
             if parity_mode == 'old':
@@ -152,13 +158,12 @@ print(f"Avg: {np.mean(loop_times)*1000:.4f}ms, Std: {np.std(loop_times) * 1000:.
 
 #%%
 # plot outputs
-trial = 0
+# trial = 0
 # trial = 1
 # trial = 2
-# trial = 20
+trial = 20
 trial = 10
-# trial = 10
-# trial = 1
+trial = 1
 ax = prep_plt()
 if parity_mode == 'new':
     trial_vel = test_outs[trial].numpy()

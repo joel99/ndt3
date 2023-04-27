@@ -34,6 +34,7 @@ mode = 'test'
 # query = 'human_sum_contrast-lheohfzn'
 # query = 'sup_3200-frag-odoherty_rtt-Indy-20160627_01-sweep-simpler_lr_sweep-iy1xf1bc'
 query = 'human_obs_m5_lr1e5-2ixlx1c9'
+query = 'human_aug-nxy3te61'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -57,12 +58,12 @@ if pipeline_model:
 # target_dataset = 'observation_CRS02bLab_session_1922_set_6'
 # target_dataset = 'observation_CRS02bLab_session_1904_set_6'
 # target_dataset = 'observation_CRS02bLab_session_1925_set_3'
-target_dataset = 'observation_CRS07_150_1_2d_cursor_center_out'
+# target_dataset = 'observation_CRS07_150_1_2d_cursor_center_out'
 
 # cfg.dataset.datasets = ["observation_CRS02bLab_session_1908_set_1"]
 # cfg.dataset.eval_datasets = ["observation_CRS02bLab_session_1908_set_1"]
 
-# target_dataset = 'odoherty_rtt-Indy-20160627_01'
+target_dataset = 'odoherty_rtt-Indy-20160627_01'
 # cfg.dataset.datasets = ["odoherty_rtt-Indy-20160627_01"]
 # cfg.dataset.eval_datasets = ["odoherty_rtt-Indy-20160627_01"]
 
