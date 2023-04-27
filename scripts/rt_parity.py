@@ -106,7 +106,7 @@ with torch.no_grad():
             spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
             # equivalent to loading a single trial for Pitt data.
         # spikes = trial[DataKey.spikes].flatten(1,2).unsqueeze(0) # simulate normal trial
-        # spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
+        spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
         test_ins.append(spikes)
         start = time.time()
         if do_onnx:
@@ -206,10 +206,10 @@ def create_grid_plot(test_outs, trials):
             trial_vel = test_outs[trial][0].numpy()
 
         for j in range(trial_vel.shape[1]):
-            ax.plot(trial_vel[:, j][2:].cumsum())
+            ax.plot(trial_vel[:, j][2:])
 
         ax.set_title(f'Velocity random inject {parity_mode} (Trial {trial})')
-        ax.set_ylim(-10, 10)
+        ax.set_ylim(-3, 3)
 
     plt.show()
 

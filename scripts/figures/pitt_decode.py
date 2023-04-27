@@ -82,7 +82,7 @@ queries = [
     'human_rtt_pitt_init',
     # 'human_rtt_scratch',
     # 'human_unsup',
-    'human_aug',
+    # 'human_aug',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -138,6 +138,7 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
     if dataset is None:
         dataset = SpikingDataset(cfg.dataset, use_augment=False)
         dataset.subset_split(splits=['eval'])
+    print(dataset.cfg.datasets)
     dataset.build_context_index()
     data_attrs = dataset.get_data_attrs()
     set_limit = run.config['dataset']['scale_limit_per_eval_session']
@@ -146,7 +147,7 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
         cfg.model.task.metrics = [Metric.kinematic_r2, Metric.kinematic_r2_thresh]
         cfg.model.task.behavior_fit_thresh = 0.1
     model = transfer_model(src_model, cfg.model, data_attrs)
-    dataloader = get_dataloader(dataset)
+    dataloader = get_dataloader(dataset, num_workers=0)
 
     # the dataset name is of the for {type}_{subject}_session_{session}_set_{set}_....mat
     # parse out the variables
@@ -172,6 +173,7 @@ def build_df(runs, mode='nll'):
         variant, _frag, *rest = run.name.split('-')
         if variant not in queries:
             continue
+        print('evaling on', run.name)
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
         experiment_set = run.config['experiment_set']
         pl.seed_everything(seed=cfg.seed)
