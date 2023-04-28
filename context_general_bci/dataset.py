@@ -140,7 +140,7 @@ class SpikingDataset(Dataset):
         self.mark_eval_split_if_exists()
         self.cache = {}
         self.z_score = torch.load(self.cfg.z_score) if self.cfg.z_score else None
-        self.augment = use_augment
+        self.augment = use_augment and bool(self.cfg.augmentations)
 
     @property
     def loaded(self):

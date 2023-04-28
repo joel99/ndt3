@@ -78,9 +78,9 @@ queries = [
     # 'human_obs_m75',
     'human_m5',
     # 'human_m5_lr1e5',
-    # 'human_rtt_task_init',
+    'human_rtt_task_init',
     'human_rtt_pitt_init',
-    # 'human_rtt_scratch',
+    'human_rtt_scratch',
     # 'human_unsup',
     # 'human_aug',
 ]
@@ -94,6 +94,8 @@ USE_THRESH = False
 USE_THRESH = True
 eval_data = f'pitt_kin_df_{"thresh" if USE_THRESH else "unthresh"}.pt'
 
+USE_SECOND_HALF_ONLY = False
+USE_SECOND_HALF_ONLY = True # quick sanity check to see that results improve with time. Needed to explain why we're worse than KF baseline all the time
 #%%
 def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
     evals = []
@@ -104,13 +106,17 @@ def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
             model.cfg.task.outputs = [Output.behavior, Output.behavior_pred]
             heldin_outputs = stack_batch(trainer.predict(model, dataloader))
             offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
-            pred = heldin_outputs[Output.behavior_pred]
-            if isinstance(pred, list):
-                pred = np.concatenate([p[offset_bins:] for p in pred])
-                true = np.concatenate([t[offset_bins:] for t in heldin_outputs[Output.behavior]])
+            if isinstance(heldin_outputs[Output.behavior_pred], list):
+                if USE_SECOND_HALF_ONLY:
+                    pred = np.concatenate([p[p.shape[0] // 2:] for p in heldin_outputs[Output.behavior_pred]])
+                    true = np.concatenate([t[t.shape[0] // 2:] for t in heldin_outputs[Output.behavior]])
+                else:
+                    pred = np.concatenate([p[offset_bins:] for p in heldin_outputs[Output.behavior_pred]])
+                    true = np.concatenate([t[offset_bins:] for t in heldin_outputs[Output.behavior]])
             else:
-                pred = pred[:,offset_bins:].flatten(end_dim=-2)
-                true = heldin_outputs[Output.behavior][:,offset_bins:].flatten(end_dim=-2)
+                start = heldin_outputs[Output.behavior_pred].shape[1] // 2 if USE_SECOND_HALF_ONLY else offset_bins
+                pred = heldin_outputs[Output.behavior_pred][:, start:].flatten(end_dim=-2)
+                true = heldin_outputs[Output.behavior][:,start:].flatten(end_dim=-2)
             pred = pred[(true != model.data_attrs.pad_token).any(-1)]
             true = true[(true != model.data_attrs.pad_token).any(-1)]
             if USE_THRESH:
@@ -271,11 +277,13 @@ subject_df = sub_df[sub_df['subject'] == subject]
 sns.set_theme(style="whitegrid")
 # boxplot
 order = sorted(subject_df.variant.unique())
+palette = sns.color_palette("mako_r", len(order))
 ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2', order=order)
+sns.swarmplot(data=subject_df, x='variant', y='kin_r2', hue=, order=order, ax=ax)
 ax.set_ylim(0, 1)
 ax.set_ylabel('Vel R2')
 ax.set_xlabel('Model variant')
-ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]}) ({"thresh" if USE_THRESH else ""})')
+ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]}) ({"thresh" if USE_THRESH else ""}, {"second half" if USE_SECOND_HALF_ONLY else ""})')
 # Rotate xlabels
 ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
 
