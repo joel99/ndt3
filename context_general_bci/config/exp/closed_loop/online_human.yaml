@@ -20,6 +20,6 @@ train:
   patience: 50
 init_ckpt: '{shared_dir}/pretrained/pretrained_human.pt'
 
-tag: 'online_finetune'
+tag: 'online_finetune_human'
 experiment_set: 'online_bci'
 notes: "Closed loop decoder human-only"
