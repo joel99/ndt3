@@ -73,7 +73,7 @@ def load_trial(fn, use_ql=True, key='data'):
     # if `use_ql`, use the prebinned at 20ms and also pull out the kinematics
     # else take raw spikes
     # data = payload['data'] # 'data' is pre-binned at 20ms, we'd rather have more raw
-    payload = loadmat(fn, simplify_cells=True, variable_names=[key] if use_ql else ['iData'])
+    payload = loadmat(str(fn), simplify_cells=True, variable_names=[key] if use_ql else ['iData'])
     out = {
         'bin_size_ms': 20 if use_ql else 1,
         'use_ql': use_ql,
@@ -123,7 +123,6 @@ class PittCOLoader(ExperimentalTaskLoader):
         task: ExperimentalTask,
     ):
         assert cfg.bin_size_ms == 20, 'code not prepped for different resolutions'
-
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays

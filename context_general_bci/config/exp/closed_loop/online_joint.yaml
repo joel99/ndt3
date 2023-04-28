@@ -1,9 +1,7 @@
+# @package _global_
+
 defaults:
-  - /model: flat_enc_dec
-  - /model/task:
-    - bhvr_decode_flat
-  - /dataset: flat
-  - /train: single_session_exp1
+  - _default
 dataset:
   datasets:
   - dummy.datafiles
@@ -18,7 +16,7 @@ train:
   autoscale_batch_size: false
   batch_size: 4
   patience: 50
-init_ckpt: '{shared_dir}/pretrained/pretrained_human_monkey.pt'
+init_ckpt: '{shared_dir}/pretrained/pretrained_human_monkey.ckpt'
 
 tag: 'online_finetune_joint'
 experiment_set: 'online_bci'

@@ -105,7 +105,7 @@ class SpikingDataset(Dataset):
         Other notes:
         - Can we "mixin" time-varying data, or maybe simpler to just be a separate codepath in this class.
     """
-    def __init__(self, cfg: DatasetConfig, use_augment: bool = True):
+    def __init__(self, cfg: DatasetConfig, use_augment: bool = True, override_preprocess_path=False):
         super().__init__()
         if not isinstance(cfg, OmegaConf):
             cfg: DatasetConfig = OmegaConf.create(cfg)
@@ -128,7 +128,7 @@ class SpikingDataset(Dataset):
             eval_contexts = self.list_alias_to_contexts(self.cfg.eval_datasets)
             exclude_contexts = [c for c in exclude_contexts if c not in eval_contexts]
             contexts = [c for c in contexts if c not in exclude_contexts]
-            self.meta_df = pd.concat([self.load_single_session(c) for c in contexts]).reset_index(drop=True)
+            self.meta_df = pd.concat([self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]).reset_index(drop=True)
             # self.meta_df = pd.concat([self.load_single_session(c) for c in contexts]).reset_index(drop=True)
             if 'split' in self.meta_df.columns and len(self.meta_df['split'].unique()) > 1:
                 logger.warning("Non-train splits found in meta_df. Subsetting is expected.")
@@ -147,7 +147,9 @@ class SpikingDataset(Dataset):
         return self.meta_df is not None
 
     @staticmethod
-    def preprocess_path(cfg: DatasetConfig, session_path: Path) -> Path:
+    def preprocess_path(cfg: DatasetConfig, session_path: Path, override_preprocess_path: bool) -> Path:
+        if override_preprocess_path:
+            return session_path.parent / session_path.stem / cfg.preprocess_suffix
         return cfg.root_dir / cfg.preprocess_suffix / session_path.relative_to(cfg.root_dir)
 
     def validate_meta(self, meta_df: pd.DataFrame):
@@ -225,9 +227,9 @@ class SpikingDataset(Dataset):
         eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
         self.meta_df['split'] = self.meta_df['split'].mask(self.meta_df.index.isin(eval_subset.index), 'eval')
 
-    def load_single_session(self, context_meta: ContextInfo) -> pd.DataFrame:
+    def load_single_session(self, context_meta: ContextInfo, override_preprocess_path: bool=False) -> pd.DataFrame:
         session_path = context_meta.datapath
-        if not (hash_dir := self.preprocess_path(self.cfg, session_path)).exists() or \
+        if not (hash_dir := self.preprocess_path(self.cfg, session_path, override_preprocess_path)).exists() or \
             self.checksum_diff(hash_dir / 'preprocess_version.json', context_meta.task):
             # TODO consider filtering meta df to be more lightweight (we don't bother right now because some nonessential attrs can be useful for analysis)
             os.makedirs(hash_dir, exist_ok=True)
