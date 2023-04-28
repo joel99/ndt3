@@ -1,3 +1,5 @@
+# @package _global_
+
 defaults:
   - /model: flat_enc_dec
   - /model/task:
