@@ -1,5 +1,9 @@
 name: onnx
 channels:
+  - pytorch
+  - nvidia
+  - anaconda
+  - conda-forge
   - defaults
 dependencies:
   - python=3.9.7
@@ -15,4 +19,12 @@ dependencies:
   - wandb
   - pynwb
   - scikit-learn
+  - pip:
+    - mat73
+    - gdown
+    - onnxruntime==1.14.1
+    - ordered-enum==0.0.8
+    - dacite==1.8.0
+    - argparse
+    - hydra-core==1.3.2
 prefix: /home/joel/anaconda3/envs/onnx
