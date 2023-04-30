@@ -59,7 +59,7 @@ comp_df['data_id'] = comp_df['subject'].replace('Lab', '').replace('Home', '') \
 
 
 EVAL_DATASETS = [
-    'observation_CRS02b_19.*',
+    # 'observation_CRS02b_19.*',
     'observation_CRS07_15.*',
     'observation_CRS07_16.*',
 ]
@@ -81,6 +81,8 @@ queries = [
     'human_rtt_task_init',
     'human_rtt_pitt_init',
     'human_rtt_scratch',
+    'crs07_m5',
+    'crs07_m5_itertest',
     # 'human_unsup',
     # 'human_aug',
 ]
@@ -279,7 +281,7 @@ sns.set_theme(style="whitegrid")
 order = sorted(subject_df.variant.unique())
 palette = sns.color_palette("mako_r", len(order))
 ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2', order=order)
-sns.swarmplot(data=subject_df, x='variant', y='kin_r2', hue=, order=order, ax=ax)
+# sns.swarmplot(data=subject_df, x='variant', y='kin_r2', hue=, order=order, ax=ax)
 ax.set_ylim(0, 1)
 ax.set_ylabel('Vel R2')
 ax.set_xlabel('Model variant')

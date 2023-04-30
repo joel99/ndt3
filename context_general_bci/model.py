@@ -1,6 +1,7 @@
 from typing import Tuple, Dict, List, Optional, Any, Mapping, Union
 import dataclasses
 import time
+from copy import deepcopy
 import math
 import numpy as np
 import torch
@@ -140,6 +141,7 @@ class BrainBertInterface(pl.LightningModule):
             'lr_min',
             'accelerate_new_params',
             'tune_decay',
+            'val_iters',
         ]:
             setattr(self_copy, safe_attr, getattr(cfg, safe_attr))
         recursive_diff_log(self_copy, cfg)
@@ -888,7 +890,20 @@ class BrainBertInterface(pl.LightningModule):
         return metrics['loss']
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        metrics = self._step(batch)
+        all_metrics = []
+        if getattr(self.cfg, 'val_iters', 1) > 1:
+            clean = deepcopy(batch) # not intended to be efficient, quick and dirty
+        for i in range(getattr(self.cfg, 'val_iters', 1)):
+            if i > 0:
+                batch = deepcopy(clean)
+            all_metrics.append(self._step(batch))
+        metrics = {}
+        for k in all_metrics[0]:
+            if isinstance(all_metrics[0][k], torch.Tensor):
+                metrics[k] = torch.stack([m[k] for m in all_metrics]).mean(0)
+            else:
+                metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
+
         # if Metric.kinematic_r2 in metrics:
             # print('Val debug: ', metrics[Metric.kinematic_r2])
         self.common_log(metrics, prefix='val' if dataloader_idx == 0 else 'eval', sync_dist=True, add_dataloader_idx=False)

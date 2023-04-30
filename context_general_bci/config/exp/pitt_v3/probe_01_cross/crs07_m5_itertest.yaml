@@ -11,3 +11,7 @@ dataset:
 model:
   task:
     mask_ratio: 0.5
+  val_iters: 10
+train:
+  patience: 50
+inherit_tag: crs07_m5

@@ -3,7 +3,7 @@ We adapt BrainBertInterface for online decoding specifically.
 That is, we remove the flexible interface so we can compile the model as well.
 """
 from pathlib import Path
-from typing import Tuple, Dict, List, Optional, Any, Mapping
+from typing import Tuple, Dict, List, Optional, Any, Mapping, Union
 import dataclasses
 import time
 import math
@@ -17,7 +17,12 @@ from omegaconf import OmegaConf, ListConfig, DictConfig
 import logging
 from pprint import pformat
 
-from context_general_bci.model import unflatten, transfer_cfg, recursive_diff_log, BrainBertInterface
+from context_general_bci.model import (
+    unflatten, transfer_cfg, recursive_diff_log,
+    BrainBertInterface,
+    load_from_checkpoint
+)
+
 from context_general_bci.config import (
     ModelConfig,
     ModelTask,
@@ -297,6 +302,60 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
 
         self.decoder = SkinnyBehaviorRegression(self.cfg, self.data_attrs)
 
+    def try_transfer(self, module_name: str, transfer_module: Any):
+        if (module := getattr(self, module_name, None)) is not None:
+            if transfer_module is not None:
+                if isinstance(module, nn.Parameter):
+                    assert module.data.shape == transfer_module.data.shape
+                    # Currently will fail for array flag transfer, no idea what the right policy is right now
+                    module.data = transfer_module.data
+                else:
+                    assert not isinstance(module, ReadinMatrix), "Deprecated"
+                    # if isinstance(module, ReadinMatrix):
+                        # module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
+                    # else:
+                    module.load_state_dict(transfer_module.state_dict())
+                logger.info(f'Transferred {module_name} weights.')
+            else:
+                logger.info(f'New {module_name} weights.')
+
+    def try_transfer_embed(
+        self,
+        embed_name: str, # Used for looking up possibly existing attribute
+        new_attrs: List[str],
+        old_attrs: List[str],
+        transfer_embed: Union[nn.Embedding, nn.Parameter],
+    ) -> Union[nn.Embedding, nn.Parameter]:
+        if transfer_embed is None:
+            logger.info(f'Found no weights to transfer for {embed_name}.')
+            return
+        if new_attrs == old_attrs:
+            self.try_transfer(embed_name, transfer_embed)
+            return
+        if not hasattr(self, embed_name):
+            return
+        embed = getattr(self, embed_name)
+        if not old_attrs:
+            logger.info(f'New {embed_name} weights.')
+            return
+        if not new_attrs:
+            logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
+            return
+        num_reassigned = 0
+        def get_param(embed):
+            if isinstance(embed, nn.Parameter):
+                return embed
+            return getattr(embed, 'weight')
+        for n_idx, target in enumerate(new_attrs):
+            if target in old_attrs:
+                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
+                num_reassigned += 1
+        logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
+        if num_reassigned == 0:
+            logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
+        if num_reassigned < len(new_attrs):
+            logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
+
     def transfer_io(self, transfer_model: pl.LightningModule):
         r"""
             The logger messages are told from the perspective of a model that is being transferred to (but in practice, this model has been initialized and contains new weights already)
@@ -309,62 +368,16 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             logger.info(pformat(f'Task config updating.. (first logged is new config)'))
             recursive_diff_log(self.cfg.task, transfer_cfg.task)
             #  from {transfer_cfg.task} to {self.cfg.task}'))
-        def try_transfer(module_name: str):
-            if (module := getattr(self, module_name, None)) is not None:
-                if (transfer_module := getattr(transfer_model, module_name, None)) is not None:
-                    if isinstance(module, nn.Parameter):
-                        assert module.data.shape == transfer_module.data.shape
-                        # Currently will fail for array flag transfer, no idea what the right policy is right now
-                        module.data = transfer_module.data
-                    else:
-                        if isinstance(module, ReadinMatrix):
-                            module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
-                        else:
-                            module.load_state_dict(transfer_module.state_dict())
-                    logger.info(f'Transferred {module_name} weights.')
-                else:
-                    logger.info(f'New {module_name} weights.')
 
-        def try_transfer_embed(
-            embed_name: str, # Used for looking up possibly existing attribute
-            new_attrs: List[str],
-            old_attrs: List[str] ,
-        ) -> nn.Embedding:
-            if new_attrs == old_attrs:
-                try_transfer(embed_name)
-                return
-            if not hasattr(self, embed_name):
-                return
-            embed = getattr(self, embed_name)
-            if not old_attrs:
-                logger.info(f'New {embed_name} weights.')
-                return
-            if not new_attrs:
-                logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
-                return
-            num_reassigned = 0
-            def get_param(embed):
-                if isinstance(embed, nn.Parameter):
-                    return embed
-                return getattr(embed, 'weight')
-            for n_idx, target in enumerate(new_attrs):
-                if target in old_attrs:
-                    get_param(embed).data[n_idx] = get_param(getattr(transfer_model, embed_name)).data[old_attrs.index(target)]
-                    num_reassigned += 1
-            logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
-            if num_reassigned == 0:
-                logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
-            if num_reassigned < len(new_attrs):
-                logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
-        try_transfer_embed('session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session)
-        try_transfer_embed('subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject)
-        try_transfer_embed('task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task)
+        self.try_transfer_embed('session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session, getattr(transfer_model, 'session_embed', None))
+        self.try_transfer_embed('subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject, getattr(transfer_model, 'subject_embed', None))
+        self.try_transfer_embed('task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task, getattr(transfer_model, 'task_embed', None))
 
-        try_transfer('session_flag')
-        try_transfer('subject_flag')
-        try_transfer('task_flag')
+        self.try_transfer('session_flag')
+        self.try_transfer('subject_flag')
+        self.try_transfer('task_flag')
 
-        try_transfer('readin')
+        self.try_transfer('readin')
 
     def forward(
         self,
@@ -409,10 +422,15 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
         return self.decoder(features, time, trial_context_without_flag)[0] # remove batch dimension
 
 
-def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data_attrs: DataAttrs):
+def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data_attrs: DataAttrs, extra_embed_map: Dict[str, Tuple[Any, DataAttrs]] = {}):
     r"""
         Transfer model to new cfg and data_attrs.
         Intended to be for inference
+
+        `extra_embed_map`: Extra embedding keys to transfer.
+        - Assumes that flags are locked in and the only important param is the embed
+        - Assumes that shapes etc are safe.
+        - Keys are abbreviated attr names e.g. 'session', 'subject', 'task'
     """
     if new_cfg is None and new_data_attrs is None:
         return old_model
@@ -429,4 +447,20 @@ def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data
     new_cls.transfer_io(old_model)
     # TODO more safety in this loading... like the injector is unhappy
     new_cls.decoder.load_state_dict(old_model.task_pipelines[ModelTask.kinematic_decoding.value].state_dict(), strict=False)
+
+    for embed_key in extra_embed_map:
+        logger.info(f"Transferring extra {embed_key}...")
+        extra_embed, extra_attrs = extra_embed_map[embed_key]
+        new_cls.try_transfer_embed(f'{embed_key}_embed', getattr(new_cls.data_attrs.context, embed_key), getattr(extra_attrs.context, embed_key), extra_embed)
+
     return new_cls
+
+def load_extra_embeds(tgt_cfg: ModelConfig) -> Dict[str, Tuple[Any, DataAttrs]]:
+    out = {}
+    if tgt_cfg.extra_subject_embed_ckpt:
+        subject_model = load_from_checkpoint(tgt_cfg.extra_subject_embed_ckpt)
+        out['subject'] = (subject_model.subject_embed, subject_model.data_attrs)
+    if tgt_cfg.extra_task_embed_ckpt:
+        task_model = load_from_checkpoint(tgt_cfg.extra_task_embed_ckpt)
+        out['task'] = (task_model.task_embed, task_model.data_attrs)
+    return out

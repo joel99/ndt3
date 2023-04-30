@@ -288,6 +288,10 @@ class ModelConfig:
 
     debug_project_space: bool = False # project spikes for spacetime models to hidden size (only for very special cases, used in NLB parity)
     force_zero_mask: bool = False # for shuffle infill
+    val_iters: int = 1 # how many iters to run validation for, since it's quite noisy for Pitt decode
+
+    extra_task_embed_ckpt: str = "" # for loading task embeddings from a different ckpt. Only implemented via `model_decode`.
+    extra_subject_embed_ckpt: str = "" # for loading subject embeddings from a different ckpt. Only implemented via `model_decode`.
 
 @dataclass
 class ExperimentalConfig:

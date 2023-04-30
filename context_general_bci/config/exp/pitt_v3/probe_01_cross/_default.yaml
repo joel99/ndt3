@@ -37,6 +37,8 @@ model:
   accelerate_new_params: 10.0 # We're introducing a whole new readout layer...
   lr_schedule: 'fixed'
   lr_init: 4e-5
+  val_iters: 10
+
 # No fragment
 inherit_exp: pitt_v3/decode
 # sweep_cfg: 'simpler_lr_sweep'
