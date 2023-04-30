@@ -23,6 +23,8 @@ from .context_info import (
 )
 
 from context_general_bci.tasks import ExperimentalTask
+
+CLOSED_LOOP_DIR = 'closed_loop_tests'
 r"""
     ContextInfo class is an interface for storing meta-information needed by several consumers, mainly the model, that may not be logged in data from various sources.
     ContextRegistry allows consumers to query for this information from various identifying sources.
@@ -150,6 +152,11 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'default': ExperimentalTask.pitt_co,
             'unk': ExperimentalTask.pitt_co,
         }),
+        *BCIContextInfo.build_from_dir('./data/{CLOSED_LOOP_DIR}', task_map={
+            'obs': ExperimentalTask.observation,
+            'ortho': ExperimentalTask.ortho,
+            'fbc': ExperimentalTask.fbc,
+        })
         *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
             'unstructured': ExperimentalTask.unstructured,
             'free_play': ExperimentalTask.unstructured,

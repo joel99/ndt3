@@ -13,6 +13,7 @@ dataset:
   data_keys:
   - DataKey.spikes
   - DataKey.bhvr_vel
+  # datasets: - will be specified in calling script
 model:
   causal: true
   neurons_per_token: 32
@@ -29,3 +30,8 @@ model:
   lr_init: 4e-5
 
   extra_task_embed_ckpt: '{shared_dir}/pretrained/pretrained_unsup.ckpt'
+train:
+  autoscale_batch_size: false
+  batch_size: 4
+  patience: 50
+experiment_set: 'online_bci'
