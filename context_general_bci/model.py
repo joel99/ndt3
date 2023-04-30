@@ -142,6 +142,8 @@ class BrainBertInterface(pl.LightningModule):
             'accelerate_new_params',
             'tune_decay',
             'val_iters',
+            'extra_task_embed_ckpt',
+            'extra_subject_embed_ckpt',
         ]:
             setattr(self_copy, safe_attr, getattr(cfg, safe_attr))
         recursive_diff_log(self_copy, cfg)
