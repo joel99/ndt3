@@ -152,11 +152,11 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'default': ExperimentalTask.pitt_co,
             'unk': ExperimentalTask.pitt_co,
         }),
-        *BCIContextInfo.build_from_dir('./data/{CLOSED_LOOP_DIR}', task_map={
+        *BCIContextInfo.build_from_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={
             'obs': ExperimentalTask.observation,
             'ortho': ExperimentalTask.ortho,
             'fbc': ExperimentalTask.fbc,
-        })
+        }),
         *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
             'unstructured': ExperimentalTask.unstructured,
             'free_play': ExperimentalTask.unstructured,

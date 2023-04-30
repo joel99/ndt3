@@ -182,7 +182,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                     # if 'position' in payload and task in [ExperimentalTask.observation]: # We only "trust" in the labels provided by obs (for now). Note we previously tried ortho to no avail, and loading is buggier.
                     if (
                         'position' in payload and \
-                        task in [ExperimentalTask.observation, ExperimentalTask.ortho] # and \
+                        task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
                     ): # We only "trust" in the labels provided by obs (for now)
                         if len(payload['position']) == len(payload['trial_num']):
                             session_vel = get_velocity(payload['position'][payload['trial_num'] == i])

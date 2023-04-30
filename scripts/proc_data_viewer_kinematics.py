@@ -17,7 +17,7 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, wandb_query_latest, load_wandb_run
 
 mode = 'rtt'
-# mode = 'pitt'
+mode = 'pitt'
 if mode == 'rtt':
     ctxs = context_registry.query(task=ExperimentalTask.odoherty_rtt)
 else:
@@ -29,11 +29,11 @@ print(context)
 # datapath = './data/odoherty_rtt/indy_20160407_02.mat'
 # context = context_registry.query_by_datapath(datapath)
 
-sample_query = 'test' # just pull the latest run
+sample_query = 'human_test' # just pull the latest run
 # sample_query = 'pt_parity'
 
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
-print(wandb_run)
+# print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 default_cfg = cfg.dataset
 # default_cfg: DatasetConfig = OmegaConf.create(DatasetConfig())
