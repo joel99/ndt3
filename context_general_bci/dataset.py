@@ -22,7 +22,7 @@ from einops import rearrange, repeat
 import pytorch_lightning as pl
 
 from context_general_bci.config import DatasetConfig, MetaKey, DataKey
-from context_general_bci.subjects import SubjectArrayRegistry
+from context_general_bci.subjects import SubjectArrayRegistry, SubjectName
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.augmentations import augmentations
@@ -52,10 +52,10 @@ class ContextAttrs:
     r"""
         Each of these can potentially be embedded
     """
-    subject: List[str] = field(default_factory=list)
+    subject: List[SubjectName] = field(default_factory=list)
     array: List[str] = field(default_factory=list) # should be prefixed with subject
     session: List[str] = field(default_factory=list) # unique ID
-    task: List[str] = field(default_factory=list) # experimental task
+    task: List[ExperimentalTask] = field(default_factory=list) # experimental task
 
 @dataclass
 class DataAttrs:

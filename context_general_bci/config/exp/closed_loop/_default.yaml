@@ -27,3 +27,5 @@ model:
   accelerate_new_params: 10.0 # We're introducing a whole new readout layer...
   lr_schedule: 'fixed'
   lr_init: 4e-5
+
+  extra_task_embed_ckpt: '{shared_dir}/pretrained/pretrained_unsup.ckpt'
