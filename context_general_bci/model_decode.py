@@ -125,13 +125,13 @@ class SkinnyBehaviorRegression(nn.Module):
         )
 
         bhvr = self.out(backbone_features)
-        if self.bhvr_mean is not None:
-            bhvr = bhvr * self.bhvr_std + self.bhvr_mean
-        return bhvr
-        # TODO return truncated bhvr
+        # return bhvr
         if self.bhvr_lag_bins:
             bhvr = bhvr[:, :-self.bhvr_lag_bins]
-        return bhvr[:,-1]
+        final_bhvr = bhvr[:,-1]
+        if self.bhvr_mean is not None:
+            final_bhvr = final_bhvr * self.bhvr_std + self.bhvr_mean
+        return final_bhvr
 
 
 
@@ -302,7 +302,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
 
         self.decoder = SkinnyBehaviorRegression(self.cfg, self.data_attrs)
 
-    def try_transfer(self, module_name: str, transfer_module: Any):
+    def try_transfer(self, module_name: str, transfer_module: Any = None):
         if (module := getattr(self, module_name, None)) is not None:
             if transfer_module is not None:
                 if isinstance(module, nn.Parameter):
@@ -356,7 +356,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
         if num_reassigned < len(new_attrs):
             logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
 
-    def transfer_io(self, transfer_model: pl.LightningModule):
+    def transfer_io(self, transfer_model: BrainBertInterface):
         r"""
             The logger messages are told from the perspective of a model that is being transferred to (but in practice, this model has been initialized and contains new weights already)
         """
@@ -373,11 +373,11 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
         self.try_transfer_embed('subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject, getattr(transfer_model, 'subject_embed', None))
         self.try_transfer_embed('task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task, getattr(transfer_model, 'task_embed', None))
 
-        self.try_transfer('session_flag')
-        self.try_transfer('subject_flag')
-        self.try_transfer('task_flag')
+        self.try_transfer('session_flag', transfer_model.session_flag)
+        self.try_transfer('subject_flag', transfer_model.subject_flag)
+        self.try_transfer('task_flag', transfer_model.task_flag)
 
-        self.try_transfer('readin')
+        self.try_transfer('readin', transfer_model.readin)
 
     def forward(
         self,
