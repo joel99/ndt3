@@ -52,10 +52,13 @@ class ContextAttrs:
     r"""
         Each of these can potentially be embedded
     """
-    subject: List[SubjectName] = field(default_factory=list)
+    subject: List[str] = field(default_factory=list)
+    # subject: List[SubjectName] = field(default_factory=list)
     array: List[str] = field(default_factory=list) # should be prefixed with subject
     session: List[str] = field(default_factory=list) # unique ID
-    task: List[ExperimentalTask] = field(default_factory=list) # experimental task
+    task: List[str] = field(default_factory=list) # experimental task
+    # task: List[ExperimentalTask] = field(default_factory=list) # experimental task
+    # Types are indeed the enums but if we swap dacite whines and can't parse from wandb
 
 @dataclass
 class DataAttrs:

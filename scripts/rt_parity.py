@@ -32,9 +32,10 @@ pl.seed_everything(0)
 
 run_id = 'human-sweep-simpler_lr_sweep-89111ysu'
 run_id = 'human_m5-s3n89xxv'
-run_id = 'human_rtt_pitt_init-idcfk3rr'
-run_id = 'human_aug-nxy3te61'
-run_id = 'human_aug-xi7wzqoo'
+run_id = 'human_fbc-0epmqhls'
+# run_id = 'human_rtt_pitt_init-idcfk3rr'
+# run_id = 'human_aug-nxy3te61'
+# run_id = 'human_aug-xi7wzqoo'
 
 dataset_name = 'observation_CRS02b_19.*'
 # dataset_name = 'odoherty_rtt-Indy-20160627_01'
@@ -106,7 +107,7 @@ with torch.no_grad():
             spikes = rearrange(batch[DataKey.spikes], 'b (time space) chunk 1 -> b time (space chunk) 1', space=6)
             # equivalent to loading a single trial for Pitt data.
         # spikes = trial[DataKey.spikes].flatten(1,2).unsqueeze(0) # simulate normal trial
-        spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
+        spikes = torch.randint(0, 2, (1, 100, 192, 1), dtype=torch.uint8)
         test_ins.append(spikes)
         start = time.time()
         if do_onnx:
@@ -136,14 +137,14 @@ with torch.no_grad():
                 out = out.to('cpu')
         end = time.time()
         test_outs.append(out)
-        print(out.shape)
+        # print(out)
         if compile_flag == 'onnx' and not Path(onnx_file).exists():
             spikes = torch.randint(0, 4, (1, 100, 192, 1), dtype=torch.uint8)
             model = model.to_onnx("model.onnx", spikes, export_params=True)
             torch.save(spikes, 'samples.pt')
             exit(0)
         loop_times.append(end - start)
-        print(f'Loop: {end - start:.4f}')
+        # print(f'Loop: {end - start:.4f}')
         # print(f'Loop {spikes.size()}: {end - start:.4f}')
 # drop first ten
 loop_times = loop_times[10:]
@@ -155,6 +156,13 @@ print(f"Avg: {np.mean(loop_times)*1000:.4f}ms, Std: {np.std(loop_times) * 1000:.
 # Key check
 # Trial context, time, position is matched
 # State in? Backbone?
+
+#%%
+stat_test = torch.stack(test_outs)
+print(stat_test.shape)
+sns.histplot(stat_test.flatten())
+print(model.decoder.bhvr_std)
+print(stat_test.flatten().std())
 
 #%%
 # plot outputs
