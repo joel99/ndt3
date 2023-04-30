@@ -1,0 +1,23 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  datasets:
+  - dummy.datafiles
+
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+model:
+  accelerate_new_params: 10.0
+  lr_schedule: 'fixed'
+train:
+  autoscale_batch_size: false
+  batch_size: 4
+  patience: 50
+init_ckpt: '{shared_dir}/pretrained/pretrained_human.ckpt'
+
+tag: 'online_finetune_human'
+experiment_set: 'online_bci'
+notes: "Closed loop decoder human-only"

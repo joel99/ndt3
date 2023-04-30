@@ -1089,7 +1089,8 @@ def load_from_checkpoint(
     """
     try:
         old_model = BrainBertInterface.load_from_checkpoint(checkpoint_path)
-    except: # we migrated library directory into a subfolder and old checkpoints may need paths to project dir registered
+    except Exception as e: # we migrated library directory into a subfolder and old checkpoints may need paths to project dir registered
+        logger.warning(e)
         logger.warning("Failed to load checkpoint, assuming old format and retrying after registering project dir...")
         import sys
         import os

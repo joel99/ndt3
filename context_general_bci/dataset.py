@@ -105,7 +105,7 @@ class SpikingDataset(Dataset):
         Other notes:
         - Can we "mixin" time-varying data, or maybe simpler to just be a separate codepath in this class.
     """
-    def __init__(self, cfg: DatasetConfig, use_augment: bool = True):
+    def __init__(self, cfg: DatasetConfig, use_augment: bool = True, override_preprocess_path=False):
         super().__init__()
         if not isinstance(cfg, OmegaConf):
             cfg: DatasetConfig = OmegaConf.create(cfg)
@@ -128,7 +128,7 @@ class SpikingDataset(Dataset):
             eval_contexts = self.list_alias_to_contexts(self.cfg.eval_datasets)
             exclude_contexts = [c for c in exclude_contexts if c not in eval_contexts]
             contexts = [c for c in contexts if c not in exclude_contexts]
-            self.meta_df = pd.concat([self.load_single_session(c) for c in contexts]).reset_index(drop=True)
+            self.meta_df = pd.concat([self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]).reset_index(drop=True)
             # self.meta_df = pd.concat([self.load_single_session(c) for c in contexts]).reset_index(drop=True)
             if 'split' in self.meta_df.columns and len(self.meta_df['split'].unique()) > 1:
                 logger.warning("Non-train splits found in meta_df. Subsetting is expected.")
@@ -147,7 +147,9 @@ class SpikingDataset(Dataset):
         return self.meta_df is not None
 
     @staticmethod
-    def preprocess_path(cfg: DatasetConfig, session_path: Path) -> Path:
+    def preprocess_path(cfg: DatasetConfig, session_path: Path, override_preprocess_path: bool) -> Path:
+        if override_preprocess_path:
+            return session_path.parent / session_path.stem / cfg.preprocess_suffix
         return cfg.root_dir / cfg.preprocess_suffix / session_path.relative_to(cfg.root_dir)
 
     def validate_meta(self, meta_df: pd.DataFrame):
@@ -225,9 +227,9 @@ class SpikingDataset(Dataset):
         eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
         self.meta_df['split'] = self.meta_df['split'].mask(self.meta_df.index.isin(eval_subset.index), 'eval')
 
-    def load_single_session(self, context_meta: ContextInfo) -> pd.DataFrame:
+    def load_single_session(self, context_meta: ContextInfo, override_preprocess_path: bool=False) -> pd.DataFrame:
         session_path = context_meta.datapath
-        if not (hash_dir := self.preprocess_path(self.cfg, session_path)).exists() or \
+        if not (hash_dir := self.preprocess_path(self.cfg, session_path, override_preprocess_path)).exists() or \
             self.checksum_diff(hash_dir / 'preprocess_version.json', context_meta.task):
             # TODO consider filtering meta df to be more lightweight (we don't bother right now because some nonessential attrs can be useful for analysis)
             os.makedirs(hash_dir, exist_ok=True)
@@ -422,6 +424,70 @@ class SpikingDataset(Dataset):
 
     def __len__(self):
         return len(self.meta_df)
+
+    def tokenized_collater(self, batch):
+        r"""
+            batch: list of dicts
+        """
+        stack_batch = defaultdict(list)
+        space_lengths = torch.tensor([b[DataKey.spikes].size(1) for b in batch])
+        if not self.cfg.serve_tokenized_flat: # account for padding in space calculation
+            space_lengths = torch.full_like(space_lengths, space_lengths.max())
+        time_budget = (self.cfg.max_tokens // space_lengths)
+        if self.max_bins:
+            time_budget = time_budget.min(torch.tensor(self.max_bins))
+        # TODO separate out/remove this cropping logic for flat spacetime
+        crop_start_limit = (torch.tensor([b[DataKey.spikes].size(0) for b in batch]) - time_budget).max(torch.tensor(1))
+        crop_start = torch.randint(0, 10000, (len(batch),), dtype=torch.long) % crop_start_limit
+        # ! currently, DataKey.time is with respect to trial time; what we really need is a time relative to the crop_start
+        # ! we have several ways of instancing this, but we're picking the most convenient for now anticipating near future changes
+        covariate_key = None
+        for i, b in enumerate(batch):
+            for k in b.keys():
+                if isinstance(k, DataKey):
+                    item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
+                    if k == DataKey.time:
+                        item = item - item[0]
+                    if self.cfg.serve_tokenized_flat:
+                        if k in [DataKey.spikes, DataKey.time, DataKey.position]:
+                            # These keys have spatial dimensions that we will serve flat to maximize data throughput across heterogeneous trials
+                            item = item.flatten(0, 1) # T S H -> Token H
+                        else:
+                            covariate_key = k # will need separate padding, track for later
+                    else: # pad in space
+                        if k == DataKey.spikes: # B T S C H
+                            item = F.pad(item, (0, 0, 0, 0, 0, space_lengths[i] - item.size(1)), value=self.pad_value)
+                        elif k in [DataKey.time, DataKey.position]:
+                            # ! Note... this "pad_value" is set for spikes, and will definitely conflict with meaningful values for
+                            # time and position. This shouldn't be a problem right now, as we're using LENGTH_KEY and CHANNEL_KEY to determine what's padding and not when computing masks.
+                            # ! For the flat case, we should directly ID a pad value (e.g. 0) for time/position and adjust in code.
+                            item = F.pad(item, (0, space_lengths[i] - item.size(1)), value=self.pad_value)
+                    stack_batch[k].append(item)
+                else:
+                    if self.cfg.serve_tokenized_flat and k == CHANNEL_KEY: # determine cropped channel count
+                        b[k] = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
+                        stack_batch[k].append(b[k].flatten(0, 1))
+                    else:
+                        stack_batch[k].append(b[k])
+        lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.spikes]])
+        if covariate_key is not None:
+            covariate_lengths = torch.tensor([el.size(0) for el in stack_batch[covariate_key]])
+            covariate_channels = torch.tensor([el.size(1) for el in stack_batch[covariate_key]])
+            # Manually pad to max channels
+            covariate_max = covariate_channels.max()
+            pad_els = [0] + [0, 0] * (stack_batch[covariate_key][0].ndim - 2)
+            for i, el in enumerate(stack_batch[covariate_key]):
+                stack_batch[covariate_key][i] = F.pad(el, (*pad_els, covariate_max - el.size(1)), value=self.pad_value)
+        for k in stack_batch.keys():
+            if isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
+                stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value)
+            else:
+                stack_batch[k] = torch.stack(stack_batch[k])
+        stack_batch[LENGTH_KEY] = lengths
+        if covariate_key is not None:
+            stack_batch[COVARIATE_LENGTH_KEY] = covariate_lengths
+            stack_batch[COVARIATE_CHANNEL_KEY] = covariate_channels
+        return dict(stack_batch) # cast back to dict as pytorch distributed can act up with defaultdicts
 
     def collater_factory(self):
         if not self.cfg.pad_batches:
@@ -678,6 +744,7 @@ class SpikingDataset(Dataset):
                 message_prefix=f"Scale {ratio}"
             )
 
+import functools
 class SpikingDataModule(pl.LightningDataModule):
     r"""
         A PL module mainly for autoscaling batch size, for sweeping.
@@ -701,7 +768,7 @@ class SpikingDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
-            collate_fn=self.train.collater_factory(),
+            collate_fn=functools.partial(self.train.tokenized_collater, self.train),
         )
 
     def val_dataloader(self):
@@ -711,7 +778,7 @@ class SpikingDataModule(pl.LightningDataModule):
                 batch_size=self.batch_size,
                 num_workers=self.num_workers,
                 persistent_workers=self.num_workers > 0,
-                collate_fn=dataset.collater_factory(),
+                collate_fn=functools.partial(dataset.tokenized_collater, self.val),
             ) for dataset in self.val]
 
     def test_dataloader(self):
@@ -723,6 +790,6 @@ class SpikingDataModule(pl.LightningDataModule):
                 batch_size=self.batch_size,
                 num_workers=self.num_workers,
                 persistent_workers=self.num_workers > 0,
-                collate_fn=dataset.collater_factory(),
+                collate_fn=functools.partial(dataset.tokenized_collater, self.test),
             ) for dataset in self.test]
 
