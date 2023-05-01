@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_.*
+  - fbc_.*
+  - ortho_.*
+train:
+  autoscale_batch_size: False
+  batch_size: 64
+model:
+  task:
+    mask_ratio: 0.5
+inherit_tag: human_10l

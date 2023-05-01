@@ -59,9 +59,9 @@ comp_df['data_id'] = comp_df['subject'].replace('Lab', '').replace('Home', '') \
 
 
 EVAL_DATASETS = [
-    # 'observation_CRS02b_19.*',
-    'observation_CRS07_15.*',
-    'observation_CRS07_16.*',
+    'observation_CRS02b_19.*',
+    # 'observation_CRS07_15.*',
+    # 'observation_CRS07_16.*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
@@ -74,15 +74,15 @@ EXPERIMENTS_KIN = [
 queries = [
     # 'human_obs_limit',
     # 'human_obs_m5',
-    'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
+    # 'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
     # 'human_obs_m75',
     'human_m5',
     # 'human_m5_lr1e5',
-    'human_rtt_task_init',
-    'human_rtt_pitt_init',
-    'human_rtt_scratch',
-    'crs07_m5',
-    'crs07_m5_itertest',
+    # 'human_rtt_task_init',
+    # 'human_rtt_pitt_init',
+    # 'human_rtt_scratch',
+    # 'crs07_m5',
+    # 'crs07_m5_itertest',
     # 'human_unsup',
     # 'human_aug',
 ]
