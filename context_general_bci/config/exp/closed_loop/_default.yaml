@@ -36,3 +36,4 @@ train:
   batch_size: 8 # Assuming we have ~50-100 trials.
   patience: 50
 experiment_set: 'online_bci'
+inherit_exp: 'pitt_v3/decode_full'

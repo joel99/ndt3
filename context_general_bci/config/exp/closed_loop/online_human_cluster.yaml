@@ -1,8 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-inherit_exp: pitt_v3/decode
-inherit_tag: human_m5 # etc
-tag: 'online_finetune_human'
-notes: "Closed loop decoder human-only"

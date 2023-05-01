@@ -193,6 +193,46 @@ class CRS07(SubjectInfoPittChicago):
     ]
 
 @SubjectArrayRegistry.register
+class CRS08(SubjectInfoPittChicago):
+    # Identical to CRS07
+    # Layout shared across motor channels
+    name = SubjectName.CRS08
+    _motor_layout = np.array([ # wire bundle to right, viewing from pad side (electrodes down)
+        [np.nan, 38, 50, 59,  6, 23,  22, 101, 111, np.nan,],
+            [33, 40, 46, 64,  9, 25,  24, 102, 113, 128],
+            [35, 43, 56, 61, 17, 21,  26, 103, 112, 114],
+            [37, 47, 55, 63, 15, 14,  28, 104, 115, 116],
+            [39, 49, 54,  2,  8, 16,  30, 105, 117, 118],
+            [41, 48, 52,  1, 11, 20,  32, 106, 119, 120],
+            [45, 42, 58,  3, 13, 27,  97, 107, 121, 122],
+            [34, 44, 57,  4, 19, 29,  99, 108, 123, 124],
+            [36, 51, 62,  7, 10, 31,  98, 109, 125, 126],
+        [np.nan, 53, 60,  5, 12, 18, 100, 110, 127, np.nan]
+    ])
+    motor_arrays = [
+        PittChicagoArrayInfo(array=_motor_layout),
+        PittChicagoArrayInfo(array=_motor_layout, pedestal_index=1)
+    ]
+
+    _sensory_layout = np.array([ # wire bundle to right, viewing from pad side (electrodes down).
+            [65, np.nan, 72, np.nan, 85, 91],
+            [np.nan, 77, np.nan, 81, np.nan, 92],
+            [67, np.nan, 74, np.nan, 87, np.nan,],
+            [np.nan, 79, np.nan, 82, np.nan, 93],
+            [69, np.nan, 76, np.nan, 88, np.nan,],
+            [np.nan, 66, np.nan, 84, np.nan, 94],
+            [71, np.nan, 78, np.nan, 89, np.nan,],
+            [np.nan, 68, np.nan, 83, np.nan, 96],
+            [73, np.nan, 80, np.nan, 90, np.nan,],
+            [75, 70, np.nan, 86, np.nan, 95],
+    ])#  - 65 + 1
+
+    sensory_arrays = [
+        PittChicagoArrayInfo(array=_sensory_layout),
+        PittChicagoArrayInfo(array=_sensory_layout, pedestal_index=1)
+    ]
+
+@SubjectArrayRegistry.register
 class BCI02(SubjectInfoPittChicago):
     name = SubjectName.BCI02
     # No, the floating point isn't a concern

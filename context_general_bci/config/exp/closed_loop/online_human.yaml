@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-init_ckpt: '{shared_dir}/pretrained/pretrained_human.ckpt'
-tag: 'online_finetune_human'
-notes: "Closed loop decoder human-only"

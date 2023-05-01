@@ -14,6 +14,7 @@ class SubjectName(OrderedEnum):
     # We refer to names instead of classes to make converting to singleton pattern easier
     CRS02b = "CRS02b"
     CRS07 = "CRS07"
+    CRS08 = "CRS08"
     BCI02 = "BCI02"
     jenkins = "Jenkins"
     indy = "Indy"

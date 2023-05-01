@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  extra_task_embed_ckpt: '{shared_dir}/pretrained/human_fbc.ckpt' # perks of fbc base.
+inherit_tag: human_fbc
+tag: 'online_fbc_tune'
+notes: "Decoder base: human obs, ortho, fbc."

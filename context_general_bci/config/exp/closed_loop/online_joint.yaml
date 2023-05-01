@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-init_ckpt: '{shared_dir}/pretrained/pretrained_human_monkey.ckpt'
-tag: 'online_finetune_joint'
-notes: "Closed loop decoder human and monkey (joint prep)"
