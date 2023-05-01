@@ -15,6 +15,7 @@ from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.dataset import SpikingDataset, DataAttrs
 from context_general_bci.model import transfer_model, logger, BrainBertInterface
 
@@ -97,8 +98,16 @@ USE_THRESH = True
 eval_data = f'pitt_kin_df_{"thresh" if USE_THRESH else "unthresh"}.pt'
 
 USE_SECOND_HALF_ONLY = False
-USE_SECOND_HALF_ONLY = True # quick sanity check to see that results improve with time. Needed to explain why we're worse than KF baseline all the time
+# USE_SECOND_HALF_ONLY = True # quick sanity check to see that results improve with time. Needed to explain why we're worse than KF baseline all the time
+
+DO_SUB_FBC = False
+DO_SUB_FBC = True
+if DO_SUB_FBC:
+    query = 'human_10l-j7mq2snc'
+    wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
+    task_model, task_cfg, task_attrs = load_wandb_run(wandb_run, )
 #%%
+
 def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
     evals = []
     for i in range(runs):
@@ -107,7 +116,10 @@ def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
             # ? Ehm... not sure if buggy.
             model.cfg.task.outputs = [Output.behavior, Output.behavior_pred]
             heldin_outputs = stack_batch(trainer.predict(model, dataloader))
-            offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
+            if DO_SUB_FBC:
+                offset_bins = 2
+            else:
+                offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
             if isinstance(heldin_outputs[Output.behavior_pred], list):
                 if USE_SECOND_HALF_ONLY:
                     pred = np.concatenate([p[p.shape[0] // 2:] for p in heldin_outputs[Output.behavior_pred]])
@@ -122,8 +134,8 @@ def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
             pred = pred[(true != model.data_attrs.pad_token).any(-1)]
             true = true[(true != model.data_attrs.pad_token).any(-1)]
             if USE_THRESH:
-                pred = pred[(true.abs() > model.cfg.task.behavior_metric_thresh).any(-1)]
-                true = true[(true.abs() > model.cfg.task.behavior_metric_thresh).any(-1)]
+                pred = pred[(np.abs(true) > model.cfg.task.behavior_metric_thresh).any(-1)]
+                true = true[(np.abs(true) > model.cfg.task.behavior_metric_thresh).any(-1)]
             # compute r2
             return r2_score(true, pred)
 
@@ -155,7 +167,18 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
         cfg.model.task.metrics = [Metric.kinematic_r2, Metric.kinematic_r2_thresh]
         cfg.model.task.behavior_fit_thresh = 0.1
     model = transfer_model(src_model, cfg.model, data_attrs)
-    dataloader = get_dataloader(dataset, num_workers=0)
+    if DO_SUB_FBC:
+        from copy import deepcopy
+        from context_general_bci.model_decode import transfer_model as decode_transfer
+        extra_embed_map = {'task': (task_model.task_embed, task_model.data_attrs)}
+        deployed_data_attrs = deepcopy(model.data_attrs)
+        if 'task' in extra_embed_map:
+            # Unlike in pretraining, we keep the session embed when switching tasks (a fault of our prertaining. We didn't prep common day labels).
+            deployed_data_attrs.context.task = [ExperimentalTask.fbc]
+        # model = transfer_model(model, model.cfg, deployed_data_attrs, extra_embed_map=extra_embed_map)
+        model = decode_transfer(model, model.cfg, deployed_data_attrs, extra_embed_map=extra_embed_map)
+    # dataloader = get_dataloader(dataset, num_workers=0, batch_size=100)
+    dataloader = get_dataloader(dataset, num_workers=0, batch_size=1 if DO_SUB_FBC else 100)
 
     # the dataset name is of the for {type}_{subject}_session_{session}_set_{set}_....mat
     # parse out the variables
@@ -274,7 +297,7 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 #%%
 # make pretty seaborn default
 subject = 'CRS02b'
-subject = 'CRS07'
+# subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
 sns.set_theme(style="whitegrid")
 # boxplot

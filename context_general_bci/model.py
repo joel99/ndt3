@@ -325,6 +325,64 @@ class BrainBertInterface(pl.LightningModule):
             out.append(self._wrap_key(prefix, n))
         return out
 
+    def try_transfer(self, module_name: str, transfer_module: Any = None):
+        if (module := getattr(self, module_name, None)) is not None:
+            if transfer_module is not None:
+                if isinstance(module, nn.Parameter):
+                    assert module.data.shape == transfer_module.data.shape
+                    # Currently will fail for array flag transfer, no idea what the right policy is right now
+                    module.data = transfer_module.data
+                else:
+                    assert not isinstance(module, ReadinMatrix), "Deprecated"
+                    # if isinstance(module, ReadinMatrix):
+                        # module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
+                    # else:
+                    module.load_state_dict(transfer_module.state_dict())
+                logger.info(f'Transferred {module_name} weights.')
+            else:
+                # if isinstance(module, nn.Parameter):
+                #     self.novel_params.append(self._wrap_key(module_name, module_name))
+                # else:
+                #     self.novel_params.extend(self._wrap_keys(module_name, module.named_parameters()))
+                logger.info(f'New {module_name} weights.')
+
+    def try_transfer_embed(
+        self,
+        embed_name: str, # Used for looking up possibly existing attribute
+        new_attrs: List[str],
+        old_attrs: List[str],
+        transfer_embed: Union[nn.Embedding, nn.Parameter],
+    ) -> Union[nn.Embedding, nn.Parameter]:
+        if transfer_embed is None:
+            logger.info(f'Found no weights to transfer for {embed_name}.')
+            return
+        if new_attrs == old_attrs:
+            self.try_transfer(embed_name, transfer_embed)
+            return
+        if not hasattr(self, embed_name):
+            return
+        embed = getattr(self, embed_name)
+        if not old_attrs:
+            logger.info(f'New {embed_name} weights.')
+            return
+        if not new_attrs:
+            logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
+            return
+        num_reassigned = 0
+        def get_param(embed):
+            if isinstance(embed, nn.Parameter):
+                return embed
+            return getattr(embed, 'weight')
+        for n_idx, target in enumerate(new_attrs):
+            if target in old_attrs:
+                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
+                num_reassigned += 1
+        logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
+        if num_reassigned == 0:
+            logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
+        if num_reassigned < len(new_attrs):
+            logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
+
     def transfer_io(self, transfer_model: pl.LightningModule):
         r"""
             The logger messages are told from the perspective of a model that is being transferred to (but in practice, this model has been initialized and contains new weights already)
@@ -337,78 +395,71 @@ class BrainBertInterface(pl.LightningModule):
             logger.info(pformat(f'Task config updating.. (first logged is new config)'))
             recursive_diff_log(self.cfg.task, transfer_cfg.task)
             #  from {transfer_cfg.task} to {self.cfg.task}'))
-        def try_transfer(module_name: str):
-            if (module := getattr(self, module_name, None)) is not None:
-                if (transfer_module := getattr(transfer_model, module_name, None)) is not None:
-                    if isinstance(module, nn.Parameter):
-                        assert module.data.shape == transfer_module.data.shape
-                        # Currently will fail for array flag transfer, no idea what the right policy is right now
-                        module.data = transfer_module.data
-                    else:
-                        if isinstance(module, ReadinMatrix):
-                            module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
-                        else:
-                            module.load_state_dict(transfer_module.state_dict())
-                    logger.info(f'Transferred {module_name} weights.')
-                else:
-                    # if isinstance(module, nn.Parameter):
-                    #     self.novel_params.append(self._wrap_key(module_name, module_name))
-                    # else:
-                    #     self.novel_params.extend(self._wrap_keys(module_name, module.named_parameters()))
-                    logger.info(f'New {module_name} weights.')
-        def try_transfer_embed(
-            embed_name: str, # Used for looking up possibly existing attribute
-            new_attrs: List[str],
-            old_attrs: List[str] ,
-        ) -> nn.Embedding:
-            if new_attrs == old_attrs:
-                try_transfer(embed_name)
-                return
-            if not hasattr(self, embed_name):
-                return
-            embed = getattr(self, embed_name)
-            if not old_attrs:
-                # if isinstance(embed, nn.Parameter):
-                #     self.novel_params.append(self._wrap_key(embed_name, embed_name))
-                # else:
-                #     self.novel_params.extend(self._wrap_keys(embed_name, embed.named_parameters()))
-                logger.info(f'New {embed_name} weights.')
-                return
-            if not new_attrs:
-                logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
-                return
-            num_reassigned = 0
-            def get_param(embed):
-                if isinstance(embed, nn.Parameter):
-                    return embed
-                return getattr(embed, 'weight')
-            for n_idx, target in enumerate(new_attrs):
-                if target in old_attrs:
-                    get_param(embed).data[n_idx] = get_param(getattr(transfer_model, embed_name)).data[old_attrs.index(target)]
-                    num_reassigned += 1
-            logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
-            if num_reassigned == 0:
-                logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
-            if num_reassigned < len(new_attrs):
-                # There is no non-clunky granular grouping assignment (probably) but we don't need it either
-                logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
-                # if isinstance(embed, nn.Parameter):
-                #     self.novel_params.append(self._wrap_key(embed_name, embed_name))
-                # else:
-                #     self.novel_params.extend(self._wrap_keys(embed_name, embed.named_parameters()))
-        try_transfer_embed('session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session)
-        try_transfer_embed('subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject)
-        try_transfer_embed('task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task)
-        try_transfer_embed('array_embed', self.data_attrs.context.array, transfer_data_attrs.context.array)
+        # def try_transfer_embed(
+        #     embed_name: str, # Used for looking up possibly existing attribute
+        #     new_attrs: List[str],
+        #     old_attrs: List[str] ,
+        # ) -> nn.Embedding:
+        #     if new_attrs == old_attrs:
+        #         try_transfer(embed_name)
+        #         return
+        #     if not hasattr(self, embed_name):
+        #         return
+        #     embed = getattr(self, embed_name)
+        #     if not old_attrs:
+        #         # if isinstance(embed, nn.Parameter):
+        #         #     self.novel_params.append(self._wrap_key(embed_name, embed_name))
+        #         # else:
+        #         #     self.novel_params.extend(self._wrap_keys(embed_name, embed.named_parameters()))
+        #         logger.info(f'New {embed_name} weights.')
+        #         return
+        #     if not new_attrs:
+        #         logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
+        #         return
+        #     num_reassigned = 0
+        #     def get_param(embed):
+        #         if isinstance(embed, nn.Parameter):
+        #             return embed
+        #         return getattr(embed, 'weight')
+        #     for n_idx, target in enumerate(new_attrs):
+        #         if target in old_attrs:
+        #             get_param(embed).data[n_idx] = get_param(getattr(transfer_model, embed_name)).data[old_attrs.index(target)]
+        #             num_reassigned += 1
+        #     logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
+        #     if num_reassigned == 0:
+        #         logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
+        #     if num_reassigned < len(new_attrs):
+        #         # There is no non-clunky granular grouping assignment (probably) but we don't need it either
+        #         logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
+        #         # if isinstance(embed, nn.Parameter):
+        #         #     self.novel_params.append(self._wrap_key(embed_name, embed_name))
+        #         # else:
+        #         #     self.novel_params.extend(self._wrap_keys(embed_name, embed.named_parameters()))
+        self.try_transfer_embed(
+            'session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session,
+            getattr(transfer_model, 'session_embed', None)
+        )
+        self.try_transfer_embed(
+            'subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject,
+            getattr(transfer_model, 'subject_embed', None)
+        )
+        self.try_transfer_embed(
+            'task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task,
+            getattr(transfer_model, 'task_embed', None)
+        )
+        self.try_transfer_embed(
+            'array_embed', self.data_attrs.context.array, transfer_data_attrs.context.array,
+            getattr(transfer_model, 'array_embed', None)
+        )
 
-        try_transfer('session_flag')
-        try_transfer('subject_flag')
-        try_transfer('task_flag')
-        try_transfer('array_flag')
+        self.try_transfer('session_flag', getattr(transfer_model, 'session_flag', None))
+        self.try_transfer('subject_flag', getattr(transfer_model, 'subject_flag', None))
+        self.try_transfer('task_flag', getattr(transfer_model, 'task_flag', None))
+        self.try_transfer('array_flag', getattr(transfer_model, 'array_flag', None))
 
-        try_transfer('context_project')
-        try_transfer('readin')
-        try_transfer('readout')
+        self.try_transfer('context_project', getattr(transfer_model, 'context_project', None))
+        self.try_transfer('readin', getattr(transfer_model, 'readin', None))
+        self.try_transfer('readout', getattr(transfer_model, 'readout', None))
 
         for k in self.task_pipelines:
             if k in transfer_model.task_pipelines:
@@ -574,6 +625,8 @@ class BrainBertInterface(pl.LightningModule):
 
     def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         # returns backbone features B T S H
+
+
         state_in, trial_context, temporal_context = self._prepare_inputs(batch)
         temporal_padding_mask = create_temporal_padding_mask(state_in, batch)
         if DataKey.extra in batch and not self.data_attrs.serve_tokens_flat: # serve_tokens_flat is enc dec, don't integrate extra (query) tokens in enc
@@ -717,6 +770,7 @@ class BrainBertInterface(pl.LightningModule):
             DataKey.time: '* t',
             DataKey.position: '* t',
         }
+
         pack_info = {}
         for k in batch:
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
@@ -1115,7 +1169,10 @@ def load_from_checkpoint(
     new_cls.transfer_io(old_model)
     return new_cls
 
-def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data_attrs: DataAttrs):
+def transfer_model(
+    old_model: BrainBertInterface, new_cfg: ModelConfig, new_data_attrs: DataAttrs,
+    extra_embed_map: Dict[str, Tuple[Any, DataAttrs]] = {}
+):
     r"""
         Transfer model to new cfg and data_attrs.
         Intended to be for inference
@@ -1133,6 +1190,12 @@ def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data
     new_cls = BrainBertInterface(cfg=new_cfg, data_attrs=new_data_attrs)
     new_cls.backbone.load_state_dict(old_model.backbone.state_dict())
     new_cls.transfer_io(old_model)
+
+    for embed_key in extra_embed_map:
+        logger.info(f"Transferring extra {embed_key}...")
+        extra_embed, extra_attrs = extra_embed_map[embed_key]
+        new_cls.try_transfer_embed(f'{embed_key}_embed', getattr(new_cls.data_attrs.context, embed_key), getattr(extra_attrs.context, embed_key), extra_embed)
+
     return new_cls
 
 # Utilities

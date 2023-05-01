@@ -68,7 +68,9 @@ batch_shapes = {
     DataKey.position: '* t',
 }
 
-TIMESTEPS = 100
+DECODER_HISTORY_MS = 2500 # ! ! MAKE SURE TO SET THIS! ! !
+DEBUG = False
+DEBUG = True
 
 class SkinnyBehaviorRegression(nn.Module):
     r"""
@@ -107,14 +109,13 @@ class SkinnyBehaviorRegression(nn.Module):
         else:
             self.bhvr_mean = None
             self.bhvr_std = None
-
-        self.register_buffer('decode_token', repeat(torch.zeros(cfg.hidden_size), 'h -> 1 t h', t=TIMESTEPS))
-        self.register_buffer('decode_time', torch.arange(TIMESTEPS).unsqueeze(0)) # 20ms bins, 2s # 1 t
+        max_timesteps = DECODER_HISTORY_MS // data_attrs.bin_size_ms
+        self.register_buffer('decode_token', repeat(torch.zeros(cfg.hidden_size), 'h -> 1 t h', t=max_timesteps))
+        self.register_buffer('decode_time', torch.arange(max_timesteps).unsqueeze(0)) # 20ms bins, 2s # 1 t
         if self.causal and self.cfg.behavior_lag_lookahead:
             self.decode_time = self.decode_time + self.bhvr_lag_bins
 
     def forward(self, backbone_features: torch.Tensor, src_time: torch.Tensor, trial_context: torch.Tensor) -> torch.Tensor:
-        # import pdb;pdb.set_trace()
         backbone_features: torch.Tensor = self.decoder(
             self.decode_token,
             self.decode_time,
@@ -125,9 +126,13 @@ class SkinnyBehaviorRegression(nn.Module):
         )
 
         bhvr = self.out(backbone_features)
-        # return bhvr
+        if DEBUG: # TODO remove
+            bhvr = bhvr * self.bhvr_std + self.bhvr_mean
         if self.bhvr_lag_bins:
             bhvr = bhvr[:, :-self.bhvr_lag_bins]
+        if DEBUG:
+            bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
+            return bhvr
         final_bhvr = bhvr[:,-1]
         if self.bhvr_mean is not None:
             final_bhvr = final_bhvr * self.bhvr_std + self.bhvr_mean
@@ -369,9 +374,18 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             recursive_diff_log(self.cfg.task, transfer_cfg.task)
             #  from {transfer_cfg.task} to {self.cfg.task}'))
 
-        self.try_transfer_embed('session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session, getattr(transfer_model, 'session_embed', None))
-        self.try_transfer_embed('subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject, getattr(transfer_model, 'subject_embed', None))
-        self.try_transfer_embed('task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task, getattr(transfer_model, 'task_embed', None))
+        self.try_transfer_embed(
+            'session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session,
+            getattr(transfer_model, 'session_embed', None)
+        )
+        self.try_transfer_embed(
+            'subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject,
+            getattr(transfer_model, 'subject_embed', None)
+        )
+        self.try_transfer_embed(
+            'task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task,
+            getattr(transfer_model, 'task_embed', None)
+        )
 
         self.try_transfer('session_flag', transfer_model.session_flag)
         self.try_transfer('subject_flag', transfer_model.subject_flag)
@@ -385,13 +399,21 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
     ) -> torch.Tensor: # out is behavior, T x 2
         # do the reshaping yourself
         # ! Assumes this divides evenly
-        spikes = spikes.unfold(2, self.neurons_per_token, self.neurons_per_token).flatten(-2)
-        b, t, c, h = spikes.size()
-        # unsqueezes are to add batch dim
-        time = torch.arange(t, device=spikes.device).unsqueeze(0).unsqueeze(-1).expand(b, t, c).flatten(1)
-        position = torch.arange(c, device=spikes.device).unsqueeze(0).unsqueeze(0).expand(b, t, c).flatten(1)
-        # time = repeat(torch.arange(t, device=spikes.device), 't -> (t c)', c=c).unsqueeze(0)
-        # position = repeat(torch.arange(c, device=spikes.device), 'c -> (t c)', t=t).unsqueeze(0)
+        if DEBUG: # DEBUG testing harness
+            OUT = {
+                Output.behavior: F.pad(spikes[DataKey.bhvr_vel],
+                                       pad=(0, 0, 0, DECODER_HISTORY_MS // self.data_attrs.bin_size_ms - spikes[DataKey.bhvr_vel].shape[-2]), # PAD THE TAIL!
+                                       value=self.data_attrs.pad_token)
+            }
+            time = spikes[DataKey.time]
+            position = spikes[DataKey.position]
+            spikes = spikes[DataKey.spikes]
+        else:
+            spikes = spikes.unfold(2, self.neurons_per_token, self.neurons_per_token).flatten(-2)
+            b, t, c, h = spikes.size()
+            # unsqueezes are to add batch dim
+            time = torch.arange(t, device=spikes.device).unsqueeze(0).unsqueeze(-1).expand(b, t, c).flatten(1)
+            position = torch.arange(c, device=spikes.device).unsqueeze(0).unsqueeze(0).expand(b, t, c).flatten(1)
 
         # * Quirk (to fix) of decoding process - context tokens receive flag for encoder but not for decoder...
         trial_context_with_flag = []
@@ -409,7 +431,11 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             trial_context_with_flag.append(task_embed + self.task_flag)
             trial_context_without_flag.append(task_embed)
         trial_context = torch.cat(trial_context_with_flag, dim=1)
-        state_in = self.readin(spikes.int()).flatten(-2).flatten(1,2) # flatten time and channel dim
+        trial_context_without_flag = torch.cat(trial_context_without_flag, dim=1)
+        if DEBUG:
+            state_in = self.readin(spikes.int()).flatten(-3) # flatten time and channel dim
+        else:
+            state_in = self.readin(spikes.int()).flatten(-2).flatten(1,2) # flatten time and channel dim
         features: torch.Tensor = self.backbone(
             state_in,
             times=time,
@@ -418,8 +444,11 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             # temporal_padding_mask=None,
             causal=self.causal,
         ) # B x Token x H (flat)
-        trial_context_without_flag = torch.cat(trial_context_without_flag, dim=1)
+        if DEBUG:
+            OUT[Output.behavior_pred] = self.decoder(features, time, trial_context_without_flag)
+            return OUT
         return self.decoder(features, time, trial_context_without_flag)[0] # remove batch dimension
+
 
 
 def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data_attrs: DataAttrs, extra_embed_map: Dict[str, Tuple[Any, DataAttrs]] = {}):
