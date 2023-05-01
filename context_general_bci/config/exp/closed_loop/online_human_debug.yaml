@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+init_ckpt: '{shared_dir}/pretrained/debug_human_untuned.ckpt'
+tag: 'online_debug'
+notes: "Decoder base: human obs." # pitt_v3/decode/human_m5
+# Intended to be run while hot swapping in test data to see if tuning process is consistent
