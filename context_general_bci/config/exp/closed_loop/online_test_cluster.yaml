@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_CRS02b_1953_2
+  # - observation_CRS02b_1953_9
+  # - observation_CRS02b_0_0
+  eval_datasets:
+  - observation_CRS02b_1953_2
+  # - observation_CRS02b_1953_9
+  eval_ratio: 0.1 # adopt this so we can use pitt_decode script
+model:
+  task:
+    mask_ratio: 0.5
+  extra_task_embed_ckpt: '{shared_dir}/pretrained/human_fbc.ckpt' # perks of fbc base.
+inherit_tag: human_fbc
+tag: 'online_test_tune'
+notes: "Decoder base: human obs, ortho, fbc."

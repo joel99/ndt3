@@ -373,10 +373,16 @@ class BrainBertInterface(pl.LightningModule):
             if isinstance(embed, nn.Parameter):
                 return embed
             return getattr(embed, 'weight')
+        # Backport pre: package enum to string (enums from old package aren't equal to enums from new package)
+        old_attrs = [str(a) for a in old_attrs]
         for n_idx, target in enumerate(new_attrs):
-            if target in old_attrs:
-                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
+            if str(target) in old_attrs:
+                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(str(target))]
                 num_reassigned += 1
+        # for n_idx, target in enumerate(new_attrs):
+        #     if target in old_attrs:
+        #         get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
+        #         num_reassigned += 1
         logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
         if num_reassigned == 0:
             logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')

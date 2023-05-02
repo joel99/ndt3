@@ -12,13 +12,17 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import (
+    stack_batch, load_wandb_run,
+    prep_plt, get_dataloader,
+)
+from context_general_bci.utils import (
+    wandb_query_experiment, get_wandb_run, wandb_query_latest
+)
 
 pl.seed_everything(0)
 
@@ -26,8 +30,8 @@ UNSORT = True
 # UNSORT = False
 
 DATASET_WHITELIST = [
-    "odoherty_rtt-Indy-20160407_02",
-    "odoherty_rtt-Indy-20170131_02",
+    # "odoherty_rtt-Indy-20160407_02",
+    # "odoherty_rtt-Indy-20170131_02",
     "odoherty_rtt-Indy-20160627_01",
 ]
 
@@ -125,6 +129,8 @@ def build_df(runs, mode='nll'):
 nll_df = build_df(runs_nll, mode='nll')
 df = nll_df
 #%%
+print(df.dataset)
+#%%
 # Show just NLL in logscale
 palette = sns.color_palette('colorblind', n_colors=len(df['dataset'].unique()))
 dataset_order = df.groupby(['dataset']).mean().sort_values('nll').index
@@ -218,3 +224,59 @@ g.map_dataframe(deco)
 g.fig.suptitle(f'Pretrain-Positive Regimes', y=1.05, fontsize=28)
 # g.fig.suptitle(f'Convergence of Pretraining  ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
 
+
+#%%
+# Single zoom
+relabel = {
+    'scale_v3/session_unsort/tune_intra': 'Session',
+    'scale_v3/task_unsort/tune_intra': 'Task',
+    'scale_v3/intra_unsort': 'Scratch',
+}
+palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
+hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+dataset_order = sorted(df['dataset'].unique())
+g = sns.relplot(
+    x='limit',
+    y='nll',
+    hue='series',
+    style='series',
+    hue_order=hue_order,
+    data=df,
+    palette=palette,
+    kind='scatter',
+    facet_kws={'sharex': False, 'sharey': False},
+    col='dataset',
+    col_order=dataset_order,
+)
+
+# retitle subplots
+title_remap = {
+    'odoherty_rtt-Indy-20170131_02': 'Final',
+    'odoherty_rtt-Indy-20160407_02': 'Initial',
+    'odoherty_rtt-Indy-20160627_01': 'Middle',
+}
+
+def deco(data, **kws):
+    ax = plt.gca()
+    ax = prep_plt(ax)
+    ax.set_xscale('log')
+    ax.set_yscale('log')
+    ax.set_xlabel('Target context trials')
+    for i, series in enumerate(hue_order):
+        sub_df = data[data['series'] == series]
+        plot_dataset_power_law(sub_df, ax, color=palette[i])
+
+        # Add text annotations below the first point in each series
+        x = min(sub_df['limit'])#.iloc[0]
+        y = max(sub_df['nll']) #.iloc[0]
+        label = relabel[series]
+        color = palette[i]
+        ax.text(x, y-0.003, label, color=color, ha='left', va='top', fontsize=14)
+
+    alias = ax.get_title().split('=')[1].strip()
+    ax.set_title(title_remap.get(alias, alias), fontsize=20)
+    ax.set_title("")
+
+# relabel legend
+g._legend.remove()
+g.map_dataframe(deco)

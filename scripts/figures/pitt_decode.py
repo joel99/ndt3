@@ -60,7 +60,8 @@ comp_df['data_id'] = comp_df['subject'].replace('Lab', '').replace('Home', '') \
 
 
 EVAL_DATASETS = [
-    'observation_CRS02b_19.*',
+    # 'observation_CRS02b_19.*',
+    'observation_CRS02b_1953_9',
     # 'observation_CRS07_15.*',
     # 'observation_CRS07_16.*',
 ]
@@ -69,7 +70,8 @@ EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
 EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
-    f'pitt_v3/probe_01_cross',
+    f'online_bci',
+    # f'pitt_v3/probe_01_cross',
 ]
 
 queries = [
@@ -77,7 +79,7 @@ queries = [
     # 'human_obs_m5',
     # 'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
     # 'human_obs_m75',
-    'human_m5',
+    # 'human_m5',
     # 'human_m5_lr1e5',
     # 'human_rtt_task_init',
     # 'human_rtt_pitt_init',
@@ -86,6 +88,7 @@ queries = [
     # 'crs07_m5_itertest',
     # 'human_unsup',
     # 'human_aug',
+    'online_test_tune',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -101,7 +104,7 @@ USE_SECOND_HALF_ONLY = False
 # USE_SECOND_HALF_ONLY = True # quick sanity check to see that results improve with time. Needed to explain why we're worse than KF baseline all the time
 
 DO_SUB_FBC = False
-DO_SUB_FBC = True
+# DO_SUB_FBC = True
 if DO_SUB_FBC:
     query = 'human_10l-j7mq2snc'
     wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
