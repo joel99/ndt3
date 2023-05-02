@@ -2,6 +2,9 @@
 
 defaults:
   - _default
+model:
+  task:
+    mask_ratio: 0.2
 init_ckpt: '{shared_dir}/pretrained/debug_human_untuned.ckpt'
 tag: 'online_debug'
 notes: "Decoder base: human obs." # pitt_v3/decode/human_m5

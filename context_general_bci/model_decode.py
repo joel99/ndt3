@@ -70,7 +70,7 @@ batch_shapes = {
 
 DECODER_HISTORY_MS = 2500 # ! ! MAKE SURE TO SET THIS! ! !
 DEBUG = False
-DEBUG = True
+# DEBUG = True
 
 class SkinnyBehaviorRegression(nn.Module):
     r"""
