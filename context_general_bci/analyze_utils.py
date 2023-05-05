@@ -187,3 +187,54 @@ r"""
     patch_attention(transformer.layers[-1].self_attn)
     hook_handle = transformer.layers[-1].self_attn.register_forward_hook(save_output)
 """
+
+
+class DataManipulator:
+    r"""
+        Utility class. Refactored out of `ICMSDataset` to keep that focused to dataloading.
+    """
+
+    @staticmethod
+    def kernel_smooth(
+        spikes: torch.Tensor,
+        window
+    ) -> torch.Tensor:
+        window = torch.tensor(window).float()
+        window /=  window.sum()
+        # Record B T C
+        b, t, c = spikes.size()
+        spikes = spikes.permute(0, 2, 1).reshape(b*c, 1, t).float()
+        # Convolve window (B 1 T) with record as convolution will sum across channels.
+        window = window.unsqueeze(0).unsqueeze(0)
+        smooth_spikes = torch.nn.functional.conv1d(spikes, window, padding="same")
+        return smooth_spikes.reshape(b, c, t).permute(0, 2, 1)
+
+    @staticmethod
+    def gauss_smooth(
+        spikes: torch.Tensor,
+        bin_size: float,
+        kernel_sd=0.05,
+        window_deviations=7, # ! Changed bandwidth from 6 to 7 so there is a peak
+        past_only=False
+    ) -> torch.Tensor:
+        r"""
+            Compute Gauss window and std with respect to bins
+
+            kernel_sd: in seconds
+            bin_size: in seconds
+            past_only: Causal smoothing, only wrt past bins - we don't expect smooth firing in stim datasets as responses are highly driven by stim.
+        """
+        # input b t c
+        gauss_bin_std = kernel_sd / bin_size
+        # the window extends 3 x std in either direction
+        win_len = int(window_deviations * gauss_bin_std)
+        # Create Gaussian kernel
+        window = signal.gaussian(win_len, gauss_bin_std, sym=True)
+        if past_only:
+            window[len(window) // 2 + 1:] = 0 # Always include current timestep
+            # if len(window) % 2:
+            # else:
+                # window[len(window) // 2 + 1:] = 0
+        return DataManipulator.kernel_smooth(spikes, window)
+
+
