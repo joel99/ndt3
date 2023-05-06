@@ -22,14 +22,14 @@ from context_general_bci.analyze_utils import prep_plt, DataManipulator
 from context_general_bci.tasks.pitt_co import load_trial, PittCOLoader
 
 USE_RAW = False
-# USE_RAW = True
+USE_RAW = True
 USE_CAT_SPIKES = False
 USE_CAT_SPIKES = True
 LAG_MS = 0
 
 dataset_name = 'observation_CRS02b_1953_2'
-# dataset_name = 'observation_CRS02b_0_0'
-dataset_name = 'observation_CRS07_150_1'
+dataset_name = 'observation_CRS02b_0_0'
+# dataset_name = 'observation_CRS07_150_1'
 
 context = context_registry.query(alias=dataset_name)
 if isinstance(context, list):
@@ -70,10 +70,12 @@ print(
 )
 
 # make a really wide figure
-# plt.figure(figsize=(20, 10))
+plt.figure(figsize=(20, 10))
 # plt.plot(all_spikes[0,:,0])
-# plt.plot(all_bhvr[:,0])
-
+# plt.plot(all_spikes[0,:,1])
+# plt.plot(all_spikes[0,:,3])
+plt.plot(all_bhvr[:,0])
+plt.plot(all_bhvr[:,1])
 #%%
 pl.seed_everything(0)
 
@@ -99,6 +101,7 @@ def sweep_ridge_fit(zero_filt_train=True, zero_filt_eval=True):
             all_trials.unique(),
             test_size=0.2, random_state=42
         )
+
         train_split = torch.isin(all_trials, train_split)
         test_split = torch.isin(all_trials, test_split)
         train_behavior = all_bhvr[train_split]
@@ -118,7 +121,7 @@ def sweep_ridge_fit(zero_filt_train=True, zero_filt_eval=True):
                 kernel_sd=smth,
             )[0]
             train_rates, eval_rates = smth_spikes[train_split], smth_spikes[test_split]
-            print(smth_spikes.shape, train_rates.shape, eval_rates.shape)
+            # print(smth_spikes.shape, train_rates.shape, eval_rates.shape)
         else:
             smth_train = smooth_spikes(train, kernel_sd=smth)
             smth_val = smooth_spikes(val, kernel_sd=smth)
@@ -131,7 +134,7 @@ def sweep_ridge_fit(zero_filt_train=True, zero_filt_eval=True):
         if zero_filt_eval:
             eval_rates = eval_rates[~(np.abs(val_bhvr) < 1e-5).all(-1)]
             val_bhvr = val_bhvr[~(np.abs(val_bhvr) < 1e-5).all(-1)]
-        print(train_rates.shape, train_bhvr.shape, eval_rates.shape, val_bhvr.shape)
+        # print(train_rates.shape, train_bhvr.shape, eval_rates.shape, val_bhvr.shape)
         decoder.fit(train_rates, train_bhvr)
         return decoder.score(eval_rates, val_bhvr), decoder.score(train_rates, train_bhvr)
 

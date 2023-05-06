@@ -111,6 +111,17 @@ class PittCOLoader(ExperimentalTaskLoader):
 
     """
 
+    @staticmethod
+    def get_velocity(position, kernel=np.ones((int(500 / 20), 2))/ (500 / 20)):
+        # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
+        # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
+        position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
+        position = convolve(position, kernel, mode='same')
+
+        vel = torch.tensor(np.gradient(position, axis=0)).float()
+        vel[vel.isnan()] = 0 # extra call to deal with edge values
+        return vel
+
     @classmethod
     def load(
         cls,
@@ -143,74 +154,68 @@ class PittCOLoader(ExperimentalTaskLoader):
             single_path = cache_root / f'{dataset_alias}_{i}.pth'
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)
-        def get_velocity(position, kernel=np.ones((int(500 / cfg.bin_size_ms), 2))/ (500 / cfg.bin_size_ms)):
-            # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
-            # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
-            position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
-            position = convolve(position, kernel, mode='same')
 
-            vel = torch.tensor(np.gradient(position, axis=0)).float()
-            vel[vel.isnan()] = 0 # extra call to deal with edge values
-            return vel
         if not datapath.is_dir() and datapath.suffix == '.mat': # payload style, preproc-ed/binned elsewhere
             payload = load_trial(datapath, key='thin_data')
 
             # Sanitize
             spikes = payload['spikes']
-            elements = spikes.nelement()
+            # elements = spikes.nelement()
             unique, counts = np.unique(spikes, return_counts=True)
             for u, c in zip(unique, counts):
-                if u >= 15 or c / elements < 1e-5: # anomalous, suppress. (Some bins randomly report impossibly high counts like 90 (in 20ms))
-                    spikes[spikes == u] = 0
+                if u >= 15:
+                    spikes[spikes == u] = 15 # clip
+                # if u >= 15 or c / elements < 1e-5: # anomalous, suppress to max. (Some bins randomly report impossibly high counts like 90 (in 20ms))
+                    # spikes[spikes == u] = 0
 
             if task == ExperimentalTask.unstructured:  # dont' bother with trial structure
                 spikes = chop_vector(spikes)
                 for i, trial_spikes in enumerate(spikes):
                     save_trial_spikes(trial_spikes, i)
             else:
-                # Iterate by trial, assumes continuity
-                for i in payload['trial_num'].unique():
-                    session_spikes = payload['spikes'][payload['trial_num'] == i]
-
-                    # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
-                    # we assume intent labels are not reliable in this timeframe
-                    start_pad = round(500 / cfg.bin_size_ms)
-                    end_pad = round(1000 / cfg.bin_size_ms)
-                    if session_spikes.size(0) <= start_pad + end_pad: # something's odd about this trial
-                        continue
-                    should_clip = False
-                    # if 'position' in payload and task in [ExperimentalTask.observation]: # We only "trust" in the labels provided by obs (for now). Note we previously tried ortho to no avail, and loading is buggier.
-                    if (
-                        'position' in payload and \
-                        task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
-                    ): # We only "trust" in the labels provided by obs (for now)
-                        if len(payload['position']) == len(payload['trial_num']):
-                            session_vel = get_velocity(payload['position'][payload['trial_num'] == i])
-                            if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
-                                should_clip = True
-                        else:
-                            session_vel = None
+                # Iterate by trial, assumes continuity so we grab velocity outside
+                # start_pad = round(500 / cfg.bin_size_ms)
+                # end_pad = round(1000 / cfg.bin_size_ms)
+                # should_clip = False
+                if (
+                    'position' in payload and \
+                    task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
+                ): # We only "trust" in the labels provided by obs (for now)
+                    if len(payload['position']) == len(payload['trial_num']):
+                        session_vel = PittCOLoader.get_velocity(payload['position'])
+                        # if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
+                        #     should_clip = True
                     else:
                         session_vel = None
-                    if should_clip:
-                        session_spikes = session_spikes[start_pad:-end_pad]
-                        if session_vel is not None:
-                            session_vel = session_vel[start_pad:-end_pad]
-                    if session_spikes.size(0) < round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms):
-                        save_trial_spikes(session_spikes, i, {DataKey.bhvr_vel: session_vel} if session_vel is not None else {})
+                else:
+                    session_vel = None
+                for i in payload['trial_num'].unique():
+                    trial_spikes = payload['spikes'][payload['trial_num'] == i]
+                    # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
+                    # we assume intent labels are not reliable in this timeframe
+                    # if trial_spikes.size(0) <= start_pad + end_pad: # something's odd about this trial
+                    #     continue
+                    if session_vel is not None:
+                        trial_vel = session_vel[payload['trial_num'] == i]
+                    # if should_clip:
+                    #     trial_spikes = trial_spikes[start_pad:-end_pad]
+                    #     if session_vel is not None:
+                    #         trial_vel = trial_vel[start_pad:-end_pad]
+                    if trial_spikes.size(0) < round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms):
+                        save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
                     else:
-                        end_of_trial = session_spikes.size(0) % round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
-                        if end_of_trial > 10: # some arbitrary small threshold...
-                            session_spikes_end = session_spikes[-end_of_trial:]
-                            if session_vel is not None:
-                                session_vel_end = session_vel[-end_of_trial:]
-                            save_trial_spikes(session_spikes_end, f'{i}_end', {DataKey.bhvr_vel: session_vel_end} if session_vel is not None else {})
-
-                        session_spikes = chop_vector(session_spikes)
+                        chopped_spikes = chop_vector(trial_spikes)
                         if session_vel is not None:
-                            session_vel = chop_vector(session_vel)
-                        for j, subtrial_spikes in enumerate(session_spikes):
-                            save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: session_vel[j]} if session_vel is not None else {})
+                            chopped_vel = chop_vector(trial_vel)
+                        for j, subtrial_spikes in enumerate(chopped_spikes):
+                            save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
+
+                        end_of_trial = trial_spikes.size(0) % round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
+                        if end_of_trial > 0:
+                            trial_spikes_end = trial_spikes[-end_of_trial:]
+                            if session_vel is not None:
+                                trial_vel_end = trial_vel[-end_of_trial:]
+                            save_trial_spikes(trial_spikes_end, f'{i}_end', {DataKey.bhvr_vel: trial_vel_end} if session_vel is not None else {})
         else: # folder style, preproc-ed on mind
             for i, fname in enumerate(datapath.glob("*.mat")):
                 if fname.stem.startswith('QL.Task'):
@@ -221,7 +226,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                         ),
                     }
                     if 'position' in payload:
-                        single_payload[DataKey.bhvr_vel] = get_velocity(payload['position'])
+                        single_payload[DataKey.bhvr_vel] = PittCOLoader.get_velocity(payload['position'])
                     single_path = cache_root / f'{i}.pth'
                     meta_payload['path'].append(single_path)
                     torch.save(single_payload, single_path)
