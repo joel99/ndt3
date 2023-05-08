@@ -23,6 +23,7 @@ from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
 
+CLAMP_MAX = 15
 
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.
@@ -163,8 +164,8 @@ class PittCOLoader(ExperimentalTaskLoader):
             # elements = spikes.nelement()
             unique, counts = np.unique(spikes, return_counts=True)
             for u, c in zip(unique, counts):
-                if u >= 15:
-                    spikes[spikes == u] = 15 # clip
+                if u >= CLAMP_MAX:
+                    spikes[spikes == u] = CLAMP_MAX # clip
                 # if u >= 15 or c / elements < 1e-5: # anomalous, suppress to max. (Some bins randomly report impossibly high counts like 90 (in 20ms))
                     # spikes[spikes == u] = 0
 

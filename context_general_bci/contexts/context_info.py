@@ -86,6 +86,10 @@ class ContextInfo(_ContextInfoDefaultsBase, _ContextInfoBase):
     def _id(self):
         raise NotImplementedError
 
+    @property
+    def session_embed_id(self):
+        return self.id
+
     @classmethod
     @abc.abstractmethod
     def build_task(cls, **kwargs):
@@ -443,6 +447,9 @@ with open(Path(__file__).parent / 'pitt_blacklist.csv') as f:
 @dataclass
 class BCIContextInfo(ReachingContextInfo):
     session_set: int = 0
+
+    # def session_embed_id(self):
+    #     return f"{self.session}" # Many overlapping sessions from the same day, preserve ID.
 
     @classmethod
     def build_from_dir_varied(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"]):

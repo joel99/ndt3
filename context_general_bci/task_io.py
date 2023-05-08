@@ -1293,6 +1293,7 @@ class BehaviorRegression(TaskPipeline):
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr[r2_mask]
             valid_tgt = bhvr_tgt[r2_mask]
+            # breakpoint()
             batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
             if Metric.kinematic_r2_thresh in self.cfg.metrics:
                 valid_bhvr = valid_bhvr[valid_tgt.abs() > self.cfg.behavior_metric_thresh]

@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  z_score: 'kin_zscore.pt'
+train:
+  autoscale_batch_size: false
+  batch_size: 32
+  accumulate_batches: 2
+model:
+  task:
+    mask_ratio: 0.5
+    decode_normalizer: ""
+inherit_tag: human_rtt_pitt_init

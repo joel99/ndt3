@@ -31,7 +31,7 @@ model:
     decode_time_pool: ""
     task_weights: [1.0, 0.1]
     mask_ratio: 0.2
-    behavior_lag: 40 # updated from 120, swept in an unreported experiment. 40-100 seems reasonably robust.
+    behavior_lag: 0 # No lag for human data. For parity with ongoing exps.
     decode_normalizer: pitt_obs_zscore.pt
 
   accelerate_new_params: 10.0 # We're introducing a whole new readout layer...

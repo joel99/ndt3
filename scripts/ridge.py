@@ -28,7 +28,7 @@ USE_CAT_SPIKES = True
 LAG_MS = 0
 
 dataset_name = 'observation_CRS02b_1953_2'
-dataset_name = 'observation_CRS02b_0_0'
+# dataset_name = 'observation_CRS02b_0_0'
 # dataset_name = 'observation_CRS07_150_1'
 
 context = context_registry.query(alias=dataset_name)
@@ -154,7 +154,7 @@ line_styles = ['-', '--']
 
 ref_scores = {
     'observation_CRS02b_0_0': 0.5,
-    # 'observation_CRS02b_1953_2': 0.8,
+    'observation_CRS02b_1953_2': 0.67,
     'observation_CRS07_150_1': 0.8,
 }
 # Prepare plot

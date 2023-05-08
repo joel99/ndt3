@@ -10,8 +10,6 @@ dataset:
   - observation_CRS07_16.*
 model:
   task:
-    mask_ratio: 0.5
-  val_iters: 10
-train:
-  patience: 50
+    mask_ratio: 0.1
+
 inherit_tag: crs07_m5

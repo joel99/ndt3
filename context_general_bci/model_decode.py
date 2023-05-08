@@ -47,7 +47,7 @@ from context_general_bci.components import (
     ContextualMLP,
 )
 from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_temporal_padding_mask, TaskPipeline
-
+from context_general_bci.tasks.pitt_co import CLAMP_MAX
 logger = logging.getLogger(__name__)
 
 # Assumes FLAT TOKEN SERVING
@@ -399,6 +399,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
     ) -> torch.Tensor: # out is behavior, T x 2
         # do the reshaping yourself
         # ! Assumes this divides evenly
+        spikes.clamp_(0, 15)
         if DEBUG: # DEBUG testing harness
             OUT = {
                 Output.behavior: F.pad(spikes[DataKey.bhvr_vel],
@@ -447,7 +448,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
         if DEBUG:
             OUT[Output.behavior_pred] = self.decoder(features, time, trial_context_without_flag)
             return OUT
-        return self.decoder(features, time, trial_context_without_flag)[0] # remove batch dimension
+        return self.decoder(features, time, trial_context_without_flag)[0][::-1] # remove batch dimension, unflip x/y
 
 
 
