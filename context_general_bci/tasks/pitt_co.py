@@ -8,7 +8,8 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter1d
-from scipy.signal import convolve
+# from scipy.signal import convolve
+import torch.nn.functional as F
 from einops import rearrange, reduce
 
 import logging
@@ -116,11 +117,16 @@ class PittCOLoader(ExperimentalTaskLoader):
     def get_velocity(position, kernel=np.ones((int(500 / 20), 2))/ (500 / 20)):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
-        position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
-        position = convolve(position, kernel, mode='same')
+        int_position = pd.Series(position.flatten()).interpolate()
+        position = torch.tensor(int_position).view(-1, position.shape[-1])
+        position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).T.unsqueeze(1), padding='same')[:,0].T
+        vel = torch.gradient(position, dim=0).float()
+
+        # position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
+        # position = convolve(position, kernel, mode='same')
+        # vel = torch.tensor(np.gradient(position, axis=0)).float()
         # position = convolve(position, kernel, mode='same') # Nope. this applies along both dimensions. Facepalm.
 
-        vel = torch.tensor(np.gradient(position, axis=0)).float()
         vel[vel.isnan()] = 0 # extra call to deal with edge values
         return vel
 
