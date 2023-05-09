@@ -466,22 +466,31 @@ class DatasetConfig:
     pitt_co: PittConfig = PittConfig.create_with_arrays([ # This is actually the catch all for Pitt, and doesn't have any particular structure. No guarantees, might not even be CO.
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
     ])
     observation: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+
     ])
     ortho: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+
     ])
     fbc: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+
     ])
     unstructured: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+
     ])
     delay_reach: ExperimentalConfig = ExperimentalConfig()
 
