@@ -1,0 +1,26 @@
+# @package _global_
+
+defaults:
+  - /model: pretrain_2x # equivalent to flat_enc_dec without flattening
+  - /dataset: flat # We override rather than use different preset for easy comparison
+  - _default
+model:
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.5 # for efficiency
+dataset:
+  serve_tokenized: False
+  serve_tokenized_flat: False
+
+  max_arrays: 1
+  max_channels: 96
+
+  datasets:
+  - odoherty_rtt-Indy.*
+  exclude_datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison

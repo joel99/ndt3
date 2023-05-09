@@ -119,8 +119,8 @@ class PittCOLoader(ExperimentalTaskLoader):
         # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
         int_position = pd.Series(position.flatten()).interpolate()
         position = torch.tensor(int_position).view(-1, position.shape[-1])
-        position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).T.unsqueeze(1), padding='same')[:,0].T
-        vel = torch.gradient(position, dim=0).float()
+        position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
+        vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float()
 
         # position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
         # position = convolve(position, kernel, mode='same')

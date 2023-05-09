@@ -325,7 +325,7 @@ class BrainBertInterface(pl.LightningModule):
             out.append(self._wrap_key(prefix, n))
         return out
 
-    def try_transfer(self, module_name: str, transfer_module: Any = None):
+    def try_transfer(self, module_name: str, transfer_module: Any = None, transfer_data_attrs: Optional[DataAttrs] = None):
         if (module := getattr(self, module_name, None)) is not None:
             if transfer_module is not None:
                 if isinstance(module, nn.Parameter):
@@ -333,11 +333,11 @@ class BrainBertInterface(pl.LightningModule):
                     # Currently will fail for array flag transfer, no idea what the right policy is right now
                     module.data = transfer_module.data
                 else:
-                    assert not isinstance(module, ReadinMatrix), "Deprecated"
-                    # if isinstance(module, ReadinMatrix):
-                        # module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
-                    # else:
-                    module.load_state_dict(transfer_module.state_dict())
+                    if isinstance(module, ReadinMatrix):
+                        assert transfer_data_attrs is not None, "Must provide data attrs for readin matrix transfer"
+                        module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
+                    else:
+                        module.load_state_dict(transfer_module.state_dict())
                 logger.info(f'Transferred {module_name} weights.')
             else:
                 # if isinstance(module, nn.Parameter):
@@ -464,8 +464,8 @@ class BrainBertInterface(pl.LightningModule):
         self.try_transfer('array_flag', getattr(transfer_model, 'array_flag', None))
 
         self.try_transfer('context_project', getattr(transfer_model, 'context_project', None))
-        self.try_transfer('readin', getattr(transfer_model, 'readin', None))
-        self.try_transfer('readout', getattr(transfer_model, 'readout', None))
+        self.try_transfer('readin', getattr(transfer_model, 'readin', None), transfer_data_attrs=transfer_data_attrs)
+        self.try_transfer('readout', getattr(transfer_model, 'readout', None), transfer_data_attrs=transfer_data_attrs)
 
         for k in self.task_pipelines:
             if k in transfer_model.task_pipelines:

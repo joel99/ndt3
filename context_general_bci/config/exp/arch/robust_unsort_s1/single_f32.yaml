@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+  - /train: single_session_exp1
+  - _default
+model:
+  hidden_size: 128 # size down appropriately
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.5 # for efficiency
+  neurons_per_token: 32
+dataset:
+  eval_ratio: 0.1
+  scale_limit_per_eval_session: 300
+  datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison
+
+fragment_datasets: True

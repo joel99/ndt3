@@ -1,0 +1,15 @@
+# @package _global_
+
+dataset:
+  odoherty_rtt:
+    arrays: ['Indy-M1', 'Loco-M1']
+    include_sorted: False
+model:
+  causal: true
+  task:
+    mask_ratio: 0.5
+train:
+  patience: 250
+  autoscale_batch_size: false
+  batch_size: 512 # a100s
+seed: 1

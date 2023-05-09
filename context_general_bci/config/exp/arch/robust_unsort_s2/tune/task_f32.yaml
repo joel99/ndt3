@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+  - _default
+model:
+  subject_embed_strategy: EmbedStrat.token
+  neurons_per_token: 32
+dataset:
+  max_arrays: 1
+  max_channels: 288
+inherit_exp: arch/robust # task unsort == task sort
