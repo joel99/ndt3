@@ -399,7 +399,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
     ) -> torch.Tensor: # out is behavior, T x 2
         # do the reshaping yourself
         # ! Assumes this divides evenly
-        spikes.clamp_(0, 15)
+        spikes.clamp_(0, CLAMP_MAX)
         if DEBUG: # DEBUG testing harness
             OUT = {
                 Output.behavior: F.pad(spikes[DataKey.bhvr_vel],

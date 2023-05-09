@@ -118,6 +118,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
         position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
         position = convolve(position, kernel, mode='same')
+        # position = convolve(position, kernel, mode='same') # Nope. this applies along both dimensions. Facepalm.
 
         vel = torch.tensor(np.gradient(position, axis=0)).float()
         vel[vel.isnan()] = 0 # extra call to deal with edge values
