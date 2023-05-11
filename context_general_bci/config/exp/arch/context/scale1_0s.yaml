@@ -6,6 +6,5 @@ model:
 dataset:
   scale_ratio: 1.0
 train:
-  patience: 200
-  batch_size: 128
-  autoscale_batch_size: false
+  accumulate_batches: 2
+  batch_size: 256

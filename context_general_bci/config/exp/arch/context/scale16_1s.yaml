@@ -5,3 +5,5 @@ model:
   session_embed_token_count: 1
 dataset:
   scale_ratio: 0.0625
+train:
+  batch_size: 64
