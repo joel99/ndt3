@@ -14,15 +14,16 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import get_run_config, load_wandb_run, wandb_query_latest, wandb_query_experiment
-from analyze_utils import prep_plt
+from context_general_bci.analyze_utils import (
+    get_run_config, load_wandb_run, prep_plt
+)
+from context_general_bci.utils import wandb_query_latest, wandb_query_experiment
 
 from matplotlib.colors import LogNorm, Normalize
-import wandb
 
 # pull experiment
 experiment = ['arch/context']
@@ -47,7 +48,7 @@ runs = wandb_query_experiment(
 
 def get_run_dict(run):
     out = run.history(
-        samples=1000, # unfortunately heavy since we need log scale
+        samples=5000, # unfortunately heavy since we need log scale
         keys=[
             'trainer/global_step',
             'eval_loss',
@@ -71,6 +72,13 @@ def get_run_df(runs, labels):
         get_run_dict(run) for run in runs if run.config['tag'] in labels
     ])
 
+# filter to keep only the first of each variant
+seen_variants = {}
+for run in runs:
+    if run.config['tag'] not in seen_variants:
+        seen_variants[run.config['tag']] = run
+runs = list(seen_variants.values())
+print(len(runs))
 # run_dicts = [get_run_dict(run) for run in runs]
 #%%
 title = "Increased context capacity speeds convergence"
@@ -144,5 +152,86 @@ for i, ax in enumerate(g.axes.flat):
 
 
 #%%
-title = 'Not bottlenecked by model size'
-# TODO
+run_labels = [
+    "scale1_0s", "scale1_1s", "scale1_8s",
+]
+df = get_run_df(runs, run_labels)
+
+cmap = sns.color_palette('viridis_r', n_colors=3)
+
+# Filter dataframe for runs with "scale1" in their names
+
+# Create the plot
+fig = plt.figure(figsize=(6, 4))
+ax = prep_plt(ax=fig.gca())
+ax = sns.lineplot(
+    data=df,
+    x='trainer/global_step',
+    y='eval_loss',
+    hue='context_tokens',
+    style='context_tokens',
+    palette=cmap,
+    alpha=0.8,
+    ax=ax
+)
+ax.set_xscale('log')
+ax.set_yscale('log')
+ax.set_ylim(ax.get_ylim()[0], 0.4)  # Set max ylim to 0.45
+ax.set_xlabel('Training Steps')
+ax.set_ylabel('Test loss')
+ax.set_title('')
+
+leg = ax.legend(
+    title='Context Tokens', loc='lower left', frameon=False,
+    fontsize=14,
+    title_fontsize=14,
+)
+for line in leg.get_lines():
+    line.set_linewidth(3.0)
+
+# Only mark min and max on y-axis
+ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
+ax.yaxis.set_minor_locator(ticker.NullLocator())
+
+# Rotate ytick labels by 90 degrees
+# Do not use scientific notation
+ax.yaxis.set_major_formatter(ticker.FormatStrFormatter('%g'))
+ax.tick_params(axis='y', rotation=90)
+
+
+
+# Create the inset axes
+ax_inset = fig.add_axes([0.65, 0.5, 0.2, 0.4])  # Adjust the position and size of the inset
+
+# Zoomed-in plot in the inset axes
+sns.lineplot(
+    data=df,
+    x='trainer/global_step',
+    y='eval_loss',
+    hue='context_tokens',
+    style='context_tokens',
+    palette=cmap,
+    alpha=0.8,
+    ax=ax_inset,
+    legend=False,
+)
+
+ax_inset.set_xlim(5e3, 2.5e4)  # Adjust the x-axis limits for the zoomed-in view
+ax_inset.set_ylim(0.31, 0.325)  # Adjust the y-axis limits for the zoomed-in view
+ax_inset.set_xscale('log')
+ax_inset.set_yscale('linear')  # Use linear scale for the y-axis in the inset
+ax_inset.get_xaxis().set_visible(False)
+# ax_inset.set_xticks([])
+# ax_inset.set_xticklabels([])
+# ax_inset.set_xticks([5e3, 2e4])
+ax_inset.set_yticks([0.31, 0.325])
+ax_inset.spines['top'].set_visible(False)
+ax_inset.spines['right'].set_visible(False)
+ax_inset.spines['bottom'].set_visible(False)
+ax_inset.yaxis.set_major_locator(ticker.MaxNLocator(2))
+ax_inset.yaxis.set_minor_locator(ticker.NullLocator())
+ax_inset.set_xlabel('')
+ax_inset.set_ylabel('')
+ax_inset.set_title('')  # Add a title to the inset plot
+
+inset_box = ax.indicate_inset_zoom(ax_inset, edgecolor='black', alpha=0.5, linewidth=2)
