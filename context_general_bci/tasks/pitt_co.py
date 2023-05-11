@@ -91,10 +91,9 @@ def load_trial(fn, use_ql=True, key='data'):
         if 'Kinematics' in payload:
             # cursor x, y
             out['position'] = torch.from_numpy(payload['Kinematics']['ActualPos'][:,1:3]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
-            out['position'] = out['position'].roll(1, dims=1) # swap x and y
         elif 'pos' in payload:
             out['position'] = torch.from_numpy(payload['pos'][:,1:3]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
-            out['position'] = out['position'].roll(1, dims=1) # swap x and y
+        out['position'] = out['position'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])

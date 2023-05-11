@@ -297,10 +297,6 @@ df.loc[df['variant'] == 'kf_base', 'subject'] = df[df['variant'] == 'kf_base']['
 torch.save(df, eval_data) # for some reason notebook isn't loading, so force it with a shell call and load from here...
 #%%
 df = torch.load(eval_data)
-# print(df)
-# map kf ids to the correct abbreviated variant
-# Are we actually better or worse than Pitt baselines?
-# intersect unique data ids, to get the relevant test set. Also, only compare nontrivial KF slots
 kf_ids = df[df['variant'] == 'kf_base']['data_id'].unique()
 model_ids = df[df['variant'] != 'kf_base']['data_id'].unique()
 nontrivial_ids = df[(df['variant'] == 'kf_base') & (df['kin_r2'] > 0)]['data_id'].unique()
@@ -312,79 +308,106 @@ sub_df = df[df['data_id'].isin(intersect_ids)]
 print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
 #%%
+print(df.variant.unique())
+#%%
 # make pretty seaborn default
 subject = 'CRS02b'
 # subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
+# subject_df = sub_df
 print(subject_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
+# Across the board, M1 either has modest effect or major drop. We exclude.
+CAMERA_VARIANTS = {
+    # 'human_m1': 'Human (M1)',
+    'human_m5': 'Human',
+    # 'human_obs_m1': 'Human (Obs) (M1)',
+    'human_obs_m5': 'Human (Obs)',
+    'human_rtt_task_init': 'Human + Monkey',
+    # 'human_rtt_task_init_m1': 'Human + Monkey* (M1)',
+    'human_task_init': 'Human + Monkey',
+    # 'human_task_init_m1': 'Human + Monkey (M1)',
+    'human_rtt_scratch': 'Scratch',
+    'human_rtt_pitt_init': 'Human',
+    # 'crs07_m1': 'CRS07 (M1)',
+    'crs07_m5': 'CRS07',
+    # 'human_rtt_pitt_init_m1': 'Human + Monkey* (Pitt) (M1)',
+}
+
+camera_df = subject_df[subject_df['variant'].isin(CAMERA_VARIANTS.keys())]
+camera_df['rtt_sup'] = camera_df['variant'].apply(lambda x: 'rtt' in x)
 sns.set_theme(style="whitegrid")
 # boxplot
-order = sorted(subject_df.variant.unique())
-palette = sns.color_palette("mako_r", len(order))
+
+# Sort by RTT sup
+order = camera_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False).index
+
+palette = sns.color_palette("mako_r", 2)
 ax = sns.pointplot(
-    data=subject_df, x='variant', y='kin_r2', order=order,
-    join=False
+    data=camera_df, x='kin_r2', y='variant', order=order,
+    join=False,
+    hue='rtt_sup', linestyles='rtt_sup',
+    palette=palette
 )
-# sns.swarmplot(data=subject_df, x='variant', y='kin_r2', hue=, order=order, ax=ax)
-ax.set_ylim(0, 1)
-ax.set_ylabel('Vel R2')
-ax.set_xlabel('Model variant')
-ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]}) ({"thresh" if USE_THRESH else ""}, {"second half" if USE_SECOND_HALF_ONLY else ""})')
+
+# relabel with camera variant names
+ax.set_yticklabels([CAMERA_VARIANTS[v.get_text()] for v in ax.get_yticklabels()])
+
+
+ax.set_xlabel('Vel $R^2$')
+ax.set_ylabel('Pretraining source')
+ax.set_title(f'{subject}')
+
+# ax.set_title(f'{subject} Perf ({EXPERIMENTS_KIN[0]}) ({"thresh" if USE_THRESH else ""}, {"second half" if USE_SECOND_HALF_ONLY else ""})')
 # Rotate xlabels
-ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
+# ax.set_xticklabels(ax.get_xticklabels(), rotation=45, horizontalalignment='right')
 
 # 10 yticks
-ax.set_yticks(np.linspace(0, 1, 11))
+# ax.set_yticks(np.linspace(0, 1, 11))
+
+# This is a pretty confusing way to show it. Maybe we should do compare it against from scratch?
+
 
 #%%
-print(kin_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
+import matplotlib.patches as mpatches
 
-#%%
-one_one_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_rtt_pitt_init'])]
-# one_one_df = sub_df[sub_df['variant'].isin(['kf_base', 'human_m5'])]
-g = sns.catplot(data=one_one_df, col='data_id', x='variant', y='kin_r2', kind='bar', col_wrap=4)
+subject = 'CRS02b'
+subject = 'CRS07'
+subject_df = sub_df[sub_df['subject'] == subject]
 
-def deco(data, **kwargs):
-    # set min y to 0
-    ax = plt.gca()
-    ax = prep_plt(ax)
-    ax.set_ylim(0, 1)
-    # ax.set_xlabel('Target session trials')
-    # ax.set_ylabel('Vel R2')
+# ... (rest of your code)
 
-g.map_dataframe(deco)
-# To facet grid
-# g = sns.FacetGrid(data=sub_df, col='data_id', hue='variant', col_wrap=4)
-# g.map_dataframe(sns.barplot, x='variant', y='kin_r2')
-#%%
-# Reshape the dataframe using pivot_table
-scatter_df = one_one_df.pivot_table(index='data_id', columns='variant', values='kin_r2').reset_index()
-# Create scatter plot
-scatter_variants = scatter_df.columns[1:]
-if scatter_variants[0] != 'kf_base':
-    scatter_variants = scatter_variants[::-1]
-sns.scatterplot(data=scatter_df, x=scatter_variants[0], y=scatter_variants[1], hue='data_id', legend=False)
-# sns.scatterplot(data=scatter_df, x='kf_base', y='human_m5', hue='data_id', legend=False)
-plt.plot([0, 1], [0, 1], linestyle='--', color='gray')
+camera_df = subject_df[subject_df['variant'].isin(CAMERA_VARIANTS.keys())]
+camera_df['rtt_sup'] = camera_df['variant'].apply(lambda x: 'rtt' in x)
+sns.set_theme(style="whitegrid")
 
-# Add labels and diagonal reference line
-plt.xlabel(f'{scatter_variants[0]} Kin R2')
-plt.ylabel(f'{scatter_variants[1]} Kin R2')
-plt.title('Performance Comparison of KF Base and Human M5')
-# Seems like there might be some data where model has no training data at all, unluckily. But that contributes maybe 0.01 drop at most.
+# Sort by RTT sup
+grouped = camera_df.groupby('rtt_sup')
+sorted_groups = [group.sort_values('kin_r2', ascending=False) for _, group in grouped]
+sorted_camera_df = pd.concat(sorted_groups)
 
-#%%
-from scipy import stats
+order = sorted_camera_df['variant'].unique()
 
-# Perform paired t-test
-t, p = stats.ttest_rel(scatter_df['human_m5'], scatter_df['kf_base'])
+palette = sns.color_palette("mako_r", 2)
+ax = sns.pointplot(
+    data=sorted_camera_df, x='kin_r2', y='variant', order=order,
+    join=False,
+    hue='rtt_sup', linestyles='rtt_sup',
+    palette=palette
+)
 
-# Print test results
-if p < 0.05:
-    print("Human M5 performance is significantly greater than KF Base performance (p = {:.3f})".format(p))
-else:
-    print("There is no significant difference between Human M5 and KF Base performance (p = {:.3f})".format(p))
-#%%
-print(df[df['data_id'] == 'CRS07_157_5'])
-# %%
+# Add a divider
+divider_y = (len(order) - 1) / 2
+ax.axhline(y=divider_y, color='black', linestyle='--', alpha=0.5)
+
+# Custom legend
+legend_handles = [
+    mpatches.Patch(color=palette[0], label='RTT Sup: False'),
+    mpatches.Patch(color=palette[1], label='RTT Sup: True')
+]
+ax.legend(handles=legend_handles, loc='lower right', title='RTT Sup')
+
+# Remove the original legend
+ax.get_legend().remove()
+
+plt.show()

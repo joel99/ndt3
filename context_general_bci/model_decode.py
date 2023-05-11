@@ -448,7 +448,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
         if DEBUG:
             OUT[Output.behavior_pred] = self.decoder(features, time, trial_context_without_flag)
             return OUT
-        return self.decoder(features, time, trial_context_without_flag)[0]# [::-1] # remove batch dimension, unflip x/y
+        return self.decoder(features, time, trial_context_without_flag)[0] # remove batch dimension. Note we unflip x/y in the actual module; not this onnx compression's responsibility to interpret dims
 
 
 

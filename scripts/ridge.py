@@ -22,7 +22,7 @@ from context_general_bci.analyze_utils import prep_plt, DataManipulator
 from context_general_bci.tasks.pitt_co import load_trial, PittCOLoader
 
 USE_RAW = False
-USE_RAW = True
+# USE_RAW = True
 USE_CAT_SPIKES = False
 USE_CAT_SPIKES = True
 LAG_MS = 0
