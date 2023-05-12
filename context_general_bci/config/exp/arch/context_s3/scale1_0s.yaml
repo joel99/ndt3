@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  session_embed_strategy: EmbedStrat.none
+dataset:
+  scale_ratio: 1.0
+train:
+  accumulate_batches: 2
+  batch_size: 256

@@ -1,0 +1,23 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_.*
+  - odoherty_rtt.*
+  odoherty_rtt:
+    chop_size_ms: 2500
+    include_sorted: False
+    arrays: ['Indy-M1', 'Loco-M1']
+  z_score: 'kin_zscore.pt'
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
+train:
+  autoscale_batch_size: false
+  batch_size: 64
+model:
+  val_iters: 3
+  task:
+    mask_ratio: 0.5
+    decode_normalizer: ""
+inherit_exp: ''

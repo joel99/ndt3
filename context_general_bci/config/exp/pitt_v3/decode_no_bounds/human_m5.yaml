@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 64
+model:
+  task:
+    mask_ratio: 0.5
+inherit_tag: human_10l

@@ -15,3 +15,4 @@ train:
   # Use 2 nodes
   accumulate_batches: 2
 notes: "Subject ablation"
+load_from_id: crs02b-apqqnghv

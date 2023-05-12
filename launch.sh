@@ -5,6 +5,7 @@
 #SBATCH -c 6
 #SBATCH -t 48:00:00
 #SBATCH --mem 40G
+#SBATCH -x mind-1-5
 #SBATCH --output=slurm_logs/%j.out
 
 echo $@

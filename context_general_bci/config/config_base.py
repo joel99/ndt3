@@ -290,6 +290,7 @@ class ModelConfig:
     force_zero_mask: bool = False # for shuffle infill
     val_iters: int = 1 # how many iters to run validation for, since it's quite noisy for Pitt decode
 
+    closed_loop_crop_bins: int = 0 # take last N bins for closed loop. For stability
     extra_task_embed_ckpt: str = "" # for loading task embeddings from a different ckpt. Only implemented via `model_decode`.
     extra_subject_embed_ckpt: str = "" # for loading subject embeddings from a different ckpt. Only implemented via `model_decode`.
 
@@ -366,6 +367,7 @@ class NLBConfig(ExperimentalConfig):
 @dataclass
 class PittConfig(ExperimentalConfig):
     chop_size_ms: int = 2500
+    respect_trial_boundaries: bool = True # quickly experimenting whether we can remove pulsar bhvr if we drop trial boundaries
 
 @dataclass
 class DatasetConfig:
