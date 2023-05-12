@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+init_ckpt: '{shared_dir}/pretrained/human_rtt.ckpt'
+tag: 'online_rtt_tune'
+notes: "Decoder base: human obs and monkey RTT." # pitt_v3/decode_full/human_rtt_pitt_init
+model:
+  closed_loop_crop_bins: 50

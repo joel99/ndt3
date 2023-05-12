@@ -144,6 +144,7 @@ class BrainBertInterface(pl.LightningModule):
             'val_iters',
             'extra_task_embed_ckpt',
             'extra_subject_embed_ckpt',
+            'closed_loop_crop_bins'
         ]:
             setattr(self_copy, safe_attr, getattr(cfg, safe_attr))
         recursive_diff_log(self_copy, cfg)
