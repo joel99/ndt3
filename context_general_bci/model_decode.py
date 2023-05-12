@@ -133,7 +133,8 @@ class SkinnyBehaviorRegression(nn.Module):
         if DEBUG:
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
             return bhvr
-        final_bhvr = bhvr[:,-1]
+        final_bhvr = bhvr[:,src_time.max()]
+        # final_bhvr = bhvr[:,-1]
         if self.bhvr_mean is not None:
             final_bhvr = final_bhvr * self.bhvr_std + self.bhvr_mean
         return final_bhvr
@@ -393,6 +394,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
 
         self.try_transfer('readin', transfer_model.readin)
 
+    @torch.no_grad()
     def forward(
         self,
         spikes: torch.Tensor # B=1 x T x C x H # ! should be int dtype, double check
@@ -417,6 +419,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             position = torch.arange(c, device=spikes.device).unsqueeze(0).unsqueeze(0).expand(b, t, c).flatten(1)
 
         # * Quirk (to fix) of decoding process - context tokens receive flag for encoder but not for decoder...
+        # breakpoint()
         trial_context_with_flag = []
         trial_context_without_flag = []
         if self.session_embed is not None:
@@ -445,6 +448,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             # temporal_padding_mask=None,
             causal=self.causal,
         ) # B x Token x H (flat)
+        # print(f'feat iter: ', features.shape, features.sum())
         if DEBUG:
             OUT[Output.behavior_pred] = self.decoder(features, time, trial_context_without_flag)
             return OUT
@@ -482,7 +486,7 @@ def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data
         logger.info(f"Transferring extra {embed_key}...")
         extra_embed, extra_attrs = extra_embed_map[embed_key]
         new_cls.try_transfer_embed(f'{embed_key}_embed', getattr(new_cls.data_attrs.context, embed_key), getattr(extra_attrs.context, embed_key), extra_embed)
-
+    new_cls.eval() # NO TRAINING, DISABLE DROPOUT.
     return new_cls
 
 def load_extra_embeds(tgt_cfg: ModelConfig) -> Dict[str, Tuple[Any, DataAttrs]]:
