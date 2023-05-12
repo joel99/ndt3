@@ -255,14 +255,14 @@ def build_df(runs, mode='nll'):
             inst_df.cfg.eval_datasets = [dataset]
             inst_df.cfg.datasets = [dataset]
             inst_df.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
-            # valid_keys = list(val_ref.meta_df[
-            #     (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
-            # ][MetaKey.unique]) + list(eval_ref.meta_df[
-            #     (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
-            # ][MetaKey.unique])
-            valid_keys = list(eval_ref.meta_df[
+            valid_keys = list(val_ref.meta_df[
+                (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            ][MetaKey.unique]) + list(eval_ref.meta_df[
                 (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
             ][MetaKey.unique])
+            # valid_keys = list(eval_ref.meta_df[
+            #     (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            # ][MetaKey.unique])
             inst_df.subset_by_key(valid_keys, key=MetaKey.unique)
             # inst_df.subset_split(splits=['eval'])
 
@@ -366,6 +366,42 @@ ax.set_title(f'{subject}')
 # ax.set_yticks(np.linspace(0, 1, 11))
 
 # This is a pretty confusing way to show it. Maybe we should do compare it against from scratch?
+
+#%%
+from scipy.stats import bootstrap
+
+# Assuming camera_df is your DataFrame and 'variant' and 'kin_r2' are your columns
+
+# Find unique variants
+print(subject)
+variants = camera_df['variant'].unique()
+
+# Create an empty dictionary to store results
+bootstrap_results = {}
+
+# Iterate through each variant
+for variant in variants:
+    # Filter rows for the current variant
+    variant_df = camera_df[camera_df['variant'] == variant]
+    # Calculate bootstrap confidence intervals for the mean kin_r2
+    # boot_res = bootstrap(variant_df['kin_r2'].tolist(),
+    #                      statistic=np.mean,
+    #                      confidence_level=0.95,
+    #                      vectorized=False) # Change to your desired confidence level
+
+    # Store results in the dictionary
+    bootstrap_results[variant] = {
+        'mean': variant_df['kin_r2'].mean(),
+        # 'mean': boot_res[0],
+        # 'lower_bound': boot_res.confidence_interval.low,
+        # 'upper_bound': boot_res.confidence_interval.high
+    }
+
+# Print results
+for variant, stats in bootstrap_results.items():
+    print(f"{variant}: mean = {stats['mean']:.3f}")
+    # print(f"{variant}: mean = {stats['mean']}, CI = ({stats['lower_bound']}, {stats['upper_bound']})")
+
 
 
 #%%
