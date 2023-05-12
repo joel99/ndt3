@@ -354,7 +354,7 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             return getattr(embed, 'weight')
         for n_idx, target in enumerate(new_attrs):
             if target in old_attrs:
-                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
+                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)].to(get_param(embed).data.device)
                 num_reassigned += 1
         logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
         if num_reassigned == 0:
