@@ -71,6 +71,7 @@ dataset_name = 'odoherty_rtt-Loco-20170210_03'
 # dataset_name = 'ortho'
 # dataset_name = 'ortho_CRS07'
 # dataset_name = "observation_CRS02bLab_session_1908_set_1"
+dataset_name = 'observation_CRS02b_1953_2'
 
 # dataset_name = 'marino_Earl-Del*'
 # dataset_name = 'marino_Earl-BCI*'
@@ -116,9 +117,13 @@ print(f'Timerange: {min(lengths) * dataset.cfg.bin_size_ms, max(lengths) * datas
 #%%
 trial = 0
 trial = 1
+trial = 2
+trial = 3
+trial = 4
 trial = 5
-trial = 10
-trial = 11
+trial = 6
+# trial = 10
+# trial = 11
 
 trial_vel = dataset[trial][DataKey.bhvr_vel]
 

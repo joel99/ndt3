@@ -4,6 +4,7 @@ import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
 from matplotlib import pyplot as plt
+from matplotlib import ticker
 import seaborn as sns
 import numpy as np
 import torch
@@ -12,13 +13,15 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import (
+    stack_batch, load_wandb_run,
+    prep_plt, get_dataloader
+)
+from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
 
 pl.seed_everything(0)
 
@@ -215,8 +218,7 @@ ax.set_title(f'Intra-session scaling ({"unsorted" if UNSORT else "sorted"})')
 
 
 #%%
-# import matplotlib ticker
-from matplotlib import ticker
+
 
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
 hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
@@ -242,7 +244,7 @@ title_remap = {
     'odoherty_rtt-Indy-20160627_01': 'Middle',
 }
 
-def deco(data, **kws):
+def deco(data, use_title=True, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
@@ -253,8 +255,11 @@ def deco(data, **kws):
     ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
     ax.yaxis.set_minor_locator(ticker.MaxNLocator(3))
 
-    alias = ax.get_title().split('=')[1].strip()
-    ax.set_title(title_remap.get(alias, alias), fontsize=20)
+    if use_title:
+        alias = ax.get_title().split('=')[1].strip()
+        ax.set_title(title_remap.get(alias, alias), fontsize=20)
+    else:
+        ax.set_title('')
 
     for i, series in enumerate(hue_order):
         sub_df = data[data['series'] == series]
@@ -275,6 +280,31 @@ for t, l in zip(g._legend.texts, g._legend.legendHandles):
 g.map_dataframe(deco)
 g.fig.suptitle(f'Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=28)
 # g.fig.suptitle(f'Unsupervised Transfer ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
+
+#%%
+
+# Like the above, but just the middle panel
+middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
+
+# Plot the middle panel data
+middle_plot = sns.relplot(
+    x='inferred_limit',
+    y='nll',
+    hue='series',
+    style='series',
+    hue_order=hue_order,
+    data=middle_data,
+    palette=palette,
+    kind='scatter',
+)
+
+# Customize the middle panel plot
+deco(middle_data, use_title=False)
+# middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
+middle_plot._legend.set_title('Series')
+for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
+    t.set_text(label_remap.get(t.get_text(), t.get_text()))
+
 
 #%%
 
@@ -311,14 +341,14 @@ g = sns.relplot(
     hue_order=hue_order,
     data=df,
     palette=palette,
-    kind='line',
     facet_kws={'sharex': False, 'sharey': False},
     col='dataset',
     col_order=dataset_order,
+    kind='line',
     markers=True,
 )
 
-def deco(data, **kws):
+def deco(data, use_title=True, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
@@ -327,9 +357,11 @@ def deco(data, **kws):
     # Only use 3 xticks
     ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
     ax.yaxis.set_minor_locator(ticker.MaxNLocator(5))
-    if '=' in ax.get_title():
+    if use_title and '=' in ax.get_title():
         alias = ax.get_title().split('=')[1].strip()
         ax.set_title(title_remap.get(alias, alias), fontsize=20)
+    else:
+        ax.set_title('')
 
 
 g.map_dataframe(deco)
@@ -348,3 +380,30 @@ for t, l in zip(g._legend.texts, g._legend.legendHandles):
 g.map_dataframe(deco)
 g.fig.suptitle(f'Sup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=28)
 # g.fig.suptitle(f'100 Trial Transfer Vel R2 ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
+
+#%%
+
+# Like the above, but just the middle panel
+middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
+
+# Plot the middle panel data
+middle_plot = sns.relplot(
+    x='inferred_limit',
+    y='kin_r2',
+    hue='series',
+    style='series',
+    hue_order=hue_order,
+    data=middle_data,
+    palette=palette,
+    kind='line',
+    markers=True,
+)
+
+# Customize the middle panel plot
+deco(middle_data, use_title=False)
+# middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
+middle_plot._legend.set_title('Series')
+for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
+    t.set_text(label_remap.get(t.get_text(), t.get_text()))
+
+middle_plot._legend.remove()

@@ -1,23 +1,9 @@
 # @package _global_
-# Best way to test scaling would probably be
-# take subsets of train, specifically 1, 1/2, 1/4, 1/8, 1/16, 1/32 (do these last 2 on V100s, else A100s)
 defaults:
-  - /model: flat_enc_dec
-  - /dataset: flat
+  - _default
 model:
   session_embed_token_count: 1
-  causal: true
-  task:
-    mask_ratio: 0.5 # 0.25 is quite costly, but we want to see long tail of improvements, so go over 0.8
-  neurons_per_token: 32
 dataset:
-  max_arrays: 1
   scale_ratio: 0.0625
-
-  neurons_per_token: 32
-  max_channels: 288
-
-  datasets:
-  - odoherty_rtt-Indy.*
-  eval_datasets:
-  - odoherty_rtt-Indy-20160627_01
+train:
+  batch_size: 64

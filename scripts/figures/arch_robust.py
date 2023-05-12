@@ -3,6 +3,8 @@ import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
 from matplotlib import pyplot as plt
+import matplotlib.ticker as ticker
+
 import seaborn as sns
 import numpy as np
 import torch
@@ -11,13 +13,14 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import (
+    stack_batch, load_wandb_run, prep_plt, get_dataloader
+)
+from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
 
 pl.seed_everything(0)
 
@@ -193,10 +196,12 @@ for item in ax.get_xticklabels():
 ax = prep_plt()
 aggr_variant = df.groupby(['variant', 'source', 'arch']).mean().reset_index()
 palette = sns.color_palette('colorblind', len(aggr_variant))
+hue_order = list(aggr_variant.arch.unique())
 ax = sns.scatterplot(
     x='nll',
     y='kin_r2',
     hue='arch',
+    hue_order=hue_order,
     # hue='variant',
     style='source',
     s=100,
@@ -213,13 +218,89 @@ ax = sns.scatterplot(
 #     )
 
 mean_baseline = np.mean([eRFH_baseline_kin[k] for k in eRFH_baseline_kin if k in df.dataset.unique()])
-ax.axhline(mean_baseline, ls='--', color='black', label='mean across variants')
+ax.axhline(mean_baseline, ls='--', color='black')# , label='mean across variants')
 # Annotate the horizontal line
 ax.text(
-    ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01, mean_baseline, 'rEFH', color='black', ha='left', va='bottom',
+    ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.015,
+    mean_baseline + 0.003,
+    'rEFH (Est)', color='black', ha='left', va='bottom',
     fontsize=14,
 )
-ax.set_title(f'Vel R2 vs NLL ({"Sorted" if USE_SORTED else "Unsorted"})')
+# ax.set_title(f'Vel R2 vs NLL ({"Sorted" if USE_SORTED else "Unsorted"})')
+# Annotate with Sorted or Unsorted in bottom left of plot
+ax.text(
+    ax.get_xlim()[1] - (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.015,
+    ax.get_ylim()[1] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.01,
+    'Sorted' if USE_SORTED else 'Unsorted', color='black',
+    ha='right', va='top',
+    fontsize=18, fontweight='bold'
+)
+# Velocity decoding R2 for y, with latex
+ax.set_ylabel('Velocity Decode $R^2$')
+ax.set_xlabel('Test NLL')
+
+# Reduce major xticks for clarity
+ax.xaxis.set_major_locator(ticker.LinearLocator(3))
+ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{x:.3f}"))
+ax.xaxis.set_minor_locator(ticker.LinearLocator(5))
+ax.yaxis.set_major_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 3)))
+ax.yaxis.set_minor_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 5)))
+ax.grid(which='both')
+ax.grid(which='minor', alpha=0.2)
+ax.grid(which='major', alpha=0.5)
+# Update the legend - kill arch, we can show those color coded.
+
+# Only for this panel
+camera_ready_arch_remap = {
+    'f32': 'NDT2',
+    'time': 'NDT1',
+    'stitch': 'NDT1-Stitch'
+}
+
+# Annotate the data with their variant. Skip once variant has been marked
+# marked_variants = set()
+# for i, row in aggr_variant.iterrows():
+#     if row.arch in marked_variants:
+#         continue
+#     ax.text(
+#         row.nll + 0.0005, row.kin_r2 + 0.005,
+#         camera_ready_arch_remap[row.arch],
+#         color=palette[hue_order.index(row.arch)], ha='left', va='bottom',
+#         fontsize=14,
+#     )
+#     marked_variants.add(row.arch)
+
+# No.... this doesn't look good. Just put them under legend. We'll adjust in post.
+# Add text for three archictectures on the right side of the plot
+for arch, y in zip(hue_order, np.array([0.44, 0.35, 0.26]) + 0.02):
+    ax.text(
+        0.85,
+        y,
+        camera_ready_arch_remap[arch],
+        color=palette[hue_order.index(arch)], ha='center', va='top',
+        fontsize=16,
+        # in axes coords
+        transform=ax.transAxes,
+    )
+
+handles, labels = ax.get_legend_handles_labels()
+print(labels)
+# Only keep the labels from source, onwards
+source_idx = labels.index('source')
+labels = labels[source_idx:]
+order = ['single', 'session', 'subject', 'task']
+reorder_idx = [labels.index(o) for o in order]
+labels = np.array([l.capitalize() for l in labels])[reorder_idx]
+handles = np.array(handles[source_idx:])[reorder_idx]
+
+lgd = ax.legend(
+    handles, labels, loc='upper right', fontsize=14, ncol=1, frameon=False,
+    # title='Data Source', title_fontsize=14,
+    bbox_to_anchor=(1.02, 0.92),
+)
+for handle in lgd.legendHandles:
+    handle._sizes = [80]
+
 
 #%%
 # make facet grid with model cali

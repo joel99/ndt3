@@ -12,13 +12,14 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import (
+    stack_batch, load_wandb_run, prep_plt, get_dataloader
+)
+from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
 
 pl.seed_everything(0)
 
@@ -198,7 +199,7 @@ g = sns.relplot(
     col='dataset',
     # row='dataset',
 )
-def deco(data, **kws):
+def deco(data, use_title=True, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
@@ -212,6 +213,8 @@ def deco(data, **kws):
     ax.axhline(robust_kin_r2, color='k', linestyle='--', linewidth=1)
     # Annotate as 'session robust'
     ax.text(15, robust_kin_r2 - 0.01, 'Session Robust \n (Untuned)', va='top', ha='left', fontsize=16)
+    if not use_title:
+        ax.set_title('')
 
 relabel = {
     'scale_v3/intra_unsort/probe': 'Scratch (100 Trial Sup)',
@@ -227,3 +230,36 @@ for t, l in zip(g._legend.texts, hue_order):
 
 g.map_dataframe(deco)
 g.fig.suptitle(f'Tuning a Decoder ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
+
+#%%
+# Single panel blowout
+# Like the above, but just the middle panel
+middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
+
+# Plot the middle panel data
+middle_plot = sns.relplot(
+    x='limit',
+    y='kin_r2',
+    hue='series',
+    style='series',
+    hue_order=hue_order,
+    data=middle_data,
+    palette=palette,
+    kind='line',
+    markers=True,
+)
+
+# Customize the middle panel plot
+deco(middle_data, use_title=False)
+# middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
+middle_plot._legend.set_title('Series')
+for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
+    t.set_text(relabel.get(t.get_text(), t.get_text()))
+    # Exclude Session robust
+    if t.get_text() == 'Session Robust':
+        l.set_visible(False)
+        t.set_visible(False)
+# middle_plot._legend.remove()
+# Reposition legend to the bottom right
+
+middle_plot.legend.set_bbox_to_anchor((0.6, 0.3))

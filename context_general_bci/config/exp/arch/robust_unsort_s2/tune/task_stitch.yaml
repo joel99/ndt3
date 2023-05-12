@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - /model: pretrain_2x # equivalent to flat_enc_dec without flattening
+  - /dataset: base
+  - _default
+model:
+  subject_embed_strategy: EmbedStrat.token
+  readin_strategy: EmbedStrat.unique_project
+  readout_strategy: EmbedStrat.unique_project
+  readin_compress: False
+dataset:
+  max_arrays: 1
+  max_channels: 288
+inherit_exp: arch/robust # task unsort == task sort

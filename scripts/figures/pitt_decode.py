@@ -61,31 +61,42 @@ comp_df['data_id'] = comp_df['subject'].replace('Lab', '').replace('Home', '') \
 
 EVAL_DATASETS = [
     'observation_CRS02b_19.*',
-    # 'observation_CRS07_15.*',
-    # 'observation_CRS07_16.*',
+    # 'observation_CRS02b_1953_9',
+    'observation_CRS07_15.*',
+    'observation_CRS07_16.*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
 EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
+    # f'online_bci',
     f'pitt_v3/probe_01_cross',
 ]
 
 queries = [
     # 'human_obs_limit',
-    # 'human_obs_m5',
+    'human_obs_m5',
+    'human_obs_m1',
+    'human_m5',
+    'human_m1',
     # 'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
     # 'human_obs_m75',
-    'human_m5',
+    # 'human_m5',
     # 'human_m5_lr1e5',
-    # 'human_rtt_task_init',
-    # 'human_rtt_pitt_init',
-    # 'human_rtt_scratch',
-    # 'crs07_m5',
+    'human_task_init',
+    'human_task_init_m1',
+    'human_rtt_task_init',
+    'human_rtt_task_init_m1',
+    'human_rtt_pitt_init',
+    'human_rtt_pitt_init_m1',
+    'human_rtt_scratch',
+    'crs07_m5',
+    'crs07_m1',
     # 'crs07_m5_itertest',
     # 'human_unsup',
     # 'human_aug',
+    # 'online_test_tune',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -101,7 +112,7 @@ USE_SECOND_HALF_ONLY = False
 # USE_SECOND_HALF_ONLY = True # quick sanity check to see that results improve with time. Needed to explain why we're worse than KF baseline all the time
 
 DO_SUB_FBC = False
-DO_SUB_FBC = True
+# DO_SUB_FBC = True
 if DO_SUB_FBC:
     query = 'human_10l-j7mq2snc'
     wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -202,11 +213,18 @@ def build_df(runs, mode='nll'):
     seen_set = {}
     for run in runs:
         variant, _frag, *rest = run.name.split('-')
+        experiment_set = run.config['experiment_set']
         if variant not in queries:
+            continue
+        if (
+            variant,
+            # dataset,
+            run.config['model']['lr_init'],
+            experiment_set
+        ) in seen_set:
             continue
         print('evaling on', run.name)
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
-        experiment_set = run.config['experiment_set']
         pl.seed_everything(seed=cfg.seed)
         # if (
         #     variant,
@@ -230,14 +248,19 @@ def build_df(runs, mode='nll'):
         train_ref, val_ref = tv_ref.create_tv_datasets()
 
         for i, dataset in enumerate(EVAL_ALIASES):
-            # We use val _and_ eval to try to be generous and match Pitt settings
+            if 'crs07' in variant and 'CRS07' not in dataset:
+                continue # special case sub-evaluation
+             # We use val _and_ eval to try to be generous and match Pitt settings
             inst_df = deepcopy(ref_df)
             inst_df.cfg.eval_datasets = [dataset]
             inst_df.cfg.datasets = [dataset]
             inst_df.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
-            valid_keys = list(val_ref.meta_df[
-                (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
-            ][MetaKey.unique]) + list(eval_ref.meta_df[
+            # valid_keys = list(val_ref.meta_df[
+            #     (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            # ][MetaKey.unique]) + list(eval_ref.meta_df[
+            #     (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            # ][MetaKey.unique])
+            valid_keys = list(eval_ref.meta_df[
                 (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
             ][MetaKey.unique])
             inst_df.subset_by_key(valid_keys, key=MetaKey.unique)
@@ -247,16 +270,10 @@ def build_df(runs, mode='nll'):
             experiment_set = run.config['experiment_set']
             if variant.startswith('sup') or variant.startswith('unsup'):
                 experiment_set = experiment_set + '_' + variant.split('_')[0]
-            if (
-                variant,
-                dataset,
-                run.config['model']['lr_init'],
-                experiment_set
-            ) in seen_set:
-                continue
             payload = get_single_payload(cfg, src_model, run, experiment_set, mode=mode, dataset=inst_df)
             df.append(payload)
-            seen_set[(variant, dataset, run.config['model']['lr_init']), experiment_set] = True
+            # seen_set[(variant, dataset, run.config['model']['lr_init']), experiment_set] = True
+        seen_set[(variant, run.config['model']['lr_init'], experiment_set)] = True
     return pd.DataFrame(df)
 kin_df = build_df(runs_kin, mode='kin_r2')
 kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'series', 'data_id'])
@@ -299,11 +316,16 @@ print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 subject = 'CRS02b'
 # subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
+print(subject_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
+
 sns.set_theme(style="whitegrid")
 # boxplot
 order = sorted(subject_df.variant.unique())
 palette = sns.color_palette("mako_r", len(order))
-ax = sns.boxplot(data=subject_df, x='variant', y='kin_r2', order=order)
+ax = sns.pointplot(
+    data=subject_df, x='variant', y='kin_r2', order=order,
+    join=False
+)
 # sns.swarmplot(data=subject_df, x='variant', y='kin_r2', hue=, order=order, ax=ax)
 ax.set_ylim(0, 1)
 ax.set_ylabel('Vel R2')

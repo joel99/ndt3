@@ -1,5 +1,9 @@
 #%%
 # Qualitative plot
+import os
+# set visible device to 1
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
 import seaborn as sns
@@ -22,16 +26,18 @@ from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wan
 pl.seed_everything(0)
 
 EVAL_DATASETS = [
-    'observation_CRS02b_19.*',
+    # 'observation_CRS02b_19.*',
     # 'observation_CRS07_15.*',
     # 'observation_CRS07_16.*',
+    'observation_CRS08_0*',
 ]
 # expand by querying alias
 EVAL_DATASETS = SpikingDataset.list_alias_to_contexts(EVAL_DATASETS)
 EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
-    f'pitt_v3/probe_01_cross',
+    f'online_bci',
+    # f'pitt_v3/probe_01_cross',
 ]
 
 queries = [
@@ -39,7 +45,8 @@ queries = [
     # 'human_obs_m5',
     # 'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
     # 'human_m5',
-    'human_m5_lr1e5',
+    'online_test_tune',
+    # 'human_m5_lr1e5',
     # 'human_unsup',
 ]
 
@@ -51,6 +58,7 @@ print(f'Found {len(runs_kin)} runs. Evaluating on {len(EVAL_ALIASES)} datasets.'
 
 TARGET_ALIAS = 'observation_CRS07_150_1_2d_cursor_center_out'
 TARGET_ALIAS = 'observation_CRS02b_1925_11_2d_cursor_center_out'
+TARGET_ALIAS = 'observation_CRS08_0_0_2d_cursor_pursuit'
 #%%
 USE_THRESH = False
 # USE_THRESH = True
@@ -69,7 +77,8 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
     dataloader = get_dataloader(dataset)
     # the dataset name is of the for {type}_{subject}_session_{session}_set_{set}_....mat
     # parse out the variables
-    _, subject, session, set_num, *_ = dataset.cfg.eval_datasets[0].split('_')
+    _, subject, session, set_num, *_ = dataset.cfg.datasets[0].split('_')
+    # _, subject, session, set_num, *_ = dataset.cfg.eval_datasets[0].split('_')
 
     payload = {
         'limit': set_limit,
@@ -109,6 +118,7 @@ def build_df(runs, mode='nll'):
     seen_set = {}
     for run in runs:
         variant, _frag, *rest = run.name.split('-')
+        print(variant)
         if variant not in queries:
             continue
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
@@ -116,6 +126,7 @@ def build_df(runs, mode='nll'):
         pl.seed_everything(seed=cfg.seed)
         # Mirror run.py dataset construction
         ref_df = SpikingDataset(cfg.dataset)
+        # breakpoint()
         tv_ref = deepcopy(ref_df)
         eval_ref = deepcopy(ref_df)
         eval_ref.subset_split(splits=['eval'])
@@ -125,16 +136,16 @@ def build_df(runs, mode='nll'):
             if alias != TARGET_ALIAS:
                 continue
             inst_df = deepcopy(ref_df)
-            inst_df.cfg.eval_datasets = [alias]
+            # inst_df.cfg.eval_datasets = [alias]
             inst_df.cfg.datasets = [alias]
             inst_df.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
             # ! Ok... so we want to identify whether each trial belongs to train, val, or eval.
             valid_keys = list(val_ref.meta_df[
                 (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
             ][MetaKey.unique])
-            eval_keys = list(eval_ref.meta_df[
-                (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
-            ][MetaKey.unique])
+            eval_keys = [] # list(eval_ref.meta_df[
+                # (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            # ][MetaKey.unique])
             train_keys = list(train_ref.meta_df[
                 (train_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
             ][MetaKey.unique])
@@ -163,6 +174,8 @@ def build_df(runs, mode='nll'):
             payload['trial_split'] = inst_key_splits
             df.append(payload)
             seen_set[(variant, alias, run.config['model']['lr_init']), experiment_set] = True
+            break
+        break
     return pd.DataFrame(df)
 kin_df = build_df(runs_kin, mode='kin_r2')
 
@@ -183,7 +196,7 @@ fig, ax = plt.subplots(2, 1, figsize=(24, 8), sharex=True)
 for dim in range(2):
     ax = prep_plt(ax)
     ax[dim].plot(predictions_session[:, dim], label=f'pred {dim}', linestyle='--', color=palette[dim])
-    ax[dim].plot(true_session[:, dim], label=f'true {dim}', color=palette[dim])
+    # ax[dim].plot(true_session[:, dim], label=f'true {dim}', color=palette[dim])
     ax[dim].legend(frameon=False)
     ax[dim].set_ylabel(f'Dim {dim}')
 

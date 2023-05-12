@@ -7,7 +7,7 @@ from context_general_bci.config import DataKey
 def apply_crop(tensor, start_time, crop_length): # Assumes axis 0
     return tensor[start_time:start_time + crop_length]
 
-def rand_crop_time(raw_payload: Dict[DataKey, torch.Tensor], min_frac=0.25):
+def rand_crop_time(raw_payload: Dict[DataKey, torch.Tensor], min_frac=0.4):
     # randomly sample a length >= min_frac * time_length, and then a start time
     aug_payload = {}
     time_length = None

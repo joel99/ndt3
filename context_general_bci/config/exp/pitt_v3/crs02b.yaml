@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_CRS02b.* # pursuit.*
+  - ortho_CRS02b.* # pursuit.*
+  - fbc_CRS02b.* # pursuit.*
+  - unstructured_CRS02b.*
+  - pitt_co_CRS02b.*
+train:
+  autoscale_batch_size: false
+  batch_size: 64 # roughly fit 10G nodes at 2.5s, 32 chunk. Use 4 gpus.
+  # Data ~ 100K trials, go for 2K bsz. (4x needed)
+  # Use 2 nodes
+  accumulate_batches: 2
+notes: "Subject ablation"
+load_from_id: crs02b-apqqnghv

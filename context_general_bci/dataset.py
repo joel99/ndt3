@@ -273,7 +273,7 @@ class SpikingDataset(Dataset):
                     raise Exception()
             elif k == MetaKey.session:
                 # never conflate sessions (even if they have the same tag)
-                meta[k] = context_meta.id
+                meta[k] = context_meta.session_embed_id
             elif k == MetaKey.unique:
                 continue # filled below
             elif k == MetaKey.subject:

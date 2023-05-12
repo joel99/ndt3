@@ -1,5 +1,12 @@
 # to be called from project root
 # ln -s ~/share/ndt2/ data # your share dir here, i.e. call from ./data
+
+# assert data exists
+if [ ! -d "data" ]; then
+  echo "data/ does not exist, please create it e.g. a symlink to your data directory"
+  exit 1
+fi
+
 cd data
 # RTT
 mkdir odoherty_rtt
