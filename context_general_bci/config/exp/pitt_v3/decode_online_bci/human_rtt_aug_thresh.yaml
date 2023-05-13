@@ -1,0 +1,20 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_.*
+  - odoherty_rtt.*
+  z_score: 'kin_zscore.pt'
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
+train:
+  autoscale_batch_size: false
+  batch_size: 64
+model:
+  task:
+    decode_normalizer: ""
+    behavior_fit_thresh: 0.001
+inherit_tag: human_10l
+
+# RTT Pitt Init legacy

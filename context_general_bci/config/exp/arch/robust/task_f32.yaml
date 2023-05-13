@@ -9,7 +9,7 @@ model:
   task_embed_strategy: EmbedStrat.token
   task:
     mask_ratio: 0.5 # for efficiency
-  neurons_per_token: 8
+  neurons_per_token: 32
 dataset:
   max_arrays: 1
   max_channels: 288
@@ -21,6 +21,6 @@ dataset:
 train:
   accumulate_batches: 2
   autoscale_batch_size: false
-  batch_size: 128 # 2 GPU
+  batch_size: 64 # 2 GPU
 # For mind-1-34, anticipated bsz 256
 notes: "Sorted, transfer task."

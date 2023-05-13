@@ -6,6 +6,7 @@ dataset:
   - observation_.*
   - odoherty_rtt.*
   exclude_datasets:
+  - closed_loop.*
   - observation_CRS08_.*
   odoherty_rtt:
     chop_size_ms: 2500

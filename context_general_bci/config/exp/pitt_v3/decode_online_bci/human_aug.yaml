@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 64
+dataset:
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
+model:
+inherit_tag: human_10l

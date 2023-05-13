@@ -1,0 +1,48 @@
+# @package _global_
+
+# Mirror `scale_decode` - pretrain a stable decoder, while varying the unsup source
+# Tag refers to unsup source
+
+defaults:
+  - /model: flat_enc_dec
+  - /model/task:
+    - joint_bhvr_decode_flat
+  - /dataset: flat
+  - /train: single_session_exp1
+dataset:
+  eval_ratio: 0.5
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+
+  datasets:
+  - observation_CRS02b_19.* #
+  - observation_CRS07_15.*
+  - observation_CRS07_16.*
+  exclude_datasets:
+  - closed_loop.*
+  eval_datasets:
+  - observation_CRS02b_19.* #
+  - observation_CRS07_15.*
+  - observation_CRS07_16.*
+model:
+  causal: true
+  neurons_per_token: 32
+  decoder_context_integration: 'cross_attn'
+  task:
+    decode_time_pool: ""
+    task_weights: [1.0, 0.1]
+    mask_ratio: 0.2
+    behavior_lag: 0 # No lag for human data. For parity with ongoing exps.
+    decode_normalizer: pitt_obs_zscore.pt
+
+  accelerate_new_params: 10.0 # We're introducing a whole new readout layer...
+  lr_schedule: 'fixed'
+  lr_init: 4e-5
+  val_iters: 10
+train:
+  patience: 50
+# No fragment
+inherit_exp: pitt_v3/decode
+# sweep_cfg: 'simpler_lr_sweep'
+# sweep_mode: 'grid'

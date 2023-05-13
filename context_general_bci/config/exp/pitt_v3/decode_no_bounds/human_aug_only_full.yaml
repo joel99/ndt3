@@ -6,6 +6,7 @@ train:
   batch_size: 64
 dataset:
   exclude_datasets:
+  - closed_loop.*
   - observation_CRS08_.*
   augmentations:
   - rand_crop_time # preset to crop to 1s

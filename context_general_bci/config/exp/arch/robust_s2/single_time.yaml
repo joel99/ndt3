@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+  - /model: pretrain_2x
+  - /dataset: base
+  - /train: single_session_exp1
+model:
+  # size down appropriately
+  hidden_size: 128
+  lr_ramp_steps: 500
+  lr_decay_steps: 10000
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.5 # for efficiency
+dataset:
+  max_arrays: 1
+  max_channels: 245 # # for this single session
+  eval_ratio: 0.1
+  scale_limit_per_eval_session: 300
+  datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison
+fragment_datasets: True

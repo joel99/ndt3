@@ -10,7 +10,7 @@ defaults:
   - /dataset: flat
   - /train: single_session_exp1
 dataset:
-  eval_ratio: 0.1 # much smaller test set for more comparability with baselines
+  eval_ratio: 0.1 # Mostly test set.
   data_keys:
   - DataKey.spikes
   - DataKey.bhvr_vel
@@ -20,6 +20,7 @@ dataset:
   - observation_CRS07_15.*
   - observation_CRS07_16.*
   eval_datasets:
+  - closed_loop.*
   - observation_CRS02b_19.* #
   - observation_CRS07_15.*
   - observation_CRS07_16.*

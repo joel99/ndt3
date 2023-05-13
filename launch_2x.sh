@@ -7,7 +7,7 @@
 #SBATCH -p gpu
 #SBATCH -t 36:00:00
 #SBATCH --mem 60G
-#SBATCH -x mind-1-30
+#SBATCH -x mind-1-5
 #SBATCH --output=slurm_logs/%j.out
 
 echo 'tasks'

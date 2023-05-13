@@ -19,6 +19,7 @@ dataset:
   - unstructured_.*
   - pitt_co.*
   exclude_datasets:
+  - closed_loop.*
   - observation_CRS02b_19.* #
   - observation_CRS07_15.*
   - observation_CRS07_16.*

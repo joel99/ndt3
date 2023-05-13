@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+  - /model: pretrain_2x # equivalent to flat_enc_dec without flattening
+  - /dataset: base
+model:
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.5 # for efficiency
+  readin_strategy: EmbedStrat.unique_project
+  readout_strategy: EmbedStrat.unique_project
+  readin_compress: False
+dataset:
+  max_arrays: 1
+  max_channels: 288
+  datasets:
+  - mc_maze.*
+  - dyer_co.*
+  - gallego_co.*
+  - churchland_misc_nitschke.*
+train:
+  patience: 250
+  autoscale_batch_size: false
+  batch_size: 256
+notes: "Sorted, transfer task."

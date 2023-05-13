@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+model:
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.5 # for efficiency
+  neurons_per_token: 32
+dataset:
+  datasets:
+  - odoherty_rtt-Loco.*
+train:
+  accumulate_batches: 2
+  autoscale_batch_size: false
+  batch_size: 128 # 2 GPU
+# For mind-1-34, anticipated bsz 256
+notes: "Sorted, transfer loco."

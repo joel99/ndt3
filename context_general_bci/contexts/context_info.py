@@ -491,7 +491,7 @@ class BCIContextInfo(ReachingContextInfo):
 
 
     @classmethod
-    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"]):
+    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"], alias_prefix=''):
         if not Path(root).exists():
             logger.warning(f"Datapath not found, skipping ({root})")
             return []
@@ -515,7 +515,7 @@ class BCIContextInfo(ReachingContextInfo):
                 subject = subject[:-4]
             elif subject.endswith('Lab'):
                 subject = subject[:-3]
-            alias = f'{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
+            alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
             if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']):
                 task = task_map.get(control, task_map.get('default'))
             else:

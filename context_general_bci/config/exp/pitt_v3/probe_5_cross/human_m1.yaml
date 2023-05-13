@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    mask_ratio: 0.1
+train:
+  accumulate_batches: 2
+  batch_size: 32
+inherit_tag: human_m5

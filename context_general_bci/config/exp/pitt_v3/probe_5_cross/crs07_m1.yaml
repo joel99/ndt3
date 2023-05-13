@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_CRS07_15.*
+  - observation_CRS07_16.*
+  eval_datasets:
+  - observation_CRS07_15.*
+  - observation_CRS07_16.*
+model:
+  task:
+    mask_ratio: 0.1
+
+inherit_tag: crs07_m5

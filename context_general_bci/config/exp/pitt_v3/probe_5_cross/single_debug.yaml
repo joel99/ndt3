@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_CRS02b_1903_4.*
+  eval_datasets: []
+train:
+  batch_size: 8
+  patience: 50
+inherit_tag: human_m5

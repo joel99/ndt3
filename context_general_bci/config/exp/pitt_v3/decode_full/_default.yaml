@@ -17,6 +17,7 @@ dataset:
   datasets:
   - observation_.*
   exclude_datasets:
+  - closed_loop.*
   - observation_CRS08_.*
   # No eval.
   z_score: 'kin_zscore.pt'

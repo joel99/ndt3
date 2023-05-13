@@ -6,5 +6,5 @@ model:
 dataset:
   scale_ratio: 1.0
 train:
-  accumulate_batches: 2
-  batch_size: 256
+  accumulate_batches: 4
+  batch_size: 128

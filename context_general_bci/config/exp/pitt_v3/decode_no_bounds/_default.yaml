@@ -17,11 +17,14 @@ dataset:
   datasets:
   - observation_.*
   exclude_datasets:
+  - closed_loop.*
   - observation_CRS08_.*
   - observation_CRS02b_19.* #
   - observation_CRS07_15.*
   - observation_CRS07_16.*
   pitt_co:
+    respect_trial_boundaries: false
+  observation:
     respect_trial_boundaries: false
 model:
   causal: true

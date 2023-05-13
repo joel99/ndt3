@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - /model: pretrain_2x # equivalent to flat_enc_dec without flattening
+  - /dataset: base
+  - _default
+model:
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.5 # for efficiency
+  readin_strategy: EmbedStrat.unique_project
+  readout_strategy: EmbedStrat.unique_project
+  readin_compress: False
+dataset:
+  max_arrays: 1
+  max_channels: 288
