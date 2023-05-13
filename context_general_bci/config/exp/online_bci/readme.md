@@ -1,3 +1,6 @@
 On-rig training uses the non-cluster configs. There is no enforcing, but please keep the cluster and non-cluster configs (which use gdrive links specified in `decoder_module` outside this repo) pointing to the same checkpoints.
 
 We currently track test time configuration like crop bin in these yamls only; even if using an identical checkpoint, only way to hot swap is to use NDTProxy to pull via the yaml, which will pull an identical ckpt but use yaml's test-time config. Using NDTProxy to directly select ckpt will maintain the training config.
+
+Closed loop crop bin and task embed ckpt are test time config, swappable without retraining.
+Threshold or not is tuning time. Key difference is whether a new tag is assigned.
