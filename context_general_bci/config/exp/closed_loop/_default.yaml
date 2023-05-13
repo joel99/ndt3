@@ -14,6 +14,8 @@ dataset:
   - DataKey.spikes
   - DataKey.bhvr_vel
   # datasets: - will be specified in calling script
+  pitt_co:
+    respect_trial_boundaries: false
 model:
   causal: true
   neurons_per_token: 32
@@ -30,8 +32,6 @@ model:
   lr_init: 4e-5
   val_iters: 10
   extra_task_embed_ckpt: '{shared_dir}/pretrained/pretrained_unsup.ckpt'
-  pitt_co:
-    respect_trial_boundaries: false
 train:
   autoscale_batch_size: false
   batch_size: 8 # Assuming we have ~50-100 trials.
