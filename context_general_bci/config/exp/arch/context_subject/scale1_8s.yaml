@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  session_embed_token_count: 1
+  subject_embed_token_count: 8
+dataset:
+  scale_ratio: 1.0
+train:
+  accumulate_batches: 4
+  batch_size: 128
+  # For some rzn needs 24G node

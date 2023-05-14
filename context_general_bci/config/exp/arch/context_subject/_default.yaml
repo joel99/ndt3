@@ -1,0 +1,32 @@
+# @package _global_
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+dataset:
+  max_channels: 288
+  neurons_per_token: 32
+  datasets:
+  - odoherty_rtt-Loco.*
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison
+  eval_datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison
+  scale_limit_per_eval_session: 100 # just take something small. Some sessions are only 300 long and we have 50% eval.
+model:
+  causal: true
+  task:
+    mask_ratio: 0.5
+  neurons_per_token: 32
+  subject_embed_strategy: EmbedStrat.token
+train:
+  patience: 100
+  autoscale_batch_size: false
+  batch_size: 128
+seed: 1

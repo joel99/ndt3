@@ -243,6 +243,7 @@ class ModelConfig:
 
     subject_embed_strategy: EmbedStrat = EmbedStrat.none
     subject_embed_size: int = 256 # Bound in `propagate_config`
+    subject_embed_token_count: int = 1
 
     task_embed_strategy: EmbedStrat = EmbedStrat.none # * we're not planning on going multitask in near future, so please hold.
     task_embed_size: int = 256
