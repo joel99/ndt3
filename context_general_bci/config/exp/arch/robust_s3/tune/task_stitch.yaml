@@ -3,6 +3,7 @@
 defaults:
   - /model: pretrain_2x # equivalent to flat_enc_dec without flattening
   - /dataset: base
+  - _default
 model:
   causal: true
   subject_embed_strategy: EmbedStrat.token
@@ -14,12 +15,3 @@ model:
 dataset:
   max_arrays: 1
   max_channels: 288
-  datasets:
-  - odoherty_rtt-Loco.*
-train:
-  patience: 250 # Extra generous patience.
-  autoscale_batch_size: False
-  batch_size: 256
-
-notes: "Sorted, transfer loco."
-seed: 2

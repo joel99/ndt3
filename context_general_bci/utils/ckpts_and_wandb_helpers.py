@@ -126,12 +126,16 @@ def get_wandb_lineage(cfg: RootConfig):
     if 'sweep' in lineage_query:
         # find sweep and truncate
         lineage_query = lineage_query[:lineage_query.find('sweep')-1] # - m-dash
+
+    # specific patch for any runs that need it...
+    additional_filters = {}
     runs = api.runs(
         f"{cfg.wandb_user}/{cfg.wandb_project}",
         filters={
             "config.experiment_set": cfg.inherit_exp,
             "config.tag": lineage_query,
-            "state": {"$in": ["finished", "running", "crashed", 'failed']}
+            "state": {"$in": ["finished", "running", "crashed", 'failed']},
+            **additional_filters
         }
     )
     if len(runs) == 0:

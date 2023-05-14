@@ -24,4 +24,4 @@ train:
   batch_size: 64 # 2 GPU
 # For mind-1-34, anticipated bsz 256
 notes: "Sorted, transfer task."
-seed: 2
+seed: 3

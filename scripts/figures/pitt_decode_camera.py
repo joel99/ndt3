@@ -312,7 +312,7 @@ print(df.variant.unique())
 #%%
 # make pretty seaborn default
 subject = 'CRS02b'
-# subject = 'CRS07'
+subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
 # subject_df = sub_df
 print(subject_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))

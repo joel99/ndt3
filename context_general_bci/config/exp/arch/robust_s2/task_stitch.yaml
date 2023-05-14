@@ -25,3 +25,4 @@ train:
   autoscale_batch_size: false
   batch_size: 256
 notes: "Sorted, transfer task."
+seed: 2

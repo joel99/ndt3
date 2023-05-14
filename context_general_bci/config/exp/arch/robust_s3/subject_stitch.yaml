@@ -22,4 +22,4 @@ train:
   batch_size: 256
 
 notes: "Sorted, transfer loco."
-seed: 2
+seed: 3

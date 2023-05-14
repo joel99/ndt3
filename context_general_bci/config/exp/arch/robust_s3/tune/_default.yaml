@@ -12,6 +12,6 @@ dataset:
   - odoherty_rtt-Indy-20161005_06 # 373
   - odoherty_rtt-Indy-20161026_03 # ~496 trials
   - odoherty_rtt-Indy-20170131_02 #  814 trials
-inherit_exp: arch/robust_s2
+inherit_exp: arch/robust_s3
 fragment_datasets: True
-seed: 2
+seed: 3

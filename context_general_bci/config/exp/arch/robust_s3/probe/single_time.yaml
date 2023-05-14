@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - /model: pretrain_2x
+  - /dataset: base
+  - _default_time
+model:
+  # size down appropriately
+  hidden_size: 128
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+dataset:
+  max_arrays: 1
+  max_channels: 245 # # for this single session
+inherit_exp: arch/robust

@@ -23,7 +23,7 @@ model:
     behavior_lag: 120
   accelerate_new_params: 10.0 # We're introducing a whole new readout layer...
   lr_schedule: 'fixed'
-inherit_exp: arch/robust/tune
+inherit_exp: arch/robust_s2/tune
 fragment_datasets: True
 seed: 2
 sweep_cfg: 'simpler_lr_sweep'

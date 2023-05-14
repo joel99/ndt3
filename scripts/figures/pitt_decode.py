@@ -71,13 +71,14 @@ EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
     # f'online_bci',
-    f'pitt_v3/probe_01_cross',
+    # f'pitt_v3/probe_01_cross',
+    f'pitt_v3/probe_5_cross',
 ]
 
 queries = [
     # 'human_obs_limit',
     'human_obs_m5',
-    'human_obs_m1',
+    # 'human_obs_m1',
     'human_m5',
     'human_m1',
     # 'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
@@ -85,9 +86,9 @@ queries = [
     # 'human_m5',
     # 'human_m5_lr1e5',
     'human_task_init',
-    'human_task_init_m1',
+    # 'human_task_init_m1',
     'human_rtt_task_init',
-    'human_rtt_task_init_m1',
+    # 'human_rtt_task_init_m1',
     'human_rtt_pitt_init',
     'human_rtt_pitt_init_m1',
     'human_rtt_scratch',

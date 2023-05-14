@@ -129,6 +129,7 @@ def run_exp(cfg : RootConfig) -> None:
         exp_arg = [arg for arg in sys.argv if '+exp' in arg]
         if len(exp_arg) > 0:
             cfg.tag = exp_arg[0].split('=')[1]
+        if cfg.experiment_set == "":
             cfg.experiment_set = exp_arg[0].split('=')[0][len('+exp/'):]
 
     # Fragment and inherit
@@ -143,7 +144,6 @@ def run_exp(cfg : RootConfig) -> None:
             inherit_succeeded = True
         except:
             logging.info(f"Initial inherit for {cfg.inherit_exp} not found, pushed to post-fragment.")
-
     if cfg.fragment_datasets:
         def run_cfg(cfg_trial):
             init_call = sys.argv
