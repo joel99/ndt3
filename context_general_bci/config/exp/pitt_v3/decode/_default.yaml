@@ -37,3 +37,5 @@ model:
 train:
   patience: 50
 inherit_exp: pitt_v3
+
+# ! This experiment is implicitly all run with 4 GPUs. Effective batch size 4x-ed unless noted (some configs are not kept up to date)

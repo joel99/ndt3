@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_CRS02b.*
+  exclude_datasets:
+  - observation_CRS02b_19.* #
+train:
+  autoscale_batch_size: false
+  accumulate_batches: 2
+  batch_size: 64
+model:
+  task:
+    mask_ratio: 0.5
+inherit_tag: crs02b

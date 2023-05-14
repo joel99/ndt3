@@ -1,8 +1,7 @@
 #%%
 import logging
 import sys
-# logging.basicConfig(stream=sys.stdout, level=logging.WARNING) # needed to get `logger` to print
-# logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
+logging.basicConfig(stream=sys.stdout, level=logging.ERROR)
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
 import seaborn as sns
@@ -71,32 +70,25 @@ EVAL_ALIASES = [x.alias for x in EVAL_DATASETS]
 
 EXPERIMENTS_KIN = [
     # f'online_bci',
-    f'pitt_v3/probe_01_cross',
+    f'pitt_v3/probe_5_cross',
 ]
 
 queries = [
-    # 'human_obs_limit',
     'human_obs_m5',
-    'human_obs_m1',
+    # 'human_obs_m1',
+
     'human_m5',
     'human_m1',
-    # 'human_obs_m5_lr1e5', # note this LR is infeasibly slow for RT. Takes ~46 minutes.
-    # 'human_obs_m75',
-    # 'human_m5',
-    # 'human_m5_lr1e5',
-    'human_task_init',
-    'human_task_init_m1',
-    'human_rtt_task_init',
-    'human_rtt_task_init_m1',
-    'human_rtt_pitt_init',
-    'human_rtt_pitt_init_m1',
-    'human_rtt_scratch',
-    'crs07_m5',
-    'crs07_m1',
-    # 'crs07_m5_itertest',
-    # 'human_unsup',
-    # 'human_aug',
-    # 'online_test_tune',
+
+    # 'human_task_init',
+    # 'human_task_init_m1',
+    # 'human_rtt_task_init',
+    # 'human_rtt_task_init_m1',
+    # 'human_rtt_pitt_init',
+    # 'human_rtt_pitt_init_m1',
+    # 'human_rtt_scratch',
+    # 'crs07_m5',
+    # 'crs07_m1',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -113,6 +105,8 @@ USE_SECOND_HALF_ONLY = False
 
 DO_SUB_FBC = False
 # DO_SUB_FBC = True
+DO_MULTISEED = False
+DO_MULTISEED = True
 if DO_SUB_FBC:
     query = 'human_10l-j7mq2snc'
     wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -203,10 +197,24 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
         'subject': subject,
         'session': int(session),
         'set': int(set_num),
+        'seed': run.config['seed'],
         'lr': run.config['model']['lr_init'], # swept
     }
     payload[mode] = get_evals(model, dataloader, mode=mode, runs=1 if mode != 'nll' else 8)
     return payload
+
+def hash_config(variant: str, config):
+    experiment_set = config['experiment_set']
+    if variant.startswith('sup') or variant.startswith('unsup'):
+        experiment_set = experiment_set + '_' + variant.split('_')[0]
+    hashed = {
+        'variant': variant,
+        'lr': config['model']['lr_init'],
+        'experiment_set': experiment_set,
+    }
+    if DO_MULTISEED:
+        hashed['seed'] = config['seed']
+    return tuple(hashed.values())
 
 def build_df(runs, mode='nll'):
     df = []
@@ -216,26 +224,11 @@ def build_df(runs, mode='nll'):
         experiment_set = run.config['experiment_set']
         if variant not in queries:
             continue
-        if (
-            variant,
-            # dataset,
-            run.config['model']['lr_init'],
-            experiment_set
-        ) in seen_set:
+        if hash_config(variant, run.config) in seen_set:
             continue
         print('evaling on', run.name)
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
         pl.seed_everything(seed=cfg.seed)
-        # if (
-        #     variant,
-        #     run.config['dataset']['eval_datasets'][0],
-        #     run.config['model']['lr_init'],
-        #     experiment_set
-        # ) in seen_set:
-        #     continue
-        # payload = get_single_payload(cfg, src_model, run, experiment_set, mode=mode)
-        # df.append(payload)
-        # seen_set[(variant, run.config['dataset']['eval_datasets'][0], run.config['model']['lr_init']), experiment_set] = True
 
         # Don't split into loop, we might be loading train data...
         # In order to get the correct eval split, we need to use the same set of datasets as train (splits are not per dataset)
@@ -267,23 +260,17 @@ def build_df(runs, mode='nll'):
             # inst_df.subset_split(splits=['eval'])
 
             # val.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
-            experiment_set = run.config['experiment_set']
-            if variant.startswith('sup') or variant.startswith('unsup'):
-                experiment_set = experiment_set + '_' + variant.split('_')[0]
+
             payload = get_single_payload(cfg, src_model, run, experiment_set, mode=mode, dataset=inst_df)
             df.append(payload)
             # seen_set[(variant, dataset, run.config['model']['lr_init']), experiment_set] = True
-        seen_set[(variant, run.config['model']['lr_init'], experiment_set)] = True
+        seen_set[hash_config(variant, run.config)] = True
     return pd.DataFrame(df)
 kin_df = build_df(runs_kin, mode='kin_r2')
-kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'series', 'data_id'])
+kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'series', 'data_id', 'seed'])
 kin_df.drop(columns=['lr'])
 
-# # %%
-# kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'series'])
-# kin_df.drop(columns=['lr'])
-# print(kin_df)
-
+#%%
 df = pd.concat([kin_df, comp_df])
 def abbreviate(data_id):
     pieces = data_id.split('_')
@@ -308,15 +295,13 @@ sub_df = df[df['data_id'].isin(intersect_ids)]
 print(sub_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
 
 #%%
-print(df.variant.unique())
-#%%
 # make pretty seaborn default
 subject = 'CRS02b'
 subject = 'CRS07'
 subject_df = sub_df[sub_df['subject'] == subject]
 # subject_df = sub_df
-print(subject_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False))
-
+print(subject_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=False).round(3))
+print('-----')
 # Across the board, M1 either has modest effect or major drop. We exclude.
 CAMERA_VARIANTS = {
     # 'human_m1': 'Human (M1)',
@@ -335,7 +320,7 @@ CAMERA_VARIANTS = {
 }
 
 camera_df = subject_df[subject_df['variant'].isin(CAMERA_VARIANTS.keys())]
-camera_df['rtt_sup'] = camera_df['variant'].apply(lambda x: 'rtt' in x)
+camera_df.loc[:, 'rtt_sup'] = camera_df['variant'].apply(lambda x: 'rtt' in x)
 sns.set_theme(style="whitegrid")
 # boxplot
 
@@ -367,41 +352,28 @@ ax.set_title(f'{subject}')
 
 # This is a pretty confusing way to show it. Maybe we should do compare it against from scratch?
 
-#%%
-from scipy.stats import bootstrap
-
-# Assuming camera_df is your DataFrame and 'variant' and 'kin_r2' are your columns
-
-# Find unique variants
-print(subject)
-variants = camera_df['variant'].unique()
-
-# Create an empty dictionary to store results
-bootstrap_results = {}
+all_results = []
 
 # Iterate through each variant
-for variant in variants:
-    # Filter rows for the current variant
+for variant in camera_df['variant'].unique():
     variant_df = camera_df[camera_df['variant'] == variant]
-    # Calculate bootstrap confidence intervals for the mean kin_r2
-    # boot_res = bootstrap(variant_df['kin_r2'].tolist(),
-    #                      statistic=np.mean,
-    #                      confidence_level=0.95,
-    #                      vectorized=False) # Change to your desired confidence level
+    for seed in variant_df['seed'].unique():
+        seed_df = variant_df[variant_df['seed'] == seed]
+        # Store results in the dictionary
+        all_results.append({
+            'variant': variant,
+            'data_mean': seed_df['kin_r2'].mean(),
+            'seed': seed,
+        })
 
-    # Store results in the dictionary
-    bootstrap_results[variant] = {
-        'mean': variant_df['kin_r2'].mean(),
-        # 'mean': boot_res[0],
-        # 'lower_bound': boot_res.confidence_interval.low,
-        # 'upper_bound': boot_res.confidence_interval.high
-    }
 
-# Print results
-for variant, stats in bootstrap_results.items():
-    print(f"{variant}: mean = {stats['mean']:.3f}")
-    # print(f"{variant}: mean = {stats['mean']}, CI = ({stats['lower_bound']}, {stats['upper_bound']})")
+# Convert list of dictionaries to DataFrame
+results_df = pd.DataFrame(all_results)
 
+# Group by 'variant', and calculate the mean and standard error of 'data_mean' across seeds for each variant
+grouped_df = results_df.groupby('variant')['data_mean'].agg(['mean', 'sem'])
+
+print(grouped_df.round(3))
 
 
 #%%

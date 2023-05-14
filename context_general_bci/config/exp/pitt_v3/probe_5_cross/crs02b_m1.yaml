@@ -1,0 +1,12 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_CRS02b_19.* #
+  eval_datasets:
+  - observation_CRS02b_19.* #
+model:
+  task:
+    mask_ratio: 0.1
+inherit_tag: crs02b_m5
