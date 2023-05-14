@@ -1297,7 +1297,7 @@ class BehaviorRegression(TaskPipeline):
             # breakpoint()
             batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
             if batch_out[Metric.kinematic_r2].mean() < -10:
-                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2]) # mute, some erratic result from near zero target
+                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2]).mean() # mute, some erratic result from near zero target
                 # print(valid_bhvr.mean().cpu().item(), valid_tgt.mean().cpu().item(), batch_out[Metric.kinematic_r2].mean())
                 # breakpoint()
             if Metric.kinematic_r2_thresh in self.cfg.metrics:

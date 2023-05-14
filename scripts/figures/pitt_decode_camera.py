@@ -75,20 +75,26 @@ EXPERIMENTS_KIN = [
 
 queries = [
     'human_obs_m5',
-    # 'human_obs_m1',
+    'human_obs_m1',
 
     'human_m5',
     'human_m1',
 
-    # 'human_task_init',
-    # 'human_task_init_m1',
-    # 'human_rtt_task_init',
-    # 'human_rtt_task_init_m1',
-    # 'human_rtt_pitt_init',
-    # 'human_rtt_pitt_init_m1',
-    # 'human_rtt_scratch',
-    # 'crs07_m5',
-    # 'crs07_m1',
+    'human_task_init',
+    'human_task_init_m1',
+
+    'human_rtt_task_init',
+    'human_rtt_task_init_m1',
+
+    'human_rtt_pitt_init',
+    'human_rtt_pitt_init_m1',
+
+    'human_rtt_scratch',
+
+    'crs07_m5',
+    'crs07_m1',
+    'crs02b_m5',
+    'crs02b_m1',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -243,6 +249,8 @@ def build_df(runs, mode='nll'):
         for i, dataset in enumerate(EVAL_ALIASES):
             if 'crs07' in variant and 'CRS07' not in dataset:
                 continue # special case sub-evaluation
+            if 'crs02b' in variant and 'CRS02b' not in dataset:
+                continue
              # We use val _and_ eval to try to be generous and match Pitt settings
             inst_df = deepcopy(ref_df)
             inst_df.cfg.eval_datasets = [dataset]

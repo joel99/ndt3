@@ -26,7 +26,7 @@ pl.seed_everything(0)
 
 PLOT_DECODE = False
 USE_SORTED = True
-USE_SORTED = False
+# USE_SORTED = False
 
 exp_tag = f'robust{"" if USE_SORTED else "_unsort"}'
 EXPERIMENTS_KIN = [
@@ -51,7 +51,7 @@ queries = [
     'task_f32',
     'task_stitch',
     'time',
-    'stitch_96',
+    # 'stitch_96',
 ]
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
@@ -180,17 +180,72 @@ eRFH_baseline_kin = {
 # df.groupby(['variant']).count()
 
 #%%
+# * Barplots
 # Show just NLL
+PLOT = 'nll'
+PLOT = 'kin_r2'
+df['arch_group'] = df['arch'].apply(lambda x: 'NDT2' if x == 'f32' else 'NDT')
+
+order = ['time', 'stitch', 'f32']
+hue_order = ['single', 'session', 'subject', 'task']
+source_rename = {
+    'single': 'Intra',
+    'session': 'Session',
+    'subject': 'Subject',
+    'task': 'Task',
+}
+order = ['NDT', 'NDT2']
+
+palette = sns.color_palette(n_colors=len(hue_order))
+mean_df = df.groupby(['arch_group', 'source']).mean().reset_index()
+ax = prep_plt()
 ax = sns.barplot(
     # x='dataset',
     # hue='variant',
-    x='variant',
-    y='nll',
-    data=df
+    x=PLOT,
+    y='arch_group',
+    hue='source',
+    order=order,
+    hue_order=hue_order,
+    palette=palette,
+    data=mean_df,
+    width=0.9,
+    ax=ax,
 )
-# rotate x labels
-for item in ax.get_xticklabels():
-    item.set_rotation(45)
+
+# label poisson NLL with latex down arrow
+if PLOT == 'nll':
+    if USE_SORTED:
+        ax.set_xlim(0.288, 0.298)
+    ax.set_xlabel('Poisson NLL ($\downarrow$)')
+else:
+    ax.set_xlabel("Velocity $R^2$ ($\\uparrow$)")
+ax.set_ylabel('')
+ax.set_yticklabels(['NDT', 'NDT2'])
+# ax.set_yticklabels(['NDT', 'NDT-Stitch', 'NDT2'])
+
+# Remove the legend
+ax.get_legend().remove()
+
+# Get the 'source' values corresponding to the bars
+sources = mean_df['source'].values
+
+# Iterate over the bars and the sources, and add text
+for container, source in zip(ax.containers, hue_order):
+    for bar in container:
+        # skip nans
+        if np.isnan(bar.get_y()) or np.isnan(bar.get_width()):
+            continue
+        ax.text(ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
+                bar.get_y() + bar.get_height() / 2,
+                source_rename[source],
+                ha='left',
+                va='center',
+                color='white',
+                fontsize=14,
+        )
+
+
 
 #%%
 ax = prep_plt()
@@ -223,7 +278,7 @@ ax.axhline(mean_baseline, ls='--', color='black')# , label='mean across variants
 ax.text(
     ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.015,
     mean_baseline + 0.003,
-    'rEFH (Est)', color='black', ha='left', va='bottom',
+    'Makin 18 (rEFH Est)', color='black', ha='left', va='bottom',
     fontsize=14,
 )
 # ax.set_title(f'Vel R2 vs NLL ({"Sorted" if USE_SORTED else "Unsorted"})')
@@ -236,8 +291,8 @@ ax.text(
     fontsize=18, fontweight='bold'
 )
 # Velocity decoding R2 for y, with latex
-ax.set_ylabel('Velocity Decode $R^2$')
-ax.set_xlabel('Test NLL')
+ax.set_ylabel("Velocity $R^2$ ($\\uparrow$)")
+ax.set_xlabel('Test NLL ($\downarrow$)')
 
 # Reduce major xticks for clarity
 ax.xaxis.set_major_locator(ticker.LinearLocator(3))
@@ -289,8 +344,15 @@ print(labels)
 source_idx = labels.index('source')
 labels = labels[source_idx:]
 order = ['single', 'session', 'subject', 'task']
+remap = {
+    'source': 'Source',
+    'single': 'Intra-session',
+    'session': 'Cross-Session',
+    'subject': 'Cross-Subject',
+    'task': 'Cross-Task',
+}
 reorder_idx = [labels.index(o) for o in order]
-labels = np.array([l.capitalize() for l in labels])[reorder_idx]
+labels = np.array([remap[l] for l in labels])[reorder_idx]
 handles = np.array(handles[source_idx:])[reorder_idx]
 
 lgd = ax.legend(
