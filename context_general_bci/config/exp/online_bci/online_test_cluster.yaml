@@ -24,7 +24,8 @@ model:
 # inherit_exp: pitt_v3/decode_no_bounds
 # inherit_tag: human_m5
 inherit_exp: pitt_v3/decode_online_bci
-inherit_tag: human_m25
+# inherit_tag: human_m25
+inherit_tag: human_aug_m25
 # inherit_tag: human_aug_m1
 tag: 'online_test_tune'
 notes: "Decoder base: human obs, ortho, fbc."
