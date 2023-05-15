@@ -27,9 +27,9 @@ USE_CAT_SPIKES = False
 USE_CAT_SPIKES = True
 LAG_MS = 0
 
-dataset_name = 'observation_CRS02b_1953_2'
+# dataset_name = 'observation_CRS02b_1953_2'
 # dataset_name = 'observation_CRS02b_0_0'
-# dataset_name = 'observation_CRS07_150_1'
+dataset_name = 'observation_CRS07'
 
 context = context_registry.query(alias=dataset_name)
 if isinstance(context, list):

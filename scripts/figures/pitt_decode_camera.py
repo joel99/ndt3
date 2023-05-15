@@ -118,6 +118,7 @@ if DO_SUB_FBC:
     wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
     task_model, task_cfg, task_attrs = load_wandb_run(wandb_run, )
 #%%
+# JY: Note to self: Zscoring doesn't matter in threshold metric since no variants we test zscore at data loader level, they all do at evaluation time. And the data returned is in non-zscored units.
 
 def get_evals(model: BrainBertInterface, dataloader, runs=8, mode='nll'):
     evals = []
@@ -256,14 +257,14 @@ def build_df(runs, mode='nll'):
             inst_df.cfg.eval_datasets = [dataset]
             inst_df.cfg.datasets = [dataset]
             inst_df.subset_by_key([EVAL_DATASETS[i].id], key=MetaKey.session)
-            valid_keys = list(val_ref.meta_df[
-                (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
-            ][MetaKey.unique]) + list(eval_ref.meta_df[
-                (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
-            ][MetaKey.unique])
-            # valid_keys = list(eval_ref.meta_df[
+            # valid_keys = list(val_ref.meta_df[
+            #     (val_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            # ][MetaKey.unique]) + list(eval_ref.meta_df[
             #     (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
             # ][MetaKey.unique])
+            valid_keys = list(eval_ref.meta_df[
+                (eval_ref.meta_df[MetaKey.session] == EVAL_DATASETS[i].id)
+            ][MetaKey.unique])
             inst_df.subset_by_key(valid_keys, key=MetaKey.unique)
             # inst_df.subset_split(splits=['eval'])
 
@@ -312,23 +313,35 @@ print(subject_df.groupby(['variant']).mean().sort_values('kin_r2', ascending=Fal
 print('-----')
 # Across the board, M1 either has modest effect or major drop. We exclude.
 CAMERA_VARIANTS = {
-    # 'human_m1': 'Human (M1)',
+    'human_m1': 'Human',
     'human_m5': 'Human',
-    # 'human_obs_m1': 'Human (Obs) (M1)',
+    'human_obs_m1': 'Human (Obs)',
     'human_obs_m5': 'Human (Obs)',
-    'human_rtt_task_init': 'Human + Monkey',
-    # 'human_rtt_task_init_m1': 'Human + Monkey* (M1)',
-    'human_task_init': 'Human + Monkey',
-    # 'human_task_init_m1': 'Human + Monkey (M1)',
-    'human_rtt_scratch': 'Scratch',
-    'human_rtt_pitt_init': 'Human',
-    # 'crs07_m1': 'CRS07 (M1)',
+
+    'human_rtt_task_init': 'Human + Monkey (Task)',
+    'human_rtt_task_init_m1': 'Human + Monkey (Task)',
+
+    'human_task_init': 'Human (Task)',
+    'human_task_init_m1': 'Human (Task)',
+
+    'human_rtt_scratch': 'Scratch', # Running out of time to run the M1 for this
+
+    'human_rtt_pitt_init': 'Human + Monkey (Pitt)',
+    'human_rtt_pitt_init_m1': 'Human + Monkey (Pitt)',
+
+    'crs07_m1': 'CRS07',
     'crs07_m5': 'CRS07',
+
+    'crs02b_m1': 'CRS02b',
+    'crs02b_m5': 'CRS02b',
     # 'human_rtt_pitt_init_m1': 'Human + Monkey* (Pitt) (M1)',
 }
 
 camera_df = subject_df[subject_df['variant'].isin(CAMERA_VARIANTS.keys())]
 camera_df.loc[:, 'rtt_sup'] = camera_df['variant'].apply(lambda x: 'rtt' in x)
+# Take max value in variant
+
+
 sns.set_theme(style="whitegrid")
 # boxplot
 
@@ -379,9 +392,29 @@ for variant in camera_df['variant'].unique():
 results_df = pd.DataFrame(all_results)
 
 # Group by 'variant', and calculate the mean and standard error of 'data_mean' across seeds for each variant
+results_df.loc[:, 'variant_hp'] = results_df['variant'].apply(lambda x: x.replace('_m1', '').replace('_m5', ''))
 grouped_df = results_df.groupby('variant')['data_mean'].agg(['mean', 'sem'])
+# grouped_df = grouped_df.groupby(['variant_hp', 'seed']).max().reset_index()
 
 print(grouped_df.round(3))
+
+
+# Reset the index so that 'variant' becomes a regular column
+grouped_df = grouped_df.reset_index()
+
+# Create 'variant_hp' in grouped_df
+grouped_df['variant_hp'] = grouped_df['variant'].map(CAMERA_VARIANTS)
+
+# Group by 'variant_hp' and take the maximum 'mean'
+max_grouped_df = grouped_df.groupby('variant_hp')['mean'].max()
+
+# Convert to DataFrame
+max_grouped_df = max_grouped_df.to_frame().reset_index()
+
+# Merge the max means with sem
+final_df = pd.merge(max_grouped_df, grouped_df[['variant_hp', 'sem', 'mean']], on=['variant_hp', 'mean'], how='left')
+
+print(final_df.round(3))
 
 
 #%%
