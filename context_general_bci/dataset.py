@@ -451,6 +451,7 @@ class SpikingDataset(Dataset):
                 if isinstance(k, DataKey):
                     item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
                     if k == DataKey.time:
+                        # print(item, b[DataKey.spikes], b[MetaKey.session])
                         item = item - item[0]
                     if self.cfg.serve_tokenized_flat:
                         if k in [DataKey.spikes, DataKey.time, DataKey.position]:

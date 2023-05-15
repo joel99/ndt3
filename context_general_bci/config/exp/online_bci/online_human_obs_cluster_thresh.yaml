@@ -1,5 +1,5 @@
 # @package _global_
-
+# ! Defunct.
 defaults:
   - _default
 # init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'

@@ -6,5 +6,5 @@ dataset:
   - observation.*
 train:
   autoscale_batch_size: false
-  batch_size: 128
+  batch_size: 512
 # There are about 20K obs trials in the latest poll; 14K in train set (6K eval)
