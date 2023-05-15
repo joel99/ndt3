@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - _default
+
+dataset:
+  scale_limit_per_eval_session: 20
+train:
+  batch_size: 4 # RIP
+notes: "Match Pitt setting"

@@ -1,0 +1,39 @@
+# @package _global_
+defaults:
+  - /model: flat_enc_dec
+  - /model/task:
+    - joint_bhvr_decode_flat
+  - /dataset: flat
+  - /train: single_session_exp1
+dataset:
+  # scale_limit_per_eval_session: 100
+  eval_ratio: 0.05
+
+  datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20170131_02
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+  odoherty_rtt:
+    arrays: ['Indy-M1', 'Loco-M1']
+    include_sorted: False
+model:
+  causal: true
+  neurons_per_token: 32
+  decoder_context_integration: 'cross_attn'
+  task:
+    decode_time_pool: ""
+    mask_ratio: 0.2 # pretty sure this is irrelevant
+    behavior_lag: 120
+  accelerate_new_params: 10.0 # We're introducing a whole new readout layer...
+  lr_schedule: 'fixed'
+inherit_exp: scale_decode
+inherit_tag: session_cross
+fragment_datasets: True
+
+sweep_cfg: 'simpler_lr_sweep'
+sweep_mode: 'grid'
+
+seed: 3

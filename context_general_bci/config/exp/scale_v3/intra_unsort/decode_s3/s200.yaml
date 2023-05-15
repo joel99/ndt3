@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - _default
+
+dataset:
+  scale_limit_per_eval_session: 200

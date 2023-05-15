@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - _default
+
+dataset:
+  scale_limit_per_eval_session: 100
+model:
+  task:
+    blacklist_session_supervision:
+    - odoherty_rtt-Indy-20160407_02
+    - odoherty_rtt-Indy-20160627_01
+    - odoherty_rtt-Indy-20170131_02
+train:
+  batch_size: 32

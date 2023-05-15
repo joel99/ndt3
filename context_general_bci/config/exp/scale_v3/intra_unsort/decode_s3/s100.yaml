@@ -1,0 +1,6 @@
+# @package _global_
+
+defaults:
+  - _default
+
+# Note ideally this should have batch size 32 but `intra_unsort/probe` didn't use it so we stick with default (64)
