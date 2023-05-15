@@ -1,0 +1,26 @@
+# @package _global_
+
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+model:
+  causal: true
+  subject_embed_strategy: EmbedStrat.token
+  task:
+    mask_ratio: 0.25 # for efficiency
+  neurons_per_token: 32
+dataset:
+  datasets:
+  - odoherty_rtt-Indy.*
+  exclude_datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison
+train:
+  accumulate_batches: 2 # auto = 128 (12G GPUs), effective = 256
+  autoscale_batch_size: false
+  batch_size: 128
+
+notes: "Sorted, Patch size 32"

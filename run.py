@@ -111,7 +111,8 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
         cfg,
         experiment_set=flag_dict['experiment_set'] if 'experiment_set' in flag_dict else "",
         tag=flag_dict['tag'] if 'tag' in flag_dict else "",
-        other_overrides=config_dict
+        other_overrides=config_dict,
+        allowed_states=["finished", "running"]
     ):
         logging.info(f"Skipping {flag_dict['tag']} because it already exists.")
         return

@@ -150,7 +150,7 @@ def get_wandb_lineage(cfg: RootConfig):
 
     return runs[0] # auto-sorts to newest
 
-def wandb_run_exists(cfg: RootConfig, experiment_set: str="", tag: str="", other_overrides: Dict[str, Any] = {}):
+def wandb_run_exists(cfg: RootConfig, experiment_set: str="", tag: str="", other_overrides: Dict[str, Any] = {}, allowed_states=["finished", "running", "crashed", "failed"]):
     r"""
         Intended to do be used within the scope of an auto-launcher.
         Only as specific as the overrides specify, will be probably too liberal with declaring a run exists if you don't specify enough.
@@ -164,7 +164,7 @@ def wandb_run_exists(cfg: RootConfig, experiment_set: str="", tag: str="", other
         filters={
             "config.experiment_set": experiment_set if experiment_set else cfg.experiment_set,
             "config.tag": tag if tag else cfg.tag,
-            "state": {"$in": ["finished", "running", "crashed", "failed"]},
+            "state": {"$in": allowed_states},
             **other_overrides,
         }
     )

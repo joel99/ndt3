@@ -1,0 +1,10 @@
+# @package _global_
+
+defaults:
+  - /model: flat_enc_dec
+  - /dataset: flat
+  - _default
+model:
+  causal: true # probe doesn't need to set mask ratio
+  subject_embed_strategy: EmbedStrat.token
+  neurons_per_token: 32

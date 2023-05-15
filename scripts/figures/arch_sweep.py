@@ -49,8 +49,8 @@ def get_run_df(runs):
 
 #%%
 SORTED = False
-# SORTED = True
-title = f'Sample HP sweep for Indy 06/27/2016 ({"SORTED" if SORTED else "UNSORTED"})'
+SORTED = True
+title = f'Sample HP sweep for Indy 06/27/2016 ({"Sorted" if SORTED else "Unsorted"})'
 
 # pull experiment
 if SORTED:
@@ -95,4 +95,6 @@ ax.set_xlabel('')
 # rotate all xlabels by 45 degrees
 for item in ax.get_xticklabels():
     item.set_rotation(45)
+    # increase fontsize
+    item.set_fontsize(16)
 ax.set_title(title, fontsize=18)
