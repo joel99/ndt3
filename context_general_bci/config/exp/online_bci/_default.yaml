@@ -10,6 +10,8 @@ defaults:
   - /dataset: flat
   - /train: single_session_exp1
 dataset:
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
   data_keys:
   - DataKey.spikes
   - DataKey.bhvr_vel
