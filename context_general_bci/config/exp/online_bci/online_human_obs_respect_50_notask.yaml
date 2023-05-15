@@ -2,10 +2,9 @@
 
 defaults:
   - _default
-# init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
-inherit_exp: pitt_v3/decode_online_bci
-inherit_tag: human_m1
-tag: 'online_obs_tune'
+init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
+tag: 'online_obs_respect_tune'
 notes: "Decoder base: human obs." # pitt_v3/decode_full/human
 model:
   closed_loop_crop_bins: 50
+  extra_task_embed_ckpt: ''
