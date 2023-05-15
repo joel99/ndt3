@@ -9,6 +9,7 @@ model:
   task_embed_strategy: EmbedStrat.token
   task:
     mask_ratio: 0.5 # for efficiency
+    metrics: [] # doggone it, I have no idea why bps logging is still crashing https://wandb.ai/joelye9/context_general_bci/runs/pwrdwyxl/overview?workspace=user-joelye9 aren't I just putting 0s?
   readin_strategy: EmbedStrat.unique_project
   readout_strategy: EmbedStrat.unique_project
   readin_compress: False

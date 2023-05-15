@@ -13,11 +13,11 @@ import torch
 import pytorch_lightning as pl
 from einops import rearrange
 
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from data import SpikingDataset, DataAttrs
 
-from analyze_utils import get_run_config, load_wandb_run, wandb_query_latest, wandb_query_experiment
-from analyze_utils import prep_plt
+from context_general_bci.analyze_utils import get_run_config, load_wandb_run, prep_plt
+from context_general_bci.utils import wandb_query_latest, wandb_query_experiment
 
 from matplotlib.colors import LogNorm, Normalize
 
@@ -41,19 +41,26 @@ def get_run_dict(run):
     out = pd.DataFrame(out)
     return out
 
-def get_run_df(runs, labels):
+def get_run_df(runs):
     return pd.concat([
         get_run_dict(run) for run in runs
     ])
 
 
 #%%
-title = 'Sweep'
+SORTED = False
+# SORTED = True
+title = f'Sample HP sweep for Indy 06/27/2016 ({"SORTED" if SORTED else "UNSORTED"})'
 
 # pull experiment
-experiment = [
-    'arch/tune_hp',
-]
+if SORTED:
+    experiment = [
+        'arch/tune_hp',
+    ]
+else:
+    experiment = [
+        'arch/tune_hp_unsort',
+    ]
 
 runs = wandb_query_experiment(
     experiment,
@@ -61,20 +68,31 @@ runs = wandb_query_experiment(
     duration={"$gt": 300},
 )
 
-run_labels = [
-    'single_f8-sweep_base_v2'
-]
 
-
-df = get_run_df(runs, run_labels)
+df = get_run_df(runs)
 #%%
 crop_labels = lambda x: x.split('-')[0]
 df['label'] = df['tag'].apply(crop_labels)
+CAMERA = {
+    'time': 'NDT1',
+    'stitch': 'NDT1 + Stitch',
+    # 'single_f8': 'NDT2 - Intra (Patch 8)', # Honestly just confusing to include
+    'f32': 'NDT2 (Patch 32)',
+}
+sub_df = df[df['label'].isin(CAMERA.keys())]
+sub_df['label'] = sub_df['label'].apply(lambda x: CAMERA[x])
 ax = prep_plt()
-sns.boxplot(
-    data=df,
+ax = sns.stripplot(
+    data=sub_df,
     x='label',
     y='test_loss',
     # hue='variant',
     ax=ax,
 )
+
+ax.set_ylabel("Poisson NLL ($\downarrow$)")
+ax.set_xlabel('')
+# rotate all xlabels by 45 degrees
+for item in ax.get_xticklabels():
+    item.set_rotation(45)
+ax.set_title(title, fontsize=18)
