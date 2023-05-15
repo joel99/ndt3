@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
+model:
+  task:
+    mask_ratio: 0.25
+inherit_tag: human_10l
