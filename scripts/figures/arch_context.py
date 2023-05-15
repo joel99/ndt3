@@ -9,14 +9,11 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import seaborn as sns
 import torch
-from torch.utils.data import DataLoader
 import pytorch_lightning as pl
-from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from context_general_bci.dataset import SpikingDataset, DataAttrs
-from context_general_bci.model import transfer_model, logger
 
 from context_general_bci.analyze_utils import (
     get_run_config, load_wandb_run, prep_plt
@@ -29,8 +26,11 @@ from matplotlib.colors import LogNorm, Normalize
 
 PLOT_VERSION = "supplement_multiscale"
 PLOT_VERSION = "multiseed"
+PLOT_VERSION = "multiseed_subject"
 if PLOT_VERSION == "multiseed":
     experiment = ['arch/context_s3', 'arch/context_s2', 'arch/context']
+elif PLOT_VERSION == "multiseed_subject":
+    experiment = ['arch/context_subject_s3', 'arch/context_subject_s2', 'arch/context_subject']
 else:
     experiment = ['arch/context']
 
@@ -251,7 +251,11 @@ def plot_multiseed():
 
     inset_box = ax.indicate_inset_zoom(ax_inset, edgecolor='black', alpha=0.5, linewidth=2)
 
-if PLOT_VERSION == 'multiseed':
+    fig.tight_layout()
+    fig.savefig('arch_context.png', bbox_inches='tight')
+
+
+if PLOT_VERSION in ['multiseed', 'multiseed_subject']:
     plot_multiseed()
 elif PLOT_VERSION == 'supplement_multiscale':
     plot_multiscale()

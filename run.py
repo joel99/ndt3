@@ -117,7 +117,10 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
         logging.info(f"Skipping {flag_dict['tag']} because it already exists.")
         return
     print('launching: ', ' '.join(unique_flags))
-    subprocess.run(['sbatch', launch_script, *unique_flags])
+    if getattr(cfg, 'serial_run', False):
+        subprocess.run(['python', 'run.py', *unique_flags])
+    else:
+        subprocess.run(['sbatch', launch_script, *unique_flags])
 
 @hydra.main(version_base=None, config_path='context_general_bci/config', config_name="config")
 def run_exp(cfg : RootConfig) -> None:

@@ -549,6 +549,7 @@ class RootConfig:
     # orchestration
     inherit_exp: str = "" # hunt wandb for the relevant experiment, presumed same tag name.
     inherit_tag: str = "" # override same tag inheritance
+    serial_run: bool = False # for launchers..
 
     cancel_if_run_exists: bool = True # since codebase is fairly stable now - if same config/tag exists on wandb, do not run.
     # Only checked if `inherit_exp` is set i.e. part of chain of runs. See `ckpts_and_wandb_helpers/wandb_run_exists`
