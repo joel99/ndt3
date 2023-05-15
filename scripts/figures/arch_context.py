@@ -26,11 +26,12 @@ from matplotlib.colors import LogNorm, Normalize
 
 PLOT_VERSION = "supplement_multiscale"
 PLOT_VERSION = "multiseed"
-PLOT_VERSION = "multiseed_subject"
+# PLOT_VERSION = "multiseed_subject"
 if PLOT_VERSION == "multiseed":
     experiment = ['arch/context_s3', 'arch/context_s2', 'arch/context']
 elif PLOT_VERSION == "multiseed_subject":
     experiment = ['arch/context_subject_s3', 'arch/context_subject_s2', 'arch/context_subject']
+    experiment = ['arch/context_subject_s2', 'arch/context_subject'] # s3 not ready for main paper deadline
 else:
     experiment = ['arch/context']
 
@@ -68,10 +69,16 @@ def get_run_dict(run):
     out['tag'] = run.config['tag']
     out['seed'] = run.config['seed']
     out['scale_factor'] = run.config['dataset']['scale_ratio']
-    if run.config['model']['session_embed_strategy'] == str(EmbedStrat.none):
-        out['context_tokens'] = 0
+    if 'subject' in PLOT_VERSION:
+        if run.config['model']['subject_embed_strategy'] == str(EmbedStrat.none):
+            out['context_tokens'] = 0
+        else:
+            out['context_tokens'] = run.config['model']['subject_embed_token_count']
     else:
-        out['context_tokens'] = run.config['model']['session_embed_token_count']
+        if run.config['model']['session_embed_strategy'] == str(EmbedStrat.none):
+            out['context_tokens'] = 0
+        else:
+            out['context_tokens'] = run.config['model']['session_embed_token_count']
     out['token_size'] = run.config['model']['neurons_per_token']
     out['trials'] = round(out['scale_factor'] * train_size)
     out['n_layers'] = run.config['model']['transformer']['n_layers']
@@ -87,6 +94,7 @@ def hash_run(run):
     return (run.config['tag'], run.config['experiment_set'])
 seen_variants = {}
 for run in runs:
+    print(run.config['tag'], run.config['experiment_set'])
     if hash_run(run) not in seen_variants:
         seen_variants[hash_run(run)] = run
 runs = list(seen_variants.values())
@@ -195,7 +203,7 @@ def plot_multiseed():
     ax.set_title('')
 
     leg = ax.legend(
-        title='Session Tokens', loc='lower left', frameon=False,
+        title=f'{"Subject" if "subject" in PLOT_VERSION else "Session"} Tokens', loc='lower left', frameon=False,
         fontsize=14,
         title_fontsize=14,
     )
@@ -229,15 +237,19 @@ def plot_multiseed():
         legend=False,
     )
 
-    ax_inset.set_xlim(1e4, 4.e4)  # Adjust the x-axis limits for the zoomed-in view
-    ax_inset.set_ylim(0.31, 0.32)  # Adjust the y-axis limits for the zoomed-in view
-    ax_inset.set_xscale('log')
     ax_inset.set_yscale('linear')  # Use linear scale for the y-axis in the inset
+    ax_inset.set_xscale('log')
+    if 'subject' in PLOT_VERSION:
+        ax_inset.set_xlim(1e4, 2.5e4)
+        ax_inset.set_ylim(0.32, 0.325)
+    else:
+        ax_inset.set_xlim(1e4, 4.e4)  # Adjust the x-axis limits for the zoomed-in view
+        ax_inset.set_ylim(0.31, 0.32)  # Adjust the y-axis limits for the zoomed-in view
+        ax_inset.set_yticks([0.31, 0.32])
     ax_inset.get_xaxis().set_visible(False)
     # ax_inset.set_xticks([])
     # ax_inset.set_xticklabels([])
     # ax_inset.set_xticks([5e3, 2e4])
-    ax_inset.set_yticks([0.31, 0.32])
     ax_inset.spines['top'].set_alpha(0.2)
     ax_inset.spines['right'].set_alpha(0.2)
     ax_inset.spines['bottom'].set_alpha(0.2)
