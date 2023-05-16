@@ -209,6 +209,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                         #     trial_spikes = trial_spikes[start_pad:-end_pad]
                         #     if session_vel is not None:
                         #         trial_vel = trial_vel[start_pad:-end_pad]
+                        if trial_spikes.size(0) < 10:
+                            continue
                         if trial_spikes.size(0) < round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms):
                             save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
                         else:
@@ -219,7 +221,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                                 save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
 
                             end_of_trial = trial_spikes.size(0) % round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
-                            if end_of_trial > 0:
+                            if end_of_trial > 10:
                                 trial_spikes_end = trial_spikes[-end_of_trial:]
                                 if session_vel is not None:
                                     trial_vel_end = trial_vel[-end_of_trial:]

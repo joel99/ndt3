@@ -1,0 +1,17 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
+dataset:
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
+  pitt_co:
+    respect_trial_boundaries: false
+  observation:
+    respect_trial_boundaries: false
+model:
+  task:
+    mask_ratio: 0.5
+inherit_tag: human_10l
