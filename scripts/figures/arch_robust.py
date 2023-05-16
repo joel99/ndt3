@@ -96,7 +96,7 @@ def get_evals(model, dataloader, runs=8, mode='nll'):
     # return evals
 
 def hash_cfg(cfg, dataset_name, variant):
-    return (variant, dataset_name, cfg['model']['lr_init'], cfg['seed'])
+    return (variant, dataset_name, cfg['model']['lr_init'], cfg['seed'], cfg['experiment_set'])
 
 def build_df(runs, mode='nll'):
     df = []
@@ -120,6 +120,7 @@ def build_df(runs, mode='nll'):
             'dataset': dataset_name,
             'chunk': run.config['model']['neurons_per_token'],
             'lr': run.config['model']['lr_init'], # swept
+            'experiment_set': run.config['experiment_set'],
             'seed': run.config['seed'],
         }
         payload[mode] = get_evals(model, dataloader, mode=mode, runs=1 if mode != 'nll' else 8)
@@ -158,7 +159,7 @@ source_map = {
     'single_f32': 'single',
     'single_time': 'single',
     'time': 'session',
-    'stitch_96': 'session',
+    'stitch_96': 'session', # TODO check which one is better and just report that
 }
 arch_map = {
     'single_f8': 'f8',
@@ -189,7 +190,7 @@ eRFH_baseline_kin = {
 }
 
 #%%
-# print(df)
+print(df.seed.unique())
 # print(kin_df.columns)
 # get unique counts - are all the runs done?
 # print(df)
@@ -197,7 +198,6 @@ eRFH_baseline_kin = {
 
 #%%
 # * Barplots
-# Show just NLL
 PLOT = 'nll'
 PLOT = 'kin_r2'
 df['arch_group'] = df['arch'].apply(lambda x: 'NDT2' if x == 'f32' else 'NDT')
