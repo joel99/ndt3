@@ -28,6 +28,9 @@ PLOT_DECODE = False
 USE_SORTED = True
 # USE_SORTED = False
 
+MODE = 'patch'
+MODE = 'mask_ratio'
+
 exp_tag = f'robust{"" if USE_SORTED else "_unsort"}'
 EXPERIMENTS_KIN = [
     f'arch/{exp_tag}/probe',
@@ -37,24 +40,30 @@ EXPERIMENTS_NLL = [
     f'arch/{exp_tag}/tune',
 ]
 
-queries = [
-    'single_f8',
-    'f8',
-    'f8_nopool',
-    'subject_f8',
-    'task_f8',
-    'single_time',
-    'single_f32',
-    'f32',
-    'f32_nopool',
-    # 'stitch',
-    'subject_f32',
-    # 'subject_stitch',
-    'task_f32',
-    # 'task_stitch',
-    # 'time',
-    # 'stitch_96',
-]
+if MODE == 'patch':
+    queries = [
+        'single_f8',
+        'f8',
+        'f8_nopool',
+        'subject_f8',
+        'task_f8',
+        'single_time',
+        'single_f32',
+        'f32',
+        'f32_nopool',
+        'subject_f32',
+        'task_f32',
+    ]
+elif MODE ==  'mask_ratio':
+    queries = [
+        'f32',
+        'f32_m25',
+        'f32_m75',
+        # 'stitch',
+        # 'stitch_m25',
+        # 'stitch_m75'
+    ]
+
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
@@ -67,8 +76,10 @@ runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
     "config.dataset.odoherty_rtt.include_sorted": USE_SORTED,
     "state": {"$in": ['finished']},
 })
-runs_kin = [r for r in runs_kin if r.name.split('-')[0] in queries]
 runs_nll = [r for r in runs_nll if r.name.split('-')[0] in queries]
+for r in runs_nll:
+    print(r.name)
+runs_kin = [r for r in runs_kin if r.name.split('-')[0] in queries]
 print(len(runs_nll))
 print(len(runs_kin)) # 4 * 5 * 3
 # runs_kin = runs_kin[:10]
@@ -155,6 +166,9 @@ source_map = {
     'single_time': 'single',
     'time': 'session',
     'stitch_96': 'session',
+
+    'f32_m25': 'session',
+    'f32_m75': 'session',
 }
 arch_map = {
     'single_f8': 'f8',
@@ -174,6 +188,14 @@ arch_map = {
     'time': 'time',
     'stitch_96': 'stitch',
 }
+
+if MODE == 'mask_ratio':
+    arch_map = {
+        'f32': '50%',
+        'f32_m25': '25%',
+        'f32_m75': '75%',
+    }
+
 df['source'] = df['variant'].apply(lambda x: source_map[x])
 df['arch'] = df['variant'].apply(lambda x: arch_map[x])
 
@@ -185,73 +207,6 @@ eRFH_baseline_kin = {
     'odoherty_rtt-Indy-20161026_03': 0.5955,
     'odoherty_rtt-Indy-20170131_02': 0.5113,
 }
-
-#%%
-# * Barplots
-# Show just NLL
-PLOT = 'nll'
-PLOT = 'kin_r2'
-df['arch_group'] = df['arch'].apply(lambda x: 'NDT2' if x == 'f32' else 'NDT')
-
-order = ['time', 'stitch', 'f32']
-hue_order = ['single', 'session', 'subject', 'task']
-source_rename = {
-    'single': 'Intra',
-    'session': 'Session',
-    'subject': 'Subject',
-    'task': 'Task',
-}
-order = ['NDT', 'NDT2']
-
-palette = sns.color_palette(n_colors=len(hue_order))
-mean_df = df.groupby(['arch_group', 'source']).mean().reset_index()
-ax = prep_plt()
-ax = sns.barplot(
-    # x='dataset',
-    # hue='variant',
-    x=PLOT,
-    y='arch_group',
-    hue='source',
-    order=order,
-    hue_order=hue_order,
-    palette=palette,
-    data=mean_df,
-    width=0.9,
-    ax=ax,
-)
-
-# label poisson NLL with latex down arrow
-if PLOT == 'nll':
-    if USE_SORTED:
-        ax.set_xlim(0.288, 0.298)
-    ax.set_xlabel('Poisson NLL ($\downarrow$)')
-else:
-    ax.set_xlabel("Velocity $R^2$ ($\\uparrow$)")
-ax.set_ylabel('')
-ax.set_yticklabels(['NDT', 'NDT2'])
-# ax.set_yticklabels(['NDT', 'NDT-Stitch', 'NDT2'])
-
-# Remove the legend
-ax.get_legend().remove()
-
-# Get the 'source' values corresponding to the bars
-sources = mean_df['source'].values
-
-# Iterate over the bars and the sources, and add text
-for container, source in zip(ax.containers, hue_order):
-    for bar in container:
-        # skip nans
-        if np.isnan(bar.get_y()) or np.isnan(bar.get_width()):
-            continue
-        ax.text(ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01,
-                bar.get_y() + bar.get_height() / 2,
-                source_rename[source],
-                ha='left',
-                va='center',
-                color='white',
-                fontsize=14,
-        )
-
 
 
 #%%
@@ -283,21 +238,10 @@ ax = sns.scatterplot(
 mean_baseline = np.mean([eRFH_baseline_kin[k] for k in eRFH_baseline_kin if k in df.dataset.unique()])
 ax.axhline(mean_baseline, ls='--', color='black')# , label='mean across variants')
 # Annotate the horizontal line
-ax.text(
-    ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.015,
-    mean_baseline + 0.003,
-    'Makin 18 (rEFH Est)', color='black', ha='left', va='bottom',
-    fontsize=14,
-)
+
 # ax.set_title(f'Vel R2 vs NLL ({"Sorted" if USE_SORTED else "Unsorted"})')
 # Annotate with Sorted or Unsorted in bottom left of plot
-ax.text(
-    ax.get_xlim()[1] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.35,
-    ax.get_ylim()[1] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.01,
-    'Sorted' if USE_SORTED else 'Unsorted', color='black',
-    ha='right', va='top',
-    fontsize=18, fontweight='bold'
-)
+
 # Velocity decoding R2 for y, with latex
 ax.set_ylabel("Velocity $R^2$ ($\\uparrow$)")
 ax.set_xlabel('Test NLL ($\downarrow$)')
@@ -306,7 +250,7 @@ ax.set_xlabel('Test NLL ($\downarrow$)')
 ax.xaxis.set_major_locator(ticker.LinearLocator(3))
 ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{x:.3f}"))
 ax.xaxis.set_minor_locator(ticker.LinearLocator(5))
-ax.yaxis.set_major_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 3)))
+# ax.yaxis.set_major_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 3)))
 ax.yaxis.set_minor_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 5)))
 ax.grid(which='both')
 ax.grid(which='minor', alpha=0.2)
@@ -323,6 +267,13 @@ camera_ready_arch_remap = {
     # 'stitch': 'NDT1-Stitch'
 }
 
+if MODE == 'mask_ratio':
+    camera_ready_arch_remap = {
+        '50%': '50% Mask',
+        '25%': '25% Mask',
+        '75%': '75% Mask',
+    }
+
 # Annotate the data with their variant. Skip once variant has been marked
 # marked_variants = set()
 # for i, row in aggr_variant.iterrows():
@@ -338,72 +289,64 @@ camera_ready_arch_remap = {
 
 # No.... this doesn't look good. Just put them under legend. We'll adjust in post.
 # Add text for three archictectures on the right side of the plot
-for arch, y in zip(hue_order, np.arange(len(hue_order)) * -0.09 + 0.46):
-    ax.text(
-        1.25,
-        y,
-        camera_ready_arch_remap[arch],
-        color=palette[hue_order.index(arch)], ha='center', va='top',
-        fontsize=16,
-        # in axes coords
-        transform=ax.transAxes,
-    )
 
-handles, labels = ax.get_legend_handles_labels()
-print(labels)
+
 # Only keep the labels from source, onwards
-source_idx = labels.index('source')
-labels = labels[source_idx:]
-order = ['single', 'session', 'subject', 'task']
-remap = {
-    'source': 'Source',
-    'single': 'Intra-session',
-    'session': 'Cross-Session',
-    'subject': 'Cross-Subject',
-    'task': 'Cross-Task',
-}
-reorder_idx = [labels.index(o) for o in order]
-labels = np.array([remap[l] for l in labels])[reorder_idx]
-handles = np.array(handles[source_idx:])[reorder_idx]
-
-lgd = ax.legend(
-    handles, labels, loc='upper right', fontsize=14, ncol=1, frameon=False,
-    # title='Data Source', title_fontsize=14,
-    bbox_to_anchor=(1.52, 0.92),
-)
-for handle in lgd.legendHandles:
-    handle._sizes = [80]
-
-
-#%%
-# make facet grid with model cali
-sorted_datasets = sorted(df.variant.unique())
-palette = sns.color_palette('colorblind', len(aggr_variant))
-g = sns.relplot(
-    data=df,
-    col='dataset',
-    x='nll',
-    y='kin_r2',
-    # hue='variant',
-    hue='arch',
-    # style='variant',
-    style='source',
-    s=100,
-    col_wrap=3,
-    facet_kws={'sharey': False, 'sharex': False}
-)
-def deco(data, **kws):
-    ax = plt.gca()
-    ax = prep_plt(ax)
-
-    # Annotate the horizontal line
-    mean_baseline = eRFH_baseline_kin[data.dataset.unique()[0]]
-    ax.axhline(mean_baseline, ls='--', color='black', label='mean across variants')
-    # annotate rEFH position
-    ax.text(
-        ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01, mean_baseline, 'rEFH', color='black', ha='left', va='bottom',
-        fontsize=14,
+if MODE == 'mask_ratio':
+    handles, labels = ax.get_legend_handles_labels()
+    # keep only 2-4
+    handles = handles[1:4]
+    labels = labels[1:4]
+    ax.legend(
+        handles, labels, fontsize=14, ncol=1, frameon=False,
+        title='Mask Ratio', title_fontsize=18,
     )
-g.map_dataframe(deco)
-g.fig.suptitle(f'Arch. approaches - Vel R2, NLL ({"Sorted" if USE_SORTED else "Unsorted"})', y=1.05, fontsize=28)
-sns.move_legend(g, "upper left", bbox_to_anchor=(.7, .5), fontsize=20)
+    ax.text(
+        ax.get_xlim()[1] - (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.5,
+        ax.get_ylim()[1] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.01,
+        'Sorted' if USE_SORTED else 'Unsorted', color='black',
+        ha='right', va='top',
+        fontsize=18, fontweight='bold'
+    )
+else:
+    ax.text(
+        ax.get_xlim()[1] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.35,
+        ax.get_ylim()[1] - (ax.get_ylim()[1] - ax.get_ylim()[0]) * 0.01,
+        'Sorted' if USE_SORTED else 'Unsorted', color='black',
+        ha='right', va='top',
+        fontsize=18, fontweight='bold'
+    )
+    for arch, y in zip(hue_order, np.arange(len(hue_order)) * -0.09 + 0.46):
+        ax.text(
+            1.25,
+            y,
+            camera_ready_arch_remap[arch],
+            color=palette[hue_order.index(arch)], ha='center', va='top',
+            fontsize=16,
+            # in axes coords
+            transform=ax.transAxes,
+        )
+    handles, labels = ax.get_legend_handles_labels()
+    print(labels)
+    source_idx = labels.index('source')
+    labels = labels[source_idx:]
+    order = ['single', 'session', 'subject', 'task']
+    remap = {
+        'source': 'Source',
+        'single': 'Intra-session',
+        'session': 'Cross-Session',
+        'subject': 'Cross-Subject',
+        'task': 'Cross-Task',
+    }
+    reorder_idx = [labels.index(o) for o in order]
+    labels = np.array([remap[l] for l in labels])[reorder_idx]
+    handles = np.array(handles[source_idx:])[reorder_idx]
+
+    lgd = ax.legend(
+        handles, labels, loc='upper right', fontsize=14, ncol=1, frameon=False,
+        # title='Data Source', title_fontsize=14,
+        bbox_to_anchor=(1.52, 0.92),
+    )
+    for handle in lgd.legendHandles:
+        handle._sizes = [80]
+
