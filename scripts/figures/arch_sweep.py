@@ -38,6 +38,9 @@ def get_run_dict(run):
     out['id'] = [run.id]
     out['tag'] = [run.config['tag']]
     out['experiment'] = [run.config['experiment_set']]
+    out['dropout'] = [run.config['model']['dropout']]
+    out['weight_decay'] = [run.config['model']['weight_decay']]
+    out['hidden_size'] = [run.config['model']['hidden_size']]
     out = pd.DataFrame(out)
     return out
 
@@ -86,8 +89,11 @@ ax = sns.stripplot(
     data=sub_df,
     x='label',
     y='test_loss',
-    # hue='variant',
+    # hue='weight_decay',
+    hue='dropout',
+    # style='hidden_size',
     ax=ax,
+    order=['NDT2 (Patch 32)', 'NDT1 + Stitch', 'NDT1'],
 )
 
 ax.set_ylabel("Poisson NLL ($\downarrow$)")
