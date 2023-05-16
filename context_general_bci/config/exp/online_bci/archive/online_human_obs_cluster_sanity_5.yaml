@@ -1,0 +1,19 @@
+# @package _global_
+
+defaults:
+  - _default
+# init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
+inherit_exp: pitt_v3/decode_online_bci # JY backup, not clear on lineage here
+inherit_tag: human_aug_m1
+tag: 'online_obs_tune'
+model:
+  closed_loop_crop_bins: 50
+  task:
+    mask_ratio: 0.1
+dataset:
+  pitt_co:
+    respect_trial_boundaries: true
+  observation:
+    respect_trial_boundaries: true
+
+notes: 'Respect boundary (the impt tune diff), but init from online_bci golden.'
