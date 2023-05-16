@@ -31,34 +31,42 @@ USE_SORTED = True
 exp_tag = f'robust{"" if USE_SORTED else "_unsort"}'
 EXPERIMENTS_KIN = [
     f'arch/{exp_tag}/probe',
-    f'arch/{exp_tag}_s2/probe',
-    # f'arch/{exp_tag}_s3/probe',
+    # f'arch/{exp_tag}_s2/probe',
+    f'arch/{exp_tag}_s3/probe',
 ]
 EXPERIMENTS_NLL = [
-    f'arch/{exp_tag}',
-    f'arch/{exp_tag}/tune',
-    f'arch{exp_tag}_s2',
-    f'arch{exp_tag}_s2/tune',
-    # f'arch{exp_tag}_s3',
-    # f'arch{exp_tag}_s3/tune',
+    # f'arch/{exp_tag}',
+    # f'arch/{exp_tag}/tune',
+    # f'arch/{exp_tag}_s2',
+    # f'arch/{exp_tag}_s2/tune',
+    f'arch/{exp_tag}_s3',
+    f'arch/{exp_tag}_s3/tune',
 ]
+# am missing for s2 tune
+# 1 task_f32
+# 2 stitch
+# 1 f32
 
 queries = [
     # 'single_f8',
     # 'f8',
     # 'subject_f8',
     # 'task_f8',
+
     'single_time',
     'single_f32',
     'f32',
     'stitch',
+
     'subject_f32',
     'subject_stitch',
     'task_f32',
     'task_stitch',
-    'time',
+
     # 'stitch_96',
 ]
+if not USE_SORTED:
+    queries.append('time')
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
@@ -73,6 +81,8 @@ runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
 })
 runs_kin = [r for r in runs_kin if r.name.split('-')[0] in queries]
 runs_nll = [r for r in runs_nll if r.name.split('-')[0] in queries]
+for r in runs_nll:
+    print(r.name)
 print(len(runs_nll))
 print(len(runs_kin)) # 4 * 5 * 3
 # runs_kin = runs_kin[:10]
@@ -128,12 +138,13 @@ def build_df(runs, mode='nll'):
         seen_set[(variant, dataset_name, run.config['model']['lr_init'])] = True
     return pd.DataFrame(df)
 kin_df = build_df(runs_kin, mode='kin_r2')
-kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'dataset', 'seed'])
+kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'dataset', 'seed', 'experiment_set'])
 
 nll_df = build_df(runs_nll, mode='nll')
 
 # merge on variant and dataset, filling empty with 0s
-df = pd.merge(kin_df, nll_df, on=['variant', 'dataset', 'seed'], how='outer').fillna(0)
+df = pd.merge(kin_df, nll_df, on=['variant', 'dataset', 'seed', 'experiment_set'], how='outer')
+# df = pd.merge(kin_df, nll_df, on=['variant', 'dataset', 'seed'], how='outer').fillna(0)
 
 # cache at <name_of_this_file>.pt
 import os
@@ -143,6 +154,9 @@ torch.save(df, f'data/tmp/{__file__.split("/")[-1]}.pt')
 
 #%%
 df = torch.load(f'data/tmp/{__file__.split("/")[-1]}.pt')
+print(df)
+# df = df.fillna(0)
+# df = df.dropna() # If we lost a few LR sweeps... oh well
 # Meta-annotation
 
 source_map = {
@@ -195,6 +209,14 @@ print(df.seed.unique())
 # get unique counts - are all the runs done?
 # print(df)
 # df.groupby(['variant']).count()
+
+seed_counts = df.groupby(['variant', 'dataset']).count()['seed']
+print(seed_counts[seed_counts < 2])
+# Print details on those with less than 2
+# Missing probe 3 for these 3, check dashboard status?
+# print(df[(df['variant'] == 'f32') & (df['dataset'] == 'odoherty_rtt-Indy-20160627_01')])
+# print(df[(df['variant'] == 'stitch') & (df['dataset'] == 'odoherty_rtt-Indy-20161026_03')])
+# print(df[(df['variant'] == 'stitch') & (df['dataset'] == 'odoherty_rtt-Indy-20170131_02')])
 
 #%%
 # * Barplots
@@ -261,11 +283,21 @@ for container, source in zip(ax.containers, hue_order):
                 fontsize=14,
         )
 
+#%%
+aggr_variant = df.groupby(['variant', 'source', 'arch', 'seed']).mean().reset_index()
+print(aggr_variant)
 
+# Currently we have two experiment sets, trim the probes...
 
 #%%
-ax = prep_plt()
-aggr_variant = df.groupby(['variant', 'source', 'arch']).mean().reset_index()
+from scipy.stats import sem
+fig = plt.figure(figsize=(6, 6))
+ax = prep_plt(fig.gca())
+
+# Calculate means and standard error of the mean for each group
+means = aggr_variant.groupby(['variant', 'source', 'arch']).mean().reset_index()
+sems = aggr_variant.groupby(['variant', 'source', 'arch']).agg(sem).reset_index()
+
 palette = sns.color_palette('colorblind', len(aggr_variant))
 hue_order = list(aggr_variant.arch.unique())
 ax = sns.scatterplot(
@@ -275,11 +307,79 @@ ax = sns.scatterplot(
     hue_order=hue_order,
     # hue='variant',
     style='source',
-    s=100,
-    data=aggr_variant,
+    s=125,
+    data=means,
     palette=palette,
     legend=True,
+    markers={
+        'single': 'o',
+        'session': 'D',
+        'subject': 's',
+        'task': 'X',
+    },
+    facecolors=None,
+    # markers=['o', 's', 'D', 'P'],
 )
+
+# Add error bars with matplotlib
+for i in range(len(means)):
+    plt.errorbar(
+        x=means['nll'].iloc[i],
+        y=means['kin_r2'].iloc[i],
+        xerr=sems['nll'].iloc[i],
+        yerr=sems['kin_r2'].iloc[i],
+        fmt='o',
+        capsize=2,
+        markersize=0,
+        # marker='<',
+        color=palette[hue_order.index(means['arch'].iloc[i])]
+    )
+
+# Add some lineplot to connect single to each of the other sources
+def annotate():
+    xs = np.array([
+        means[means['source'] == 'single']['nll'].iloc[0],
+        means[means['source'] == 'session']['nll'].iloc[0]
+    ]) + 0.0005
+    ys = np.array([
+        means[means['source'] == 'single']['kin_r2'].iloc[0],
+        means[means['source'] == 'session']['kin_r2'].iloc[0]
+    ]) + 0.005
+    line = ax.plot(
+        xs, ys,
+        color='k',
+        # color=palette[hue_order.index('f32')],
+        linestyle='--',
+        linewidth=1,
+        # arrow head
+        marker='>',
+        markevery=[-1],  # Remove the marker at one end of the line
+        alpha=0.5,
+    )
+
+    ax.text(
+        xs.mean(), ys.mean() + 0.005,
+        'NDT2 (Ours)', color='k',
+        rotation=0,
+        alpha=0.8,
+        # 'NDT2', color=palette[hue_order.index('f32')],
+        ha='left', va='bottom',
+        fontsize=18,
+    )
+    mean_baseline = np.mean([eRFH_baseline_kin[k] for k in eRFH_baseline_kin if k in df.dataset.unique()])
+    ax.axhline(
+        mean_baseline, ls='--', color='black',
+        alpha=0.5
+    )# , label='mean across variants')
+    # Annotate the horizontal line
+    ax.text(
+        ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.015,
+        mean_baseline + 0.003,
+        'rEFH (Makin 18)', color='black', ha='left', va='bottom',
+        fontsize=14,
+    )
+
+annotate()
 
 # Annotate the individual datapoints
 # for i, row in aggr_variant.iterrows():
@@ -288,15 +388,6 @@ ax = sns.scatterplot(
 #         fontsize=14,
 #     )
 
-mean_baseline = np.mean([eRFH_baseline_kin[k] for k in eRFH_baseline_kin if k in df.dataset.unique()])
-ax.axhline(mean_baseline, ls='--', color='black')# , label='mean across variants')
-# Annotate the horizontal line
-ax.text(
-    ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.015,
-    mean_baseline + 0.003,
-    'Makin 18 (rEFH Est)', color='black', ha='left', va='bottom',
-    fontsize=14,
-)
 # ax.set_title(f'Vel R2 vs NLL ({"Sorted" if USE_SORTED else "Unsorted"})')
 # Annotate with Sorted or Unsorted in bottom left of plot
 ax.text(
@@ -307,20 +398,22 @@ ax.text(
     fontsize=18, fontweight='bold'
 )
 # Velocity decoding R2 for y, with latex
-ax.set_ylabel("Velocity $R^2$ ($\\uparrow$)")
-ax.set_xlabel('Test NLL ($\downarrow$)')
+ax.set_ylabel("Velocity $R^2$ ($\\longrightarrow$)", fontsize=18)
+ax.set_xlabel('Test NLL ($\\longleftarrow$)', fontsize=18)
 
 # Reduce major xticks for clarity
 ax.xaxis.set_major_locator(ticker.LinearLocator(3))
 ax.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, pos: f"{x:.3f}"))
 ax.xaxis.set_minor_locator(ticker.LinearLocator(5))
 ax.yaxis.set_major_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 3)))
-ax.yaxis.set_minor_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 5)))
+ax.yaxis.set_minor_locator(ticker.FixedLocator(np.linspace(0.5, 0.7, 9)))
 ax.grid(which='both')
-ax.grid(which='minor', alpha=0.2)
-ax.grid(which='major', alpha=0.5)
-# Update the legend - kill arch, we can show those color coded.
+ax.grid(which='minor', alpha=0.1)
+ax.grid(which='major', alpha=0.4)
+# increase label font size
+ax.tick_params(axis='both', which='major', labelsize=16)
 
+# Update the legend - kill arch, we can show those color coded.
 # Only for this panel
 camera_ready_arch_remap = {
     'f32': 'NDT2',
@@ -343,9 +436,10 @@ camera_ready_arch_remap = {
 
 # No.... this doesn't look good. Just put them under legend. We'll adjust in post.
 # Add text for three archictectures on the right side of the plot
-for arch, y in zip(hue_order, np.array([0.44, 0.35, 0.26]) + 0.02):
+for arch, y in zip(hue_order, np.array([0.44, 0.35, 0.26]) + -0.08):
     ax.text(
-        0.85,
+        1.25,
+        # 0.85,
         y,
         camera_ready_arch_remap[arch],
         color=palette[hue_order.index(arch)], ha='center', va='top',
@@ -361,11 +455,11 @@ source_idx = labels.index('source')
 labels = labels[source_idx:]
 order = ['single', 'session', 'subject', 'task']
 remap = {
-    'source': 'Source',
-    'single': 'Intra-session',
-    'session': 'Cross-Session',
-    'subject': 'Cross-Subject',
-    'task': 'Cross-Task',
+    'source': "$\mathbf{Data\ Source}$",
+    'single': 'Scratch (Single-ctx)',
+    'session': 'Session',
+    'subject': 'Subject',
+    'task': 'Task',
 }
 reorder_idx = [labels.index(o) for o in order]
 labels = np.array([remap[l] for l in labels])[reorder_idx]
@@ -373,19 +467,66 @@ handles = np.array(handles[source_idx:])[reorder_idx]
 
 lgd = ax.legend(
     handles, labels, loc='upper right', fontsize=14, ncol=1, frameon=False,
+    title='Data Source', title_fontsize=16,
     # title='Data Source', title_fontsize=14,
-    bbox_to_anchor=(1.02, 0.92),
+    bbox_to_anchor=(1.7, 0.92),
+    # bbox_to_anchor=(1.02, 0.92),
 )
 for handle in lgd.legendHandles:
     handle._sizes = [80]
 
+# save as svg
+plt.savefig(f'arch_robust_{"sorted" if USE_SORTED else "unsorted"}.svg', bbox_inches='tight')
 
 #%%
 # make facet grid with model cali
 sorted_datasets = sorted(df.variant.unique())
+
+# Hmm... essentially no aggregation should happen here, except across seeds
+# Calculate means and standard error of the mean for each group
+means = df.groupby(['variant', 'source', 'arch', 'dataset']).mean().reset_index()
+sems = df.groupby(['variant', 'source', 'arch', 'dataset']).agg(sem).reset_index()
+
 palette = sns.color_palette('colorblind', len(aggr_variant))
+hue_order = list(aggr_variant.arch.unique())
+# ax = sns.scatterplot(
+#     x='nll',
+#     y='kin_r2',
+#     hue='arch',
+#     hue_order=hue_order,
+#     # hue='variant',
+#     style='source',
+#     s=125,
+#     data=means,
+#     palette=palette,
+#     legend=True,
+#     markers={
+#         'single': 'o',
+#         'session': 'D',
+#         'subject': 's',
+#         'task': 'X',
+#     },
+#     facecolors=None,
+#     # markers=['o', 's', 'D', 'P'],
+# )
+
+# Add error bars with matplotlib
+# for i in range(len(means)):
+#     plt.errorbar(
+#         x=means['nll'].iloc[i],
+#         y=means['kin_r2'].iloc[i],
+#         xerr=sems['nll'].iloc[i],
+#         yerr=sems['kin_r2'].iloc[i],
+#         fmt='o',
+#         capsize=2,
+#         markersize=0,
+#         # marker='<',
+#         color=palette[hue_order.index(means['arch'].iloc[i])]
+#     )
+
+
 g = sns.relplot(
-    data=df,
+    data=means,
     col='dataset',
     x='nll',
     y='kin_r2',
@@ -393,10 +534,32 @@ g = sns.relplot(
     hue='arch',
     # style='variant',
     style='source',
-    s=100,
+    s=150,
     col_wrap=3,
     facet_kws={'sharey': False, 'sharex': False}
 )
+# increase facet legend font size
+legend = g._legend
+
+# Modify the font size of the legend
+# legend.set_title('Legend Title', fontsize=12)
+remap = {
+    'arch': 'Architecture',
+    'source': 'Transfer Source',
+    'f32': 'NDT2 (Patch 32)',
+    'time': 'NDT1',
+    'stitch': 'NDT1-Stitch',
+    'single': 'Scratch (Single context)',
+    'session': 'Session',
+    'subject': 'Subject',
+    'task': 'Task',
+}
+for t in legend.texts:
+    t.set_text(remap[t.get_text()])
+    t.set_fontsize(12)  # Update font size
+# legend.get_texts()[0].set_fontsize(10)  # Set font size for legend labels
+
+
 def deco(data, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
@@ -409,6 +572,8 @@ def deco(data, **kws):
         ax.get_xlim()[0] + (ax.get_xlim()[1] - ax.get_xlim()[0]) * 0.01, mean_baseline, 'rEFH', color='black', ha='left', va='bottom',
         fontsize=14,
     )
+    ax.set_ylabel('Velocity $R^2$')
+    ax.set_xlabel('Test NLL')
 g.map_dataframe(deco)
-g.fig.suptitle(f'Arch. approaches - Vel R2, NLL ({"Sorted" if USE_SORTED else "Unsorted"})', y=1.05, fontsize=28)
+g.fig.suptitle(f'Archictecture comparisons - Velocity decode vs. NLL ({"Sorted" if USE_SORTED else "Unsorted"})', y=1.05, fontsize=28)
 sns.move_legend(g, "upper left", bbox_to_anchor=(.7, .5), fontsize=20)

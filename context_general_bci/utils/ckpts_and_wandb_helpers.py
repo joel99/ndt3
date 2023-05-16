@@ -159,6 +159,8 @@ def wandb_run_exists(cfg: RootConfig, experiment_set: str="", tag: str="", other
         return False
     api = wandb.Api()
     print(other_overrides)
+    if 'init_from_id' in other_overrides:
+        del other_overrides['init_from_id'] # oh jeez... we've been rewriting this in run.py and doing redundant runs because we constantly query non-inits
     runs = api.runs(
         f"{cfg.wandb_user}/{cfg.wandb_project}",
         filters={

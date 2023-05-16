@@ -109,8 +109,8 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
     config_dict = {f'config.{k}': sanitize_value(v) for k, v in flag_dict.items() if not ignore_key(k)}
     if cfg.cancel_if_run_exists and wandb_run_exists(
         cfg,
-        experiment_set=flag_dict['experiment_set'] if 'experiment_set' in flag_dict else "",
-        tag=flag_dict['tag'] if 'tag' in flag_dict else "",
+        experiment_set=flag_dict.get('experiment_set', ''),
+        tag=flag_dict.get('tag', ''),
         other_overrides=config_dict,
         allowed_states=["finished", "running"]
     ):
