@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+init_ckpt: '{shared_dir}/pretrained/human_ortho.ckpt'
+tag: 'online_ortho_tune'
+model:
+  closed_loop_crop_bins: 50

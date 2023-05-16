@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - _default
+# init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
+inherit_tag: online_obs_tune
+tag: 'online_ortho_tune'

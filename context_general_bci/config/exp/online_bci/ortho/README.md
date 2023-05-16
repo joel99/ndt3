@@ -1,0 +1,1 @@
+For simplicity I don't do task embed switching. We just want to treat ortho like observation. Only cluster path training compat right now.

@@ -31,10 +31,16 @@ USE_SORTED = True
 exp_tag = f'robust{"" if USE_SORTED else "_unsort"}'
 EXPERIMENTS_KIN = [
     f'arch/{exp_tag}/probe',
+    f'arch/{exp_tag}_s2/probe',
+    # f'arch/{exp_tag}_s3/probe',
 ]
 EXPERIMENTS_NLL = [
     f'arch/{exp_tag}',
     f'arch/{exp_tag}/tune',
+    f'arch{exp_tag}_s2',
+    f'arch{exp_tag}_s2/tune',
+    # f'arch{exp_tag}_s3',
+    # f'arch{exp_tag}_s3/tune',
 ]
 
 queries = [
@@ -65,7 +71,6 @@ runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
     "config.dataset.odoherty_rtt.include_sorted": USE_SORTED,
     "state": {"$in": ['finished']},
 })
-# %%
 runs_kin = [r for r in runs_kin if r.name.split('-')[0] in queries]
 runs_nll = [r for r in runs_nll if r.name.split('-')[0] in queries]
 print(len(runs_nll))
@@ -90,6 +95,9 @@ def get_evals(model, dataloader, runs=8, mode='nll'):
     return pd.DataFrame(evals)[mode].mean()
     # return evals
 
+def hash_cfg(cfg, dataset_name, variant):
+    return (variant, dataset_name, cfg['model']['lr_init'], cfg['seed'])
+
 def build_df(runs, mode='nll'):
     df = []
     seen_set = {}
@@ -99,7 +107,7 @@ def build_df(runs, mode='nll'):
         variant, _frag, *rest = run.name.split('-')
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
         dataset_name = cfg.dataset.datasets[0] # drop wandb ID
-        if (variant, dataset_name, run.config['model']['lr_init']) in seen_set:
+        if hash_cfg(cfg, dataset_name, variant) in seen_set:
             continue
         dataset = SpikingDataset(cfg.dataset)
         dataset.subset_split(splits=['eval'])
@@ -112,20 +120,28 @@ def build_df(runs, mode='nll'):
             'dataset': dataset_name,
             'chunk': run.config['model']['neurons_per_token'],
             'lr': run.config['model']['lr_init'], # swept
+            'seed': run.config['seed'],
         }
         payload[mode] = get_evals(model, dataloader, mode=mode, runs=1 if mode != 'nll' else 8)
         df.append(payload)
         seen_set[(variant, dataset_name, run.config['model']['lr_init'])] = True
     return pd.DataFrame(df)
 kin_df = build_df(runs_kin, mode='kin_r2')
-kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'dataset'])
+kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'dataset', 'seed'])
 
 nll_df = build_df(runs_nll, mode='nll')
 
 # merge on variant and dataset, filling empty with 0s
-df = pd.merge(kin_df, nll_df, on=['variant', 'dataset'], how='outer').fillna(0)
+df = pd.merge(kin_df, nll_df, on=['variant', 'dataset', 'seed'], how='outer').fillna(0)
+
+# cache at <name_of_this_file>.pt
+import os
+os.makedirs('data/tmp', exist_ok=True)
+torch.save(df, f'data/tmp/{__file__.split("/")[-1]}.pt')
+
 
 #%%
+df = torch.load(f'data/tmp/{__file__.split("/")[-1]}.pt')
 # Meta-annotation
 
 source_map = {

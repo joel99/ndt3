@@ -56,12 +56,12 @@ if MODE == 'patch':
     ]
 elif MODE ==  'mask_ratio':
     queries = [
-        'f32',
-        'f32_m25',
-        'f32_m75',
+        # 'f32',
+        # 'f32_m25',
+        # 'f32_m75',
         # 'stitch',
         # 'stitch_m25',
-        # 'stitch_m75'
+        'stitch_m75'
     ]
 
 
