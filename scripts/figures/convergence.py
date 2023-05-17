@@ -54,7 +54,7 @@ merge_queries = [
     f'{q}-frag-{d}' for q in queries for d in DATASET_WHITELIST
 ]
 
-trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+trainer = pl.Trainer(accelerator='cpu', devices=1, default_root_dir='./data/tmp')
 runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
     "state": {"$in": ['finished', 'failed', 'crashed']},
     "config.tag": {"$in": merge_queries},
@@ -129,7 +129,13 @@ def build_df(runs, mode='nll'):
 nll_df = build_df(runs_nll, mode='nll')
 df = nll_df
 #%%
-print(df.dataset)
+print(nll_df[nll_df['variant'] == 's1600'])
+# Fix these labels, for some reason limit was cast to 770
+nll_df.loc[nll_df['variant'] == 's1600', 'limit'] = 1600
+# drop redundant runs
+df = nll_df.drop_duplicates(['limit', 'dataset', 'series', 'lr'])
+# print(df[df['limit'] == 770])
+# print(df['limit'].value_counts())
 #%%
 # Show just NLL in logscale
 palette = sns.color_palette('colorblind', n_colors=len(df['dataset'].unique()))
@@ -175,10 +181,15 @@ ax.set_title(f'Intra-session scaling ({"unsorted" if UNSORT else "sorted"})')
 relabel = {
     'scale_v3/session_unsort/tune_intra': 'Pretrain Session',
     'scale_v3/task_unsort/tune_intra': 'Pretrain Task',
-    'scale_v3/intra_unsort': 'Scratch',
+    'scale_v3/intra_unsort': 'Scratch (Single-session)',
 }
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
-hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+# hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+hue_order = [
+    'scale_v3/intra_unsort',
+    'scale_v3/session_unsort/tune_intra',
+    'scale_v3/task_unsort/tune_intra',
+]
 dataset_order = sorted(df['dataset'].unique())
 g = sns.relplot(
     x='limit',
@@ -231,7 +242,7 @@ g.fig.suptitle(f'Pretrain-Positive Regimes', y=1.05, fontsize=28)
 relabel = {
     'scale_v3/session_unsort/tune_intra': 'Session',
     'scale_v3/task_unsort/tune_intra': 'Task',
-    'scale_v3/intra_unsort': 'Scratch',
+    'scale_v3/intra_unsort': 'Single-session (Scratch)',
 }
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
 hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
@@ -272,11 +283,12 @@ def deco(data, **kws):
         y = max(sub_df['nll']) #.iloc[0]
         label = relabel[series]
         color = palette[i]
-        ax.text(x, y-0.003, label, color=color, ha='left', va='top', fontsize=14)
+        ax.text(x, y-0.003, label, color=color, ha='left', va='top', fontsize=18)
 
     alias = ax.get_title().split('=')[1].strip()
     ax.set_title(title_remap.get(alias, alias), fontsize=20)
     ax.set_title("")
+    ax.set_ylabel('Test NLL')
 
 # relabel legend
 g._legend.remove()
