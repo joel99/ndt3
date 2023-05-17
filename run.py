@@ -198,6 +198,20 @@ def run_exp(cfg : RootConfig) -> None:
                 run_cfg(cfg_trial)
         exit(0)
 
+
+    if cfg.cancel_if_run_exists and wandb_run_exists(
+        cfg,
+        experiment_set=cfg.experiment_set,
+        tag=cfg.tag,
+        other_overrides={
+            'config.lr.init': cfg.model.lr_init,
+            # 'config.dataset.datasets': cfg.dataset.datasets, # not needed, covered by tag
+        },
+        allowed_states=["finished", "running"]
+    ):
+        logging.info(f"Skipping this run because it already exists.")
+        return
+
     propagate_config(cfg)
     logger = logging.getLogger(__name__)
     pl.seed_everything(seed=cfg.seed)

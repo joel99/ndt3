@@ -25,22 +25,22 @@ from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wan
 pl.seed_everything(0)
 
 PLOT_DECODE = False
-USE_SORTED = True
-# USE_SORTED = False
+# USE_SORTED = True
+USE_SORTED = False
 
 exp_tag = f'robust{"" if USE_SORTED else "_unsort"}'
 EXPERIMENTS_KIN = [
     f'arch/{exp_tag}/probe',
-    # f'arch/{exp_tag}_s2/probe',
-    f'arch/{exp_tag}_s3/probe',
+    f'arch/{exp_tag}_s2/probe',
+    # f'arch/{exp_tag}_s3/probe',
 ]
 EXPERIMENTS_NLL = [
-    # f'arch/{exp_tag}',
-    # f'arch/{exp_tag}/tune',
-    # f'arch/{exp_tag}_s2',
-    # f'arch/{exp_tag}_s2/tune',
-    f'arch/{exp_tag}_s3',
-    f'arch/{exp_tag}_s3/tune',
+    f'arch/{exp_tag}',
+    f'arch/{exp_tag}/tune',
+    f'arch/{exp_tag}_s2',
+    f'arch/{exp_tag}_s2/tune',
+    # f'arch/{exp_tag}_s3',
+    # f'arch/{exp_tag}_s3/tune',
 ]
 # am missing for s2 tune
 # 1 task_f32
@@ -68,7 +68,8 @@ queries = [
 if not USE_SORTED:
     queries.append('time')
 
-trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+trainer = pl.Trainer(accelerator='cpu', devices=1, default_root_dir='./data/tmp')
+# trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
     "config.dataset.scale_limit_per_eval_session": 300,
     "config.dataset.odoherty_rtt.include_sorted": USE_SORTED,
@@ -81,8 +82,14 @@ runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
 })
 runs_kin = [r for r in runs_kin if r.name.split('-')[0] in queries]
 runs_nll = [r for r in runs_nll if r.name.split('-')[0] in queries]
-for r in runs_nll:
-    print(r.name)
+from collections import defaultdict
+from pprint import pprint
+hash_set = defaultdict(lambda: 0)
+for r in runs_kin:
+    print(r.config['tag'].split('-')[0], r.config['model']['lr_init'], r.config['dataset']['datasets'][0].split('-')[-1])
+    hash_set[(r.config['tag'].split('-')[0], r.config['model']['lr_init'], r.config['dataset']['datasets'][0].split('-')[-1])] += 1
+pprint(hash_set)
+
 print(len(runs_nll))
 print(len(runs_kin)) # 4 * 5 * 3
 # runs_kin = runs_kin[:10]
@@ -149,11 +156,11 @@ df = pd.merge(kin_df, nll_df, on=['variant', 'dataset', 'seed', 'experiment_set'
 # cache at <name_of_this_file>.pt
 import os
 os.makedirs('data/tmp', exist_ok=True)
-torch.save(df, f'data/tmp/{__file__.split("/")[-1]}.pt')
+torch.save(df, f'data/tmp/{USE_SORTED}_{__file__.split("/")[-1]}.pt')
 
 
 #%%
-df = torch.load(f'data/tmp/{__file__.split("/")[-1]}.pt')
+df = torch.load(f'data/tmp/{USE_SORTED}_{__file__.split("/")[-1]}.pt')
 print(df)
 # df = df.fillna(0)
 # df = df.dropna() # If we lost a few LR sweeps... oh well
@@ -203,21 +210,14 @@ eRFH_baseline_kin = {
     'odoherty_rtt-Indy-20170131_02': 0.5113,
 }
 
-#%%
-print(df.seed.unique())
 # print(kin_df.columns)
 # get unique counts - are all the runs done?
 # print(df)
 # df.groupby(['variant']).count()
-
+df = df.drop_duplicates(['variant', 'dataset', 'seed', 'kin_r2'])
+print(len(df))
 seed_counts = df.groupby(['variant', 'dataset']).count()['seed']
-print(seed_counts[seed_counts < 2])
-# Print details on those with less than 2
-# Missing probe 3 for these 3, check dashboard status?
-# print(df[(df['variant'] == 'f32') & (df['dataset'] == 'odoherty_rtt-Indy-20160627_01')])
-# print(df[(df['variant'] == 'stitch') & (df['dataset'] == 'odoherty_rtt-Indy-20161026_03')])
-# print(df[(df['variant'] == 'stitch') & (df['dataset'] == 'odoherty_rtt-Indy-20170131_02')])
-
+print(seed_counts[seed_counts < 3])
 #%%
 # * Barplots
 PLOT = 'nll'
@@ -289,8 +289,8 @@ print(aggr_variant)
 
 # Currently we have two experiment sets, trim the probes...
 
-#%%
 from scipy.stats import sem
+from context_general_bci.analyze_utils import STYLEGUIDE
 fig = plt.figure(figsize=(6, 6))
 ax = prep_plt(fig.gca())
 
@@ -309,14 +309,9 @@ ax = sns.scatterplot(
     style='source',
     s=125,
     data=means,
-    palette=palette,
+    palette=STYLEGUIDE['palette'],
     legend=True,
-    markers={
-        'single': 'o',
-        'session': 'D',
-        'subject': 's',
-        'task': 'X',
-    },
+    markers=STYLEGUIDE['markers'],
     facecolors=None,
     # markers=['o', 's', 'D', 'P'],
 )
@@ -345,7 +340,7 @@ def annotate():
         means[means['source'] == 'single']['kin_r2'].iloc[0],
         means[means['source'] == 'session']['kin_r2'].iloc[0]
     ]) + 0.005
-    line = ax.plot(
+    ax.plot(
         xs, ys,
         color='k',
         # color=palette[hue_order.index('f32')],
@@ -456,10 +451,10 @@ labels = labels[source_idx:]
 order = ['single', 'session', 'subject', 'task']
 remap = {
     'source': "$\mathbf{Data\ Source}$",
-    'single': 'Scratch (Single-ctx)',
-    'session': 'Session',
-    'subject': 'Subject',
-    'task': 'Task',
+    'single': 'Single-session\n(Scratch)',
+    'session': 'Multi-Session',
+    'subject': 'Multi-Subject',
+    'task': 'Multi-Task',
 }
 reorder_idx = [labels.index(o) for o in order]
 labels = np.array([remap[l] for l in labels])[reorder_idx]

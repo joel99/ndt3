@@ -160,7 +160,7 @@ def plot_dataset_power_law(sub_df, ax, **kwargs):
     y = power_law(x, *popt)
     ax.plot(x, y, linestyle='--', **kwargs)
     # annotate with power law
-    ax.annotate(f'{popt[1]:.4f}', xy=(x[0], y[0]), xytext=(x[0] + 10, y[0]), **kwargs)
+    # ax.annotate(f'{popt[1]:.4f}', xy=(x[0], y[0]), xytext=(x[0] + 10, y[0]), **kwargs)
 
 
 for i, dataset in enumerate(dataset_order):
@@ -206,6 +206,7 @@ def deco(data, **kws):
     ax = prep_plt(ax)
     ax.set_xscale('log')
     ax.set_yscale('log')
+    ax.set_ylabel('Test NLL')
     ax.set_xlabel('Target context trials')
     for i, series in enumerate(hue_order):
         sub_df = data[data['series'] == series]
