@@ -17,9 +17,11 @@ dataset:
   - DataKey.bhvr_vel
   # datasets: - will be specified in calling script
   pitt_co:
-    respect_trial_boundaries: false
+    respect_trial_boundaries: true
   observation:
-    respect_trial_boundaries: false
+    respect_trial_boundaries: true
+  ortho:
+    respect_trial_boundaries: true
 model:
   causal: true
   neurons_per_token: 32

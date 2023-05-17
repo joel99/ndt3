@@ -1,0 +1,19 @@
+# @package _global_
+
+defaults:
+  - _default
+# init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
+inherit_exp: pitt_v3/decode_no_bounds # JY backup, not clear on lineage here
+# inherit_tag: human_aug_m1
+inherit_tag: human_aug_only_full # JY backup, not clear on lineage here
+tag: 'online_obs_tune'
+notes: "Decoder base: human obs." # pitt_v3/decode_full/human
+model:
+  closed_loop_crop_bins: 50
+  task:
+    mask_ratio: 0.5
+dataset:
+  pitt_co:
+    respect_trial_boundaries: false
+  observation:
+    respect_trial_boundaries: false
