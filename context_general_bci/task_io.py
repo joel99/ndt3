@@ -1276,7 +1276,7 @@ class BehaviorRegression(TaskPipeline):
                     batch_out['adversarial_loss'] = blacklist_loss
                 loss_mask = loss_mask & session_mask[:, None]
                 if not session_mask.any(): # no valid sessions
-                    loss = 0 # don't fail
+                    loss = torch.zeros_like(loss).mean() # don't fail
                 else:
                     loss = loss[loss_mask].mean()
                 if self.cfg.adversarial_classify_lambda:

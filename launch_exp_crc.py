@@ -20,7 +20,7 @@ def main():
     exp_name = '/'.join(exp_parts[config_part + 1:])
     for file in os.listdir(exp_path):
         if file.endswith('.yaml') and not file.startswith('_'):
-            os.system(f'sbatch ./crc_scripts/launch_1080.sh +{exp_name}={file[:-5]}')
+            os.system(f'sbatch ./crc_scripts/launch_v100.sh +{exp_name}={file[:-5]}')
 
 if __name__ == '__main__':
     main()

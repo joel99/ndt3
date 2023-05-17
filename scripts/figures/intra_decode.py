@@ -63,7 +63,7 @@ merge_queries = [
     f'{q}-frag-{d}' for q in queries for d in DATASET_WHITELIST
 ]
 
-trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+trainer = pl.Trainer(accelerator='cpu', devices=1, default_root_dir='./data/tmp')
 # trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
     "state": {"$in": ['finished', 'failed', 'crashed']},
@@ -111,6 +111,7 @@ def get_single_payload(cfg: RootConfig, src_model, run, experiment_set, mode='nl
         'variant': run.name.split('-')[0],
         'series': experiment_set,
         'dataset': cfg.dataset.datasets[0],
+        'seed': run.config['seed'],
         'lr': run.config['model']['lr_init'], # swept
     }
     payload[mode] = get_evals(model, dataloader, mode=mode, runs=1 if mode != 'nll' else 8)
@@ -123,6 +124,7 @@ def build_df(runs, mode='nll'):
         if 'frag' not in run.name and run.name != ROBUST_RUN:
             continue
         variant, _frag, *rest = run.name.split('-')
+        print(run.name, run.config['experiment_set'])
         src_model, cfg, data_attrs = load_wandb_run(run, tag='val_loss')
         dataset_name = cfg.dataset.datasets[0] # drop wandb ID
         if dataset_name not in DATASET_WHITELIST and run.name != ROBUST_RUN:
@@ -143,19 +145,26 @@ def build_df(runs, mode='nll'):
             variant,
             dataset_name,
             run.config['model']['lr_init'],
+            run.config['seed'],
             experiment_set
         ) in seen_set:
             continue
         payload = get_single_payload(cfg, src_model, run, experiment_set, mode=mode)
         df.append(payload)
-        seen_set[(variant, dataset_name, run.config['model']['lr_init']), experiment_set] = True
+        seen_set[(variant, dataset_name, run.config['model']['lr_init']), run.config['seed'], experiment_set] = True
     return pd.DataFrame(df)
 
 kin_df = build_df(runs_kin, mode='kin_r2')
-kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'dataset', 'series'])
+kin_df = kin_df.sort_values('kin_r2', ascending=False).drop_duplicates(['variant', 'dataset', 'series', 'seed'])
 
 df = kin_df
+import os
+os.makedirs('data/tmp', exist_ok=True)
+torch.save(df, f'data/tmp/{__file__.split("/")[-1]}.pt')
+
 #%%
+df = torch.load(f'data/tmp/{__file__.split("/")[-1]}.pt')
+
 print(df)
 
 #%%

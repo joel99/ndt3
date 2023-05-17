@@ -78,7 +78,7 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
     if 'mind' in socket.gethostname():
         launch_script = 'launch.sh'
     else:
-        launch_script = './crc_scripts/launch_1080.sh' # assumed tiny runs if on crc?
+        launch_script = './crc_scripts/launch_v100.sh' # assumed tiny runs if on crc?
     assembled_flags = [*init_args, *additional_cli_flags, *meta_flags]
     unique_flags = []
     seen_keys = []
