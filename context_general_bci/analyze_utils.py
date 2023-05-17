@@ -24,6 +24,18 @@ from context_general_bci.dataset import DataAttrs, SpikingDataset
 from context_general_bci.config import RootConfig
 
 WandbRun = Any
+import seaborn as sns
+
+STYLEGUIDE = {
+    "palette": sns.color_palette('colorblind', 5),
+    "hue_order": ['single', 'session', 'subject', 'task'],
+    "markers": {
+        'single': 'o',
+        'session': 'D',
+        'subject': 's',
+        'task': 'X',
+    }
+}
 
 def cast_paths_and_enums(cfg: Dict, template=RootConfig()):
     # recursively cast any cfg field that is a path in template to a path, since dacite doesn't support our particular case quite well
