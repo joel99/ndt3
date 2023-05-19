@@ -193,6 +193,7 @@ def plot_multiseed():
         style='context_tokens',
         palette=cmap,
         alpha=0.8,
+        errorbar='se',
         ax=ax
     )
     ax.set_xscale('log')

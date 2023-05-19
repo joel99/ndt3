@@ -37,6 +37,12 @@ EXPERIMENTS_KIN = [
     f'scale_v3/intra{"_unsort" if UNSORT else ""}/probe',
     f'scale_v3/intra{"_unsort" if UNSORT else ""}/decode',
     f'scale_decode/probe',
+    f'scale_v3/intra{"_unsort" if UNSORT else ""}/probe_s2',
+    f'scale_v3/intra{"_unsort" if UNSORT else ""}/decode_s2',
+    f'scale_decode/probe_s2',
+    f'scale_v3/intra{"_unsort" if UNSORT else ""}/probe_s3',
+    f'scale_v3/intra{"_unsort" if UNSORT else ""}/decode_s3',
+    f'scale_decode/probe_s3',
     # f'scale_decode/probe/mix',
 ]
 
@@ -66,7 +72,7 @@ merge_queries = [
 trainer = pl.Trainer(accelerator='cpu', devices=1, default_root_dir='./data/tmp')
 # trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 runs_kin = wandb_query_experiment(EXPERIMENTS_KIN, order='created_at', **{
-    "state": {"$in": ['finished', 'failed', 'crashed']},
+    "state": {"$in": ['finished', 'crashed']},
     "config.dataset.odoherty_rtt.include_sorted": not UNSORT,
 })
 runs_kin = [r for r in runs_kin if r.config['dataset']['datasets'][0] in DATASET_WHITELIST and r.name.split('-')[0] in queries]
@@ -165,9 +171,23 @@ torch.save(df, f'data/tmp/{__file__.split("/")[-1]}.pt')
 #%%
 df = torch.load(f'data/tmp/{__file__.split("/")[-1]}.pt')
 
-print(df)
+series_remap = {
+    'scale_decode/probe_s2_sup': 'scale_decode/probe_sup',
+    'scale_decode/probe_s2_unsup': 'scale_decode/probe_unsup',
+    'scale_v3/intra_unsort/probe_s2': 'scale_v3/intra_unsort/probe',
+    'scale_v3/intra_unsort/decode_s2': 'scale_v3/intra_unsort/decode',
+    'scale_decode/probe_s3_sup': 'scale_decode/probe_sup',
+    'scale_decode/probe_s3_unsup': 'scale_decode/probe_unsup',
+    'scale_v3/intra_unsort/probe_s3': 'scale_v3/intra_unsort/probe',
+    'scale_v3/intra_unsort/decode_s3': 'scale_v3/intra_unsort/decode',
+    'scale_decode/probe_sup': 'scale_decode/probe_sup',
+    'scale_decode/probe_unsup': 'scale_decode/probe_unsup',
+    'scale_v3/intra_unsort/probe': 'scale_v3/intra_unsort/probe',
+    'scale_v3/intra_unsort/decode': 'scale_v3/intra_unsort/decode',
+    'session_robust': 'session_robust',
+}
+df['series'] = df['series'].map(series_remap)
 
-#%%
 prescribed_limits = {
     's3200': 3190,
     'unsup_3200': 3190,
@@ -188,7 +208,13 @@ prescribed_limits = {
 }
 # override `limit` with `prescribed_limits` based on `variant` for `scale_v3/intra_unsort/probe` series
 df.loc[df['variant'].isin(prescribed_limits.keys()) & (df['series'] == 'scale_v3/intra_unsort/probe'), 'limit'] = df.loc[df['variant'].isin(prescribed_limits.keys()) & (df['series'] == 'scale_v3/intra_unsort/probe'), 'variant'].map(prescribed_limits)
+
 #%%
+print(df[(df['series'] == 'scale_v3/intra_unsort/probe') & (df['variant'] == 's3200')])
+
+#%%
+# TODO style this...
+# from context_general_bci.analyze_utils import STYLEGUIDE
 sans_robust_df = df[df['series'] != 'session_robust']
 palette = sns.color_palette('colorblind', n_colors=len(sans_robust_df['series'].unique()))
 hue_order = sans_robust_df['series'].unique()
@@ -201,7 +227,11 @@ g = sns.relplot(
     hue_order=hue_order,
     data=sans_robust_df,
     palette=palette,
+    errorbar='se',
     # kind='scatter',
+    # markers={
+        # STYLEGUIDE['markers']
+    # }, Nay, this is a different set, can't bring under styleguide.
     markers=True,
     kind='line',
     facet_kws={'sharex': False, 'sharey': False},
@@ -221,7 +251,7 @@ def deco(data, use_title=True, **kws):
     robust_kin_r2 = df[(df['series'] == 'session_robust') & (df['dataset'] == dataset)]['kin_r2'].values[0]
     ax.axhline(robust_kin_r2, color='k', linestyle='--', linewidth=1)
     # Annotate as 'session robust'
-    ax.text(15, robust_kin_r2 - 0.01, 'Session Robust \n (Untuned)', va='top', ha='left', fontsize=16)
+    ax.text(18, robust_kin_r2 - 0.01, 'Untuned Pretrained', va='top', ha='left', fontsize=16)
     if not use_title:
         ax.set_title('')
 
@@ -246,7 +276,11 @@ g.fig.suptitle(f'Tuning a Decoder ({"Unsorted" if UNSORT else "Sorted"})', y=1.0
 middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
 
 # Plot the middle panel data
-middle_plot = sns.relplot(
+fig = plt.figure(figsize=(6, 6))
+ax = prep_plt(fig.gca())
+
+middle_plot = sns.lineplot(
+# middle_plot = sns.relplot(
     x='limit',
     y='kin_r2',
     hue='series',
@@ -254,16 +288,21 @@ middle_plot = sns.relplot(
     hue_order=hue_order,
     data=middle_data,
     palette=palette,
-    kind='line',
     markers=True,
+    errorbar='se',
+    # kind='line',
+    ax=ax
 )
 
 # Customize the middle panel plot
 deco(middle_data, use_title=False)
 # middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
-middle_plot._legend.set_title('Series')
-for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
+middle_plot.get_legend().set_title('Series')
+# middle_plot._legend.set_title('Series')
+for t, l in zip(middle_plot.get_legend().texts, middle_plot.get_legend().legendHandles):
+# for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
     t.set_text(relabel.get(t.get_text(), t.get_text()))
+    t.set_fontsize(16)
     # Exclude Session robust
     if t.get_text() == 'Session Robust':
         l.set_visible(False)
@@ -271,4 +310,12 @@ for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
 # middle_plot._legend.remove()
 # Reposition legend to the bottom right
 
-middle_plot.legend.set_bbox_to_anchor((0.6, 0.3))
+middle_plot.get_legend().set_bbox_to_anchor((0.4, 0.32))
+# Turn off frame
+middle_plot.get_legend().get_frame().set_linewidth(0.0)
+# drop title
+middle_plot.get_legend().set_title('')
+
+middle_plot.set_ylabel('Velocity $R^2$')
+
+# middle_plot.legend.set_bbox_to_anchor((0.6, 0.3))
