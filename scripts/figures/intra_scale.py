@@ -12,13 +12,13 @@ import pytorch_lightning as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from data import SpikingDataset, DataAttrs
-from model import transfer_model, logger
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.model import transfer_model, logger
 
-from analyze_utils import stack_batch, load_wandb_run
-from analyze_utils import prep_plt, get_dataloader
-from utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import stack_batch, load_wandb_run
+from context_general_bci.analyze_utils import prep_plt, get_dataloader
+from context_general_bci.utils import wandb_query_experiment, get_wandb_run, wandb_query_latest
 
 pl.seed_everything(0)
 
@@ -51,7 +51,7 @@ merge_queries = [
     f'{q}-frag-{d}' for q in queries for d in DATASET_WHITELIST
 ]
 
-trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+trainer = pl.Trainer(accelerator='cpu', devices=1, default_root_dir='./data/tmp')
 runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
     "state": {"$in": ['finished', 'failed', 'crashed']},
     "config.tag": {"$in": merge_queries},
@@ -125,7 +125,6 @@ nll_df = build_df(runs_nll, mode='nll')
 df = pd.merge(kin_df, nll_df, on=['variant', 'dataset'], how='outer').fillna(0)
 
 # df = build_df(runs_nll, mode='nll')
-#%%
 df['limit'] = df['limit_y']
 #%%
 # Show just NLL in logscale

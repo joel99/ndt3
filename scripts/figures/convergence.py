@@ -153,7 +153,7 @@ ax = sns.scatterplot(
     legend=False
 )
 ax.set_xscale('log')
-ax.set_yscale('log')
+# ax.set_yscale('log')
 
 # Fit power law to the minimum test loss vs. training steps
 from scipy.optimize import curve_fit
@@ -216,7 +216,7 @@ def deco(data, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
-    ax.set_yscale('log')
+    # ax.set_yscale('log')
     ax.set_ylabel('Test NLL')
     ax.set_xlabel('Target context trials')
     for i, series in enumerate(hue_order):
@@ -238,6 +238,8 @@ g.fig.suptitle(f'Pretrain-Positive Regimes', y=1.05, fontsize=28)
 
 
 #%%
+from context_general_bci.analyze_utils import STYLEGUIDE
+from matplotlib import ticker
 # Single zoom
 relabel = {
     'scale_v3/session_unsort/tune_intra': 'Session',
@@ -245,7 +247,12 @@ relabel = {
     'scale_v3/intra_unsort': 'Single-session (Scratch)',
 }
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
-hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+# hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+hue_order = [
+    'scale_v3/intra_unsort',
+    'scale_v3/session_unsort/tune_intra',
+    'scale_v3/task_unsort/tune_intra',
+]
 dataset_order = sorted(df['dataset'].unique())
 g = sns.relplot(
     x='limit',
@@ -259,6 +266,14 @@ g = sns.relplot(
     facet_kws={'sharex': False, 'sharey': False},
     col='dataset',
     col_order=dataset_order,
+    markers={
+        'scale_v3/intra_unsort': STYLEGUIDE['markers']['single'],
+        'scale_v3/session_unsort/tune_intra': STYLEGUIDE['markers']['session'],
+        'scale_v3/task_unsort/tune_intra': STYLEGUIDE['markers']['task'],
+        # 'task_unsort': STYLEGUIDE['markers']['task'],
+        # STYLEGUIDE['markers']
+    },
+    legend=False,
 )
 
 # retitle subplots
@@ -272,7 +287,9 @@ def deco(data, **kws):
     ax = plt.gca()
     ax = prep_plt(ax)
     ax.set_xscale('log')
-    ax.set_yscale('log')
+    # ax.set_yscale('log')
+    ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
+    ax.yaxis.set_minor_locator(ticker.MaxNLocator(5))
     ax.set_xlabel('Target context trials')
     for i, series in enumerate(hue_order):
         sub_df = data[data['series'] == series]
@@ -283,7 +300,7 @@ def deco(data, **kws):
         y = max(sub_df['nll']) #.iloc[0]
         label = relabel[series]
         color = palette[i]
-        ax.text(x, y-0.003, label, color=color, ha='left', va='top', fontsize=18)
+        # ax.text(x, y-0.003, label, color=color, ha='left', va='top', fontsize=18)
 
     alias = ax.get_title().split('=')[1].strip()
     ax.set_title(title_remap.get(alias, alias), fontsize=20)
@@ -291,5 +308,8 @@ def deco(data, **kws):
     ax.set_ylabel('Test NLL')
 
 # relabel legend
-g._legend.remove()
+# g._legend.remove()
 g.map_dataframe(deco)
+
+# Export as svg
+g.fig.savefig('convergence.svg', bbox_inches='tight')

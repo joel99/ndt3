@@ -1,4 +1,4 @@
-% Batch convert
+% Batch convert Pitt data
 % Usage:
 %   Set `root_dir` below
 %   Open matlab shell and add rtma/climber to path (or e.g. init in a dir with appropriate startup.m)

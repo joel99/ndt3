@@ -10,4 +10,11 @@ setup(
 
     packages=find_packages(exclude=['scripts', 'crc_scripts', 'data']),
     py_modules=['context_general_bci'],
+
+    install_requires=[
+        'ordered-enum',
+        'mat73',
+        'dacite',
+        'gdown',
+    ],
 )

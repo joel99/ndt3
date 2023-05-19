@@ -68,7 +68,7 @@ merge_queries = [
     f'{q}-frag-{d}' for q in queries for d in DATASET_WHITELIST
 ]
 
-trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+trainer = pl.Trainer(accelerator='cpu', devices=1, default_root_dir='./data/tmp')
 runs_nll = wandb_query_experiment(EXPERIMENTS_NLL, order='created_at', **{
     "state": {"$in": ['finished', 'failed', 'crashed']},
     "config.tag": {"$in": merge_queries},
@@ -177,10 +177,13 @@ df['inferred_limit'] = df.apply(
     axis=1
 )
 
+
 #%%
 # Show just NLL in logscale
 palette = sns.color_palette('colorblind', n_colors=len(df['dataset'].unique()))
 dataset_order = df.groupby(['dataset']).mean().sort_values('nll').index
+df = df[df['inferred_limit'] != 126764] # PM's specific data restriction
+
 ax = prep_plt()
 ax = sns.scatterplot(
     x='inferred_limit',
@@ -207,7 +210,7 @@ def plot_dataset_power_law(sub_df, ax, **kwargs):
     y = power_law(x, *popt)
     ax.plot(x, y, linestyle='--', **kwargs)
     # annotate with power law
-    ax.annotate(f'{popt[1]:.4f}', xy=(x[0], y[0]), xytext=(x[0] + 10, y[0]), **kwargs)
+    # ax.annotate(f'{popt[1]:.4f}', xy=(x[0], y[0]), xytext=(x[0] + 10, y[0]), **kwargs)
 
 
 for i, dataset in enumerate(dataset_order):
@@ -218,10 +221,16 @@ ax.set_title(f'Intra-session scaling ({"unsorted" if UNSORT else "sorted"})')
 
 
 #%%
-
+from context_general_bci.analyze_utils import STYLEGUIDE
+hue_order = [
+    'intra_unsort',
+    'session_unsort',
+    'task_unsort', # flip for consistency with third plot
+    'subject_unsort',
+]
 
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
-hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
+# hue_order = list(df.groupby(['series']).mean().sort_values('nll').index)
 dataset_order = sorted(df['dataset'].unique())
 g = sns.relplot(
     x='inferred_limit',
@@ -250,7 +259,7 @@ def deco(data, use_title=True, **kws):
     ax.set_xscale('log')
     ax.set_yscale('log')
     ax.set_xlabel('Pretraining trials')
-    ax.set_ylabel('Test loss')
+    ax.set_ylabel('Test NLL')
     # Only use 3 xticks
     ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
     ax.yaxis.set_minor_locator(ticker.MaxNLocator(3))
@@ -282,29 +291,69 @@ g.fig.suptitle(f'Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fonts
 # g.fig.suptitle(f'Unsupervised Transfer ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
 
 #%%
-
+fig = plt.figure(figsize=(6, 6))
+ax = prep_plt(fig.add_subplot(111))
 # Like the above, but just the middle panel
 middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
 
+print(dataset_order)
+
+ax.set_xscale('log')
+ax.set_yscale('log')
+
 # Plot the middle panel data
-middle_plot = sns.relplot(
+middle_data = middle_data[middle_data['inferred_limit'] != 126764] # PM's specific data restriction
+
+middle_plot = sns.scatterplot(
+# middle_plot = sns.relplot(
     x='inferred_limit',
     y='nll',
     hue='series',
     style='series',
     hue_order=hue_order,
     data=middle_data,
-    palette=palette,
-    kind='scatter',
+    palette=STYLEGUIDE['palette'],
+    markers={
+        'intra_unsort': STYLEGUIDE['markers']['single'],
+        'session_unsort': STYLEGUIDE['markers']['session'],
+        'subject_unsort': STYLEGUIDE['markers']['subject'],
+        'task_unsort': STYLEGUIDE['markers']['task'],
+        # STYLEGUIDE['markers']
+    },
+    # kind='scatter',
+    legend=True,
+    ax=ax
 )
 
-# Customize the middle panel plot
-deco(middle_data, use_title=False)
-# middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
-middle_plot._legend.set_title('Series')
-for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
-    t.set_text(label_remap.get(t.get_text(), t.get_text()))
+ax.set_xlabel('Pretraining trials')
+ax.set_ylabel('Test NLL')
+# Only use 3 xticks
+ax.yaxis.set_major_locator(ticker.MaxNLocator(3))
+ax.yaxis.set_minor_locator(ticker.MaxNLocator(3))
 
+# if use_title:
+#     alias = ax.get_title().split('=')[1].strip()
+#     ax.set_title(title_remap.get(alias, alias), fontsize=20)
+# else:
+#     ax.set_title('')
+
+for i, series in enumerate(hue_order):
+    sub_df = middle_data[middle_data['series'] == series]
+    plot_dataset_power_law(sub_df, ax, color=palette[i])
+
+# Customize the middle panel plot
+# deco(middle_data, use_title=False)
+
+
+
+# middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
+# ax.get_legend().set_title('Series')
+# middle_plot._legend.set_title('Series')
+# for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
+    # t.set_text(label_remap.get(t.get_text(), t.get_text()))
+
+# export as svg
+fig.savefig('transfer_scale_nll.svg', bbox_inches='tight')
 
 #%%
 
@@ -332,7 +381,12 @@ ax.set_ylabel('Vel R2')
 # convert to relplot
 palette = sns.color_palette('colorblind', n_colors=len(df['series'].unique()))
 hue_order = df.groupby(['series']).mean().sort_values('nll').index
-
+hue_order = [
+    'intra_unsort',
+    'session_unsort',
+    'task_unsort', # flip for consistency with third plot
+    'subject_unsort',
+]
 g = sns.relplot(
     x='inferred_limit',
     y='kin_r2',
@@ -382,12 +436,14 @@ g.fig.suptitle(f'Sup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsiz
 # g.fig.suptitle(f'100 Trial Transfer Vel R2 ({"Unsorted" if UNSORT else "Sorted"})', y=1.05, fontsize=28)
 
 #%%
-
+fig = plt.figure(figsize=(6, 6))
+ax = prep_plt(fig.add_subplot(111))
 # Like the above, but just the middle panel
 middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
 
 # Plot the middle panel data
-middle_plot = sns.relplot(
+middle_plot = sns.lineplot(
+# middle_plot = sns.relplot(
     x='inferred_limit',
     y='kin_r2',
     hue='series',
@@ -395,15 +451,25 @@ middle_plot = sns.relplot(
     hue_order=hue_order,
     data=middle_data,
     palette=palette,
-    kind='line',
-    markers=True,
+    # kind='line',
+    markers={
+        'intra_unsort': STYLEGUIDE['markers']['single'],
+        'session_unsort': STYLEGUIDE['markers']['session'],
+        'subject_unsort': STYLEGUIDE['markers']['subject'],
+        'task_unsort': STYLEGUIDE['markers']['task'],
+        # STYLEGUIDE['markers']
+    },
+    ax=ax,
+    # legend=True,
+    legend=False,
 )
 
 # Customize the middle panel plot
 deco(middle_data, use_title=False)
+ax.set_ylabel('Velocity $R^2$')
 # middle_plot.fig.suptitle(f'Middle Panel: Unsup. Transfer Scaling (100 Trial Calibration)', y=1.05, fontsize=20)
-middle_plot._legend.set_title('Series')
-for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
-    t.set_text(label_remap.get(t.get_text(), t.get_text()))
+# middle_plot._legend.set_title('Series')
+# for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
+    # t.set_text(label_remap.get(t.get_text(), t.get_text()))
 
-middle_plot._legend.remove()
+# middle_plot._legend.remove()

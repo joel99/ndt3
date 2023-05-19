@@ -14,9 +14,7 @@ model:
   neurons_per_token: 32
 dataset:
   datasets:
-  - marino_Earl.*
-  - marino_Nigel.*
-  - marino_Rocky.*
+  - churchland_misc.*
   data_keys:
   - DataKey.spikes
   # - DataKey.bhvr_vel
