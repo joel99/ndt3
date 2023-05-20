@@ -118,7 +118,6 @@ dependencies:
   - libwebp=1.2.4=h11a3e52_1
   - libwebp-base=1.2.4=h5eee18b_1
   - libzlib=1.2.13=h166bdaf_4
-  - lightning-utilities=0.8.0=pyhd8ed1ab_0
   - lz4-c=1.9.4=h6a678d5_0
   - matplotlib-base=3.6.2=py39h945d387_0
   - mkl=2021.4.0=h06a4308_640
@@ -150,7 +149,7 @@ dependencies:
   - python_abi=3.9=3_cp39
   - pytorch=1.13.1=py3.9_cuda11.6_cudnn8.3.2_0
   - pytorch-cuda=11.6=h867d48c_1
-  - pytorch-lightning=2.0.1.post0=pyhd8ed1ab_0
+  - pytorch-lightning=1.8.2
   - pytorch-mutex=1.0=cuda
   - pyyaml=6.0=py39hb9d737c_5
   - readline=8.2=h8228510_1
