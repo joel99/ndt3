@@ -9,10 +9,11 @@ function prep_all
 
 % root_dir = "/home/joelye/user_data/stim_team/s1_m1";
 % root_dir = "/home/joelye/projects/icms_modeling/data/detection";
-root_dir = "/home/joelye/projects/context_general_bci/data/pitt_co/"
+root_dir = "/home/joelye/projects/context_general_bci/data/sample_crs02b_data/"
+% root_dir = "/home/joelye/projects/context_general_bci/data/pitt_co/"
 experiments = dir(root_dir);
 for experiment = experiments'
-    if startsWith(experiment.name, "CRS02bHome")
+    if startsWith(experiment.name, "CRS02b")
         experiment = experiment.name
         % experiment = "CRS02bHome.data.00329";
         prefix = "QL.";

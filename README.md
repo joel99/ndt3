@@ -4,11 +4,11 @@ Codebase for Neural Data Transformer 2. Should provide everything you need to ru
 ## Getting started
 
 ### Code Requirements
-We recommend setting up with conda on a Linux platform Most core requirements for model training are listed in `env_onnx.yml`.
+We recommend setting up with setup.py (the env.ymls lists a dump of an active environment, but setup.py lists the core dependencies)
 ```
-conda env create -f env_onnx.yml
+conda create --name onnx python=3.9
+pip install -e . (from this directory)
 ```
-`env_onnx_cross` is also available for windows setup, though several dependencies are less specified there and might need to be installed individually.
 
 In the conda env, setup this repo with `pip install -e .` (or `pip install .` if you don't plan on editing the codebase). We make several dataloading dependencies optional (but training with said data will fail without them).
 
