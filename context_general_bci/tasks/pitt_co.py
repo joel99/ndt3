@@ -94,6 +94,9 @@ def load_trial(fn, use_ql=True, key='data'):
         elif 'pos' in payload:
             out['position'] = torch.from_numpy(payload['pos'][:,1:3]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
         out['position'] = out['position'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
+        if 'target' in payload:
+            out['target'] = torch.from_numpy(payload['target'][:,1:3])
+            out['target'] = out['target'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -119,7 +122,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         int_position = pd.Series(position.flatten()).interpolate()
         position = torch.tensor(int_position).view(-1, position.shape[-1])
         position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
-        vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float()
+        vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
 
         # position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
         # position = convolve(position, kernel, mode='same')
@@ -128,6 +131,20 @@ class PittCOLoader(ExperimentalTaskLoader):
 
         vel[vel.isnan()] = 0 # extra call to deal with edge values
         return vel
+
+    @staticmethod
+    def ReFIT(positions: torch.Tensor, goals: torch.Tensor, thresh: float = 0.001) -> torch.Tensor:
+        empirical = PittCOLoader.get_velocity(positions)
+        oracle = goals - positions
+        magnitudes = torch.linalg.norm(empirical, dim=1)  # Compute magnitudes of original velocities
+        angles = torch.atan2(oracle[:, 1], oracle[:, 0])  # Compute angles of velocities
+
+        # Clip velocities with magnitudes below threshold to 0
+        mask = (magnitudes < thresh)
+        magnitudes[mask] = 0.0
+
+        new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
+        return new_velocities
 
     @classmethod
     def load(
@@ -189,7 +206,10 @@ class PittCOLoader(ExperimentalTaskLoader):
                     task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
                 ): # We only "trust" in the labels provided by obs (for now)
                     if len(payload['position']) == len(payload['trial_num']):
-                        session_vel = PittCOLoader.get_velocity(payload['position'])
+                        if cfg.closed_loop_intention_estimation == "refit":
+                            session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
+                        else:
+                            session_vel = PittCOLoader.get_velocity(payload['position'])
                         # if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
                         #     should_clip = True
                     else:

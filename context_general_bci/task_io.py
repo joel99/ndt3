@@ -147,6 +147,8 @@ class TaskPipeline(nn.Module):
                 loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1 1')
         else:
             length_mask = torch.ones(b, t, device=ref.device, dtype=torch.bool)
+        nan_mask = torch.isnan(ref).any(-1)
+        length_mask = length_mask & ~nan_mask
         if channel_key in batch and compute_channel: # only some of b x a x c are valid
             channels = batch[channel_key] # b x a of ints < c (or b x t)
             if channels.ndim == 1:

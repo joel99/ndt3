@@ -498,6 +498,7 @@ class DatasetConfig:
     delay_reach: ExperimentalConfig = ExperimentalConfig()
 
     permute_channels: bool = False # test flag, permute channels randomly per session
+    closed_loop_intention_estimation: str = ""
 
 @dataclass
 class TrainConfig:

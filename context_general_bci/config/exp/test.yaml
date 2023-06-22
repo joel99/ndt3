@@ -14,7 +14,8 @@ model:
   neurons_per_token: 32
 dataset:
   datasets:
-  - churchland_misc.*
+  - observation_CRS07.* # pursuit.*
+  # - churchland_misc.*
   data_keys:
   - DataKey.spikes
   # - DataKey.bhvr_vel

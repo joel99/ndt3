@@ -14,12 +14,12 @@ for i = 1:length(queries)
     res = searchAllLogs(queries{i}, 'subject', 'CRS07');
 %     res = searchLogsInRange(queries{i}, 'subject', 'CRS02b');
 %     res = searchAllLogs(queries{i}, 'subject', 'CRS02b');
-    
+
     if isfield(res, 'sets')
 %     [days, sets] = searchAllLogs(queries{i});
         for j = 1:length(res.sets)
             set = res.sets(j);
-            
+
             if ~contains(set.paradigm, queries{i}) || ~contains(set.paradigm, '2D')
                 continue;
             end
@@ -27,30 +27,30 @@ for i = 1:length(queries)
             paradigm = lower(set.paradigm);
             paradigm = strrep(paradigm, '-', ' ');
             paradigm = strrep(paradigm, ' ', '_');
-            
+
             is_valid = true;
 %             checks
             set.comments = set.comments';
             set.comments = set.comments(:)';
             set.comments = lower(set.comments);
-           
+
             for b = 1:length(blacklist_comments)
                 if contains(set.comments, blacklist_comments(b))
                     is_valid = false;
                     break;
                 end
             end
-            
+
             if ~is_valid
                 continue;
             end
-                        
+
             if strcmp(queries{i}, 'free play') && ~strcmp(paradigm, 'free_play')
                 is_valid = false;
             end
-            
+
             type_tag = paradigm;
-                
+
             try
                 comments = set.comments;
                 if strcmp(paradigm, 'free play') || strcmp(paradigm, 'free-play')
@@ -67,7 +67,7 @@ for i = 1:length(queries)
             catch
                 continue % some failures on set.paradigm lower for empty str, IDK syntax to address but that'd effectively be invalid anyway
             end
-            
+
             if ~is_valid
                 continue
             end
@@ -89,9 +89,11 @@ for i = 1:length(queries)
                 if endsWith(type_tag, 'fbc') || endsWith(type_tag, 'ortho') || endsWith(type_tag, 'obs')
 %                 if strcmp(type_tag, 'fbc') || strcmp(type_tag, 'ortho') || strcmp(type_tag, 'obs')
                     thin_data.pos = cast(data.Kinematics.ActualPos(:,1:3), 'single');
+                    thin_data.target = cast(data.TaskStateMasks.target(1:3), 'single');
                     if size(thin_data.pos, 1) ~= size(thin_data.SpikeCount, 1)
                         disp("mismatched shape, drop " + set_name);
                         clearvars thin_data.pos; % abandon attempt
+                        clearvars thin_data.target; % abandon attempt
                     end
                 end
                 save(out_path, 'thin_data');
