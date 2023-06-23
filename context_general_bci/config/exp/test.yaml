@@ -15,7 +15,8 @@ model:
 dataset:
   datasets:
   - observation_CRS08.* # pursuit.*
-  # - churchland_misc.*
+  eval_datasets:
+  - observation_CRS08_10_2
   data_keys:
   - DataKey.spikes
   # - DataKey.bhvr_vel

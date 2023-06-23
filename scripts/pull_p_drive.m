@@ -89,7 +89,7 @@ for i = 1:length(queries)
                 if endsWith(type_tag, 'fbc') || endsWith(type_tag, 'ortho') || endsWith(type_tag, 'obs')
 %                 if strcmp(type_tag, 'fbc') || strcmp(type_tag, 'ortho') || strcmp(type_tag, 'obs')
                     thin_data.pos = cast(data.Kinematics.ActualPos(:,1:3), 'single');
-                    thin_data.target = cast(data.TaskStateMasks.target(1:3), 'single');
+                    thin_data.target = cast(data.TaskStateMasks.target(1:3, :), 'single');
                     if size(thin_data.pos, 1) ~= size(thin_data.SpikeCount, 1)
                         disp("mismatched shape, drop " + set_name);
                         clearvars thin_data.pos; % abandon attempt

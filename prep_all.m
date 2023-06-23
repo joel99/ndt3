@@ -22,7 +22,7 @@ for experiment = experiments'
         experiment_dir = fullfile(root_dir, experiment);
         ql_files = dir(fullfile(experiment_dir,strcat(prefix, '*.bin')));
         target_dir = fullfile(root_dir, "mat", experiment)
-        mkdir(target_dir)
+        % mkdir(target_dir)
         % disp(ql_files)
         names = arrayfun(@(x) x.name, ql_files, 'UniformOutput', false);
         prep_multiple(root_dir, experiment, names)

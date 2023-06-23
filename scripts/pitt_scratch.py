@@ -23,10 +23,13 @@ import torch
 
 data_dir = Path("./data/pitt_co/")
 session = 173 # pursuit
+
+data_dir = Path('./data/pitt_misc/mat')
+session = 7
 # session = 1407 # co
 
 # session_dir = data_dir / f'CRS02bHome.data.{session:05d}'
-session_dir = data_dir.glob(f'CRS02b*{session}*obs.mat').__next__()
+session_dir = data_dir.glob(f'*{session}*obs.mat').__next__()
 if not session_dir.exists():
     print(f'Session {session_dir} not found; Run `prep_all` on the QL .bin files.')
 print(session_dir)
@@ -73,47 +76,13 @@ def events_to_raster(
 
 
 from context_general_bci.tasks.pitt_co import load_trial
-# def load_trial(fn, use_ql=True):
-#     # if `use_ql`, use the prebinned at 20ms and also pull out the kinematics
-#     # else take raw spikes
-#     payload = scipy.io.loadmat(fn, simplify_cells=True)
-#     # data = payload['data'] # 'data' is pre-binned at 20ms, we'd rather have more raw
-#     # payload = scipy.io.loadmat(fn, simplify_cells=True, variable_names=['iData'])
-#     # print(payload['data']['TaskStateMasks']['states'])
-#     # print(payload['data']['TaskStateMasks']['state_num'])
-#     out = {
-#         'bin_size_ms': 20 if use_ql else 1,
-#         'use_ql': use_ql,
-#     }
-#     if use_ql:
-#         # print(payload['data'].keys())
-#         # print(payload['data']['SpikeCount'].shape)
-#         # print(payload['data']['ActiveChannelMask'].sum())
-#         standard_channels = np.arange(0, 256 * 5,5) # unsorted, I guess
-#         spikes = payload['data']['SpikeCount'][..., standard_channels]
-#         # print(payload['data']['Kinematics'].keys())
-#         out['spikes'] = torch.from_numpy(spikes)
-#         # cursor x, y
-#         out['position'] = torch.from_numpy(payload['data']['Kinematics']['ActualPos'][:,2:4])
-#         print(payload['data'].keys())
-#     else:
-#         data = payload['iData']
-#         trial_data = extract_ql_data(data['QL']['Data'])
-#         out['src_file'] = data['QL']['FileName']
-#         out['spikes'] = events_to_raster(trial_data)
-#     return out
-
-# for fname in session_dir.glob("*.mat"):
-    # if fname.stem.startswith('QL.Task'):
-    #     payload = load_trial(fname)
-    #     break
+from context_general_bci.analyze_utils import prep_plt
 payload = load_trial(session_dir, key='thin_data')
 
 print(payload.keys())
 #%%
 # Make raster plot
 fig, ax = plt.subplots(figsize=(10, 10))
-from context_general_bci.analyze_utils import prep_plt
 
 def plot_spikes(spikes, ax=None, vert_space=1):
 
@@ -147,10 +116,6 @@ from scipy.signal import convolve
 # Boxcar doesn't look great (super high targets) but it's what pitt folks have been using this whole time so we'll keep it
 
 def get_velocity(position, smooth_time_ms=500):
-    # gaussian filter is just like... not as susceptible to edge artifacts as the typical boxcar...
-    # position = gaussian_filter1d(position, 10, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
-    # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
-    # position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
     # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
     kernel = np.ones((int(smooth_time_ms / 20), 2)) / (smooth_time_ms / 20)
     # print(kernel, position.shape)
@@ -196,19 +161,30 @@ def plot_trials(trial_times, ax=None):
     ax = prep_plt(ax)
 
     step_times = list(np.where(np.diff(trial_times))[0])
-    print(step_times)
+    # print(step_times)
     step_times.append(trial_times.shape[0])
     for step_time in step_times:
-        ax.axvline(step_time - 50, linestyle='--', color='k', alpha=0.5)
-        ax.axvline(step_time + 25, linestyle='--', color='k', alpha=0.5)
-        ax.axvline(step_time, color='k', alpha=0.5)
+        ax.axvline(step_time - 50, linestyle='--', color='k', alpha=0.1)
+        ax.axvline(step_time + 25, linestyle='--', color='k', alpha=0.1)
+        ax.axvline(step_time, color='k', alpha=0.1)
 
-vel = get_velocity(payload['position'])
+# vel = get_velocity(payload['position']) # TODO low pri - is this notebook function old? Why is it diff from my PittCOLoader.get_velocity?
 # vel = try_clip_on_trial_boundary(vel, trial_times=payload['trial_num'])
 # plot_behavior(payload['position'], ax=ax)
-plot_behavior(vel, ax=ax)
+
+from context_general_bci.tasks.pitt_co import PittCOLoader
+vel = PittCOLoader.get_velocity(payload['position'])
+refit_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
+
+# plot the times when payload['target'].any(-1) is nan
+print(payload['target'].isnan())
+# for nan_time in payload['target'].isnan().any(-1).nonzero():
+    # ax.axvline(nan_time, color='r', alpha=0.1)
+
+# plot_behavior(vel, ax=ax)
+plot_behavior(refit_vel, ax=ax)
 plot_trials(payload['trial_num'], ax=ax)
-# ! TODO compare raw absolutes against CO workspace
+
 # We're not smooth because these trials are damn long?
 
 #%%

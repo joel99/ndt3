@@ -11,3 +11,5 @@ tag: 'online_obs_tune'
 notes: "Decoder base: human obs." # pitt_v3/decode_full/human
 model:
   closed_loop_crop_bins: 50
+
+# Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.'] (this will integrate the new session automatically)
