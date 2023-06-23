@@ -43,5 +43,5 @@ train:
   autoscale_batch_size: false
   batch_size: 8 # Assuming we have ~50-100 trials.
   patience: 75 # Lower doesn't seem to converge
-experiment_set: 'online_bci/ortho'
+experiment_set: 'online_bci/fbc'
 inherit_exp: 'online_bci'

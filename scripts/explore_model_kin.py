@@ -35,6 +35,8 @@ mode = 'test'
 # query = 'sup_3200-frag-odoherty_rtt-Indy-20160627_01-sweep-simpler_lr_sweep-iy1xf1bc'
 query = 'human_obs_m5_lr1e5-2ixlx1c9'
 # query = 'human_aug-nxy3te61'
+query = 'online_obs_tune-nr2b51yd'
+# query = 'online_obs_tune-0ee5xlel'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -62,14 +64,15 @@ target_dataset = 'observation_CRS02b_1904_6'
 
 # cfg.dataset.datasets = ["observation_CRS02bLab_session_1908_set_1"]
 # cfg.dataset.eval_datasets = ["observation_CRS02bLab_session_1908_set_1"]
+target_dataset = 'observation_CRS08_10_2'
 
 # target_dataset = 'odoherty_rtt-Indy-20160627_01'
 # cfg.dataset.datasets = ["odoherty_rtt-Indy-20160627_01"]
 # cfg.dataset.eval_datasets = ["odoherty_rtt-Indy-20160627_01"]
 
 cfg.dataset.datasets = [target_dataset]
-cfg.dataset.eval_datasets = [target_dataset]
-cfg.dataset.eval_datasets = []
+# cfg.dataset.eval_datasets = [target_dataset]
+# cfg.dataset.eval_datasets = []
 # cfg.dataset.eval_ratio = 0.5
 # cfg.model.task.decode_normalizer = 'pitt_obs_zscore.pt'
 
@@ -85,6 +88,7 @@ else:
     dataset.subset_split() # remove test data
     train, val = dataset.create_tv_datasets()
     dataset = train
+    dataset = val
 
 dataset.subset_by_key([ctx.id], MetaKey.session)
 print(len(dataset))
@@ -149,7 +153,7 @@ f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca())
 trials = range(4)
 # trials = range(2)
-trials = torch.arange(0, 12, 2)
+# trials = torch.arange(0, 12, 2)
 
 colors = sns.color_palette('colorblind', len(trials))
 def plot_trial(trial, ax, color, label=False):

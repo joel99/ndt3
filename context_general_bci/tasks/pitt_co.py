@@ -95,6 +95,7 @@ def load_trial(fn, use_ql=True, key='data'):
             out['position'] = torch.from_numpy(payload['pos'][:,1:3]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
         out['position'] = out['position'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
         if 'target' in payload:
+            breakpoint()
             out['target'] = torch.from_numpy(payload['target'][:,1:3])
             out['target'] = out['target'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
     else:
@@ -207,6 +208,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 ): # We only "trust" in the labels provided by obs (for now)
                     if len(payload['position']) == len(payload['trial_num']):
                         if cfg.closed_loop_intention_estimation == "refit":
+                            breakpoint()
                             session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
                         else:
                             session_vel = PittCOLoader.get_velocity(payload['position'])

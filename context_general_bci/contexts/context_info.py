@@ -515,8 +515,9 @@ class BCIContextInfo(ReachingContextInfo):
                 subject = subject[:-4]
             elif subject.endswith('Lab'):
                 subject = subject[:-3]
+            subject = subject[:3].upper() + subject[3:]
             alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
-            if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']):
+            if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
                 task = task_map.get(control, task_map.get('default'))
             else:
                 task = task_map.get('default')

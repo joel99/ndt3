@@ -1,34 +1,22 @@
 % For converting Pitt QL format to matlab objects (to then be ingested by my python libs..)
 % Requires Pitt RTMA lib in matlab path
 
-function prep_and_cast(root_dir, experiment, file)
+function prep_multiple(root_dir, experiment, files)
 % Load quicklogger trial, cast StimData to a struct, and save as processed matlab
 
-src_file = fullfile(root_dir, experiment, file)
-[data, iData] = prepData('files', [src_file])
-% [iData] = prepData('files', [src_file], 'format_data', false) # doesn't work for some reason...
-% data.StimData = struct(data.StimData)
-% iData.StimData = struct(iData.StimData)
-target_dir = fullfile(root_dir, "mat", experiment)
-[dummy, file_stem, ext] = fileparts(src_file)
-target_file = fullfile(target_dir, strcat(file_stem, ".mat"))
-% save(target_file, 'iData')
-% save(target_file, 'iData', 'data')
+src_files = cellfun(@(file) fullfile(root_dir, experiment, file), files, 'UniformOutput', false);
+src_files_char = cellfun(@char, src_files, 'UniformOutput', false);
+% disp(src_files)
+[data, iData] = prepData('files', src_files_char)
 
-%  Pitt hotpatch for manual conversion to mimic pull_p_drive
+%  Pitt patch for manual conversion to mimic pull_p_drive
 % Split the string based on underscore delimiter
 parts = split(experiment, '_');
-disp(parts);
-
 % Extract the session and set integers, and type as string
 subject_name = parts(1);
 session = str2double(parts(2));
 set = str2double(parts(3));
 type_tag = parts(4);
-
-disp(session);
-disp(set);
-disp(type_tag);
 
 root_path_out = fullfile(root_dir, 'mat');
 

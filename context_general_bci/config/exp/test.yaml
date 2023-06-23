@@ -14,11 +14,12 @@ model:
   neurons_per_token: 32
 dataset:
   datasets:
-  - observation_CRS07.* # pursuit.*
+  - observation_CRS08.* # pursuit.*
   # - churchland_misc.*
   data_keys:
   - DataKey.spikes
   # - DataKey.bhvr_vel
+  closed_loop_intention_estimation: refit
 train:
   # accumulate_batches: 2 # auto = 128 (12G GPUs), effective = 2048
   autoscale_batch_size: true

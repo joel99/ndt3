@@ -157,6 +157,11 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'ortho': ExperimentalTask.ortho,
             'fbc': ExperimentalTask.fbc,
         }, alias_prefix='closed_loop_'),
+        *BCIContextInfo.build_from_dir(f'./data/pitt_misc/mat', task_map={
+            'obs': ExperimentalTask.observation,
+            'ortho': ExperimentalTask.ortho,
+            'fbc': ExperimentalTask.fbc,
+        }, alias_prefix='pitt_misc_'), # Don't use in pretraining
         *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
             'unstructured': ExperimentalTask.unstructured,
             'free_play': ExperimentalTask.unstructured,
