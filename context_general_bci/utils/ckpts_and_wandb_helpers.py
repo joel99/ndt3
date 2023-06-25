@@ -139,7 +139,7 @@ def get_wandb_lineage(cfg: RootConfig):
         }
     )
     if len(runs) == 0:
-        raise ValueError(f"No wandb runs found for experiment set {cfg.inherit_exp} and tag {cfg.tag}")
+        raise ValueError(f"No wandb runs found for experiment set {cfg.inherit_exp} and tag {lineage_query}")
     # Basic sanity checks on the loaded checkpoint
     # check runtime
     # Allow crashed, which is slurm timeout

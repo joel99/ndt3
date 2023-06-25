@@ -19,7 +19,7 @@ try:
 except:
     logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
-from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.config import DataKey, DatasetConfig, PittConfig
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
@@ -217,7 +217,9 @@ class PittCOLoader(ExperimentalTaskLoader):
                         session_vel = None
                 else:
                     session_vel = None
-                if cfg.pitt_co.respect_trial_boundaries:
+                # breakpoint()
+                exp_task_cfg: PittConfig = getattr(cfg, task.value)
+                if exp_task_cfg.respect_trial_boundaries:
                     for i in payload['trial_num'].unique():
                         trial_spikes = payload['spikes'][payload['trial_num'] == i]
                         # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
@@ -232,7 +234,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                         #         trial_vel = trial_vel[start_pad:-end_pad]
                         if trial_spikes.size(0) < 10:
                             continue
-                        if trial_spikes.size(0) < round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms):
+                        if trial_spikes.size(0) < round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms):
                             save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
                         else:
                             chopped_spikes = chop_vector(trial_spikes)
@@ -241,7 +243,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                             for j, subtrial_spikes in enumerate(chopped_spikes):
                                 save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
 
-                            end_of_trial = trial_spikes.size(0) % round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
+                            end_of_trial = trial_spikes.size(0) % round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms)
                             if end_of_trial > 10:
                                 trial_spikes_end = trial_spikes[-end_of_trial:]
                                 if session_vel is not None:

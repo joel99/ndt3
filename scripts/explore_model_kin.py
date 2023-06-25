@@ -38,6 +38,10 @@ query = 'human_obs_m5_lr1e5-2ixlx1c9'
 query = 'online_obs_tune-nr2b51yd'
 # query = 'online_obs_tune-0ee5xlel'
 
+query = 'human_crs08_tune-mip3powm'
+# query = 'online_human_pt-5ytq361d'
+query = 'online_human_pt-cfzx5heb'
+
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -65,20 +69,21 @@ target_dataset = 'observation_CRS02b_1904_6'
 # cfg.dataset.datasets = ["observation_CRS02bLab_session_1908_set_1"]
 # cfg.dataset.eval_datasets = ["observation_CRS02bLab_session_1908_set_1"]
 target_dataset = 'observation_CRS08_10_2'
+target_dataset = 'observation_CRS08_11_16'
 
 # target_dataset = 'odoherty_rtt-Indy-20160627_01'
 # cfg.dataset.datasets = ["odoherty_rtt-Indy-20160627_01"]
 # cfg.dataset.eval_datasets = ["odoherty_rtt-Indy-20160627_01"]
 
-cfg.dataset.datasets = [target_dataset]
+# cfg.dataset.datasets = [target_dataset]
 # cfg.dataset.eval_datasets = [target_dataset]
 # cfg.dataset.eval_datasets = []
 # cfg.dataset.eval_ratio = 0.5
 # cfg.model.task.decode_normalizer = 'pitt_obs_zscore.pt'
 
 dataset = SpikingDataset(cfg.dataset)
+print("Original length: ", len(dataset))
 ctx = dataset.list_alias_to_contexts([target_dataset])[0]
-
 # dataset.subset_by_key([ctx.id], MetaKey.session)
 # print(len(dataset))
 if cfg.dataset.eval_datasets and mode == 'test':
@@ -91,7 +96,7 @@ else:
     dataset = val
 
 dataset.subset_by_key([ctx.id], MetaKey.session)
-print(len(dataset))
+print("Subset length: ", len(dataset))
 
 
 data_attrs = dataset.get_data_attrs()
@@ -147,7 +152,7 @@ df = pd.DataFrame({
 g = sns.jointplot(x='true', y='pred', hue='coord', data=df, s=3, alpha=0.4)
 
 # set title
-g.fig.suptitle(f'{mode} {target_dataset} Velocity R2: {heldin_metrics["test_kinematic_r2"]:.2f}')
+g.fig.suptitle(f'{query} {mode} {target_dataset} Velocity R2: {heldin_metrics["test_kinematic_r2"]:.2f}')
 #%%
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca())
