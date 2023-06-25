@@ -146,6 +146,8 @@ class PittCOLoader(ExperimentalTaskLoader):
         # magnitudes[mask] = 0.0
 
         new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
+        new_velocities[:reaction_lag_ms // bin_ms] = torch.nan  # Replace clipped velocities with original ones, for rolled time periods
+        # new_velocities[reaction_lag_ms // bin_ms:] = empirical[reaction_lag_ms // bin_ms:]  # Replace clipped velocities with original ones, for rolled time periods
         return new_velocities
 
     @classmethod
@@ -203,14 +205,16 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # start_pad = round(500 / cfg.bin_size_ms)
                 # end_pad = round(1000 / cfg.bin_size_ms)
                 # should_clip = False
+                exp_task_cfg: PittConfig = getattr(cfg, task.value)
+
                 if (
                     'position' in payload and \
                     task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
                 ): # We only "trust" in the labels provided by obs (for now)
                     if len(payload['position']) == len(payload['trial_num']):
-                        if cfg.closed_loop_intention_estimation == "refit":
-                            breakpoint()
-                            session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
+                        if exp_task_cfg.closed_loop_intention_estimation == "refit":
+                            # breakpoint()
+                            session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                         else:
                             session_vel = PittCOLoader.get_velocity(payload['position'])
                         # if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
@@ -219,8 +223,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                         session_vel = None
                 else:
                     session_vel = None
-                # breakpoint()
-                exp_task_cfg: PittConfig = getattr(cfg, task.value)
                 if exp_task_cfg.respect_trial_boundaries:
                     for i in payload['trial_num'].unique():
                         trial_spikes = payload['spikes'][payload['trial_num'] == i]

@@ -325,8 +325,8 @@ class ExperimentalConfig:
         return {}
 
     @classmethod
-    def create_with_arrays(cls, arrays: List[str]):
-        return cls(arrays=arrays)
+    def create_with_arrays(cls, arrays: List[str], **kwargs):
+        return cls(arrays=arrays, **kwargs)
 
 @dataclass
 class RTTConfig(ExperimentalConfig):
@@ -368,7 +368,8 @@ class NLBConfig(ExperimentalConfig):
 @dataclass
 class PittConfig(ExperimentalConfig):
     chop_size_ms: int = 2500
-    respect_trial_boundaries: bool = True # quickly experimenting whether we can remove pulsar bhvr if we drop trial boundaries
+    respect_trial_boundaries: bool = False # keep this off for simplicity
+    closed_loop_intention_estimation: str = ""
 
 @dataclass
 class DatasetConfig:
@@ -475,20 +476,17 @@ class DatasetConfig:
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
         'CRS08-lateral_m1', 'CRS08-medial_m1',
-
     ])
     ortho: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
         'CRS08-lateral_m1', 'CRS08-medial_m1',
-
-    ])
+    ], closed_loop_intention_estimation="refit")
     fbc: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
         'CRS08-lateral_m1', 'CRS08-medial_m1',
-
-    ])
+    ], closed_loop_intention_estimation="refit")
     unstructured: PittConfig = PittConfig.create_with_arrays([
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
@@ -498,7 +496,6 @@ class DatasetConfig:
     delay_reach: ExperimentalConfig = ExperimentalConfig()
 
     permute_channels: bool = False # test flag, permute channels randomly per session
-    closed_loop_intention_estimation: str = ""
 
 @dataclass
 class TrainConfig:
