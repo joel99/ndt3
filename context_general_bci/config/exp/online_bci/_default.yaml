@@ -16,10 +16,10 @@ dataset:
   - DataKey.spikes
   - DataKey.bhvr_vel
   # datasets: - will be specified in calling script
-  # pitt_co:
-    # respect_trial_boundaries: true
-  # observation:
-    # respect_trial_boundaries: true
+  pitt_co:
+    respect_trial_boundaries: false
+  observation:
+    respect_trial_boundaries: false # Parity with SNEL per IRL conversations
   # ortho:
     # respect_trial_boundaries: true
 model:

@@ -133,15 +133,17 @@ class PittCOLoader(ExperimentalTaskLoader):
         return vel
 
     @staticmethod
-    def ReFIT(positions: torch.Tensor, goals: torch.Tensor, thresh: float = 0.001) -> torch.Tensor:
+    def ReFIT(positions: torch.Tensor, goals: torch.Tensor, reaction_lag_ms=200, bin_ms=20) -> torch.Tensor:
+        # positions, goals: Time x Hidden.
+        # defaults for lag experimented in `pitt_scratch`
         empirical = PittCOLoader.get_velocity(positions)
-        oracle = goals - positions
+        oracle = goals.roll(reaction_lag_ms // bin_ms) - positions
         magnitudes = torch.linalg.norm(empirical, dim=1)  # Compute magnitudes of original velocities
         angles = torch.atan2(oracle[:, 1], oracle[:, 0])  # Compute angles of velocities
 
         # Clip velocities with magnitudes below threshold to 0
-        mask = (magnitudes < thresh)
-        magnitudes[mask] = 0.0
+        # mask = (magnitudes < thresh)
+        # magnitudes[mask] = 0.0
 
         new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
         return new_velocities

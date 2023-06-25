@@ -41,6 +41,7 @@ query = 'online_obs_tune-nr2b51yd'
 query = 'human_crs08_tune-mip3powm'
 # query = 'online_human_pt-5ytq361d'
 query = 'online_human_pt-cfzx5heb'
+query = 'online_human_pt-w3rnnpj4'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]

@@ -1093,6 +1093,8 @@ class BrainBertInterface(pl.LightningModule):
                     eta_min=self.cfg.lr_min
                 ),
             ])
+        else:
+            assert self.cfg.lr_schedule == 'fixed', f"Unknown lr_schedule {self.cfg.lr_schedule}"
         out = {
             'optimizer': optimizer,
             'monitor': 'val_loss'

@@ -2,9 +2,9 @@
 defaults:
   - _default
 train:
-  autoscale_batch_size: True
+  autoscale_batch_size: True # For some unknown reason, this is critical to perf. Model is brittle to training noise (not enough data)
   # autoscale_batch_size: false
-  batch_size: 32
+  batch_size: 16
   patience: 200
 dataset:
   augmentations:

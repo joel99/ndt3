@@ -2,9 +2,9 @@
 defaults:
   - _default
 train:
-  autoscale_batch_size: True
-#   autoscale_batch_size: False
-  batch_size: 32
+  # autoscale_batch_size: True
+  autoscale_batch_size: False
+  batch_size: 16
   patience: 200
 dataset:
   augmentations:
@@ -14,6 +14,7 @@ dataset:
   exclude_datasets: []
 model:
   # FT-ing
+  lr_init: 4e-5
   val_iters: 10
   task:
     mask_ratio: 0.1
