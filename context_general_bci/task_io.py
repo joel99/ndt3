@@ -1221,6 +1221,9 @@ class BehaviorRegression(TaskPipeline):
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
 
         bhvr_tgt = batch[self.cfg.behavior_target]
+
+        # mask nans
+        length_mask = length_mask & (~torch.isnan(bhvr_tgt).any(-1))
         if self.bhvr_mean is not None:
             bhvr_tgt = bhvr_tgt - self.bhvr_mean
             bhvr_tgt = bhvr_tgt / self.bhvr_std
@@ -1285,6 +1288,8 @@ class BehaviorRegression(TaskPipeline):
                     # print(f'loss: {loss:.3f}, blacklist loss: {blacklist_loss:.3f}, total = {(loss - (blacklist_loss) * self.cfg.adversarial_classify_lambda):.3f}')
                     loss += (-1 * blacklist_loss) * self.cfg.adversarial_classify_lambda # adversarial
             else:
+                if loss[loss_mask].mean().isnan().any():
+                    breakpoint()
                 loss = loss[loss_mask].mean()
 
         r2_mask = length_mask
@@ -1296,7 +1301,6 @@ class BehaviorRegression(TaskPipeline):
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr[r2_mask]
             valid_tgt = bhvr_tgt[r2_mask]
-            # breakpoint()
             batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
             if batch_out[Metric.kinematic_r2].mean() < -10:
                 batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])# .mean() # mute, some erratic result from near zero target
