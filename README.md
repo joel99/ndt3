@@ -7,7 +7,7 @@ Codebase for Neural Data Transformer 2. Should provide everything you need to ru
 We recommend setting up with setup.py (the env.ymls lists a dump of an active environment, but setup.py lists the core dependencies)
 ```
 conda create --name onnx python=3.9
-pip install -e . (from this directory)
+pip install -e . --extra-index-url https://download.pytorch.org/whl/cu117
 ```
 
 In the conda env, setup this repo with `pip install -e .` (or `pip install .` if you don't plan on editing the codebase). We make several dataloading dependencies optional (but training with said data will fail without them).

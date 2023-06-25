@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - _default
+inherit_exp: pitt_v3/decode_online_bci
+inherit_tag: human_crs08_tune
+# inherit_tag: human_aug_only_full # JY backup, not clear on lineage here
+tag: 'online_human_pt'
+notes: "Decoder base: human obs." # pitt_v3/decode_full/human
+model:
+  closed_loop_crop_bins: 50 # safe default.
+
+# Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)

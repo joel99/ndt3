@@ -5,10 +5,11 @@ defaults:
 # init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
 inherit_exp: pitt_v3/decode_online_bci # JY TODO replace with pitt_v3/decode_online_bci
 # inherit_exp: pitt_v3/decode_no_bounds # JY backup, not clear on lineage here
-inherit_tag: human_aug_m1
+inherit_tag: human_crs08_pt
 # inherit_tag: human_aug_only_full # JY backup, not clear on lineage here
-tag: 'online_obs_tune'
+tag: 'online_crs08_pt'
 notes: "Decoder base: human obs." # pitt_v3/decode_full/human
 model:
-  closed_loop_crop_bins: 50
-  lr_init: 1e-5
+  closed_loop_crop_bins: 50 # safe default.
+
+# Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)

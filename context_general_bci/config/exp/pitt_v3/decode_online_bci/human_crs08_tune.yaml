@@ -1,0 +1,22 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: True
+#   autoscale_batch_size: False
+  batch_size: 32
+  patience: 200
+dataset:
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
+  datasets:
+  - observation_CRS08.*
+  exclude_datasets: []
+model:
+  # FT-ing
+  lr_schedule: 'cosine_warmup'
+  lr_init: 5e-4
+  val_iters: 10
+  task:
+    mask_ratio: 0.1
+inherit_tag: human_10l

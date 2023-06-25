@@ -1,0 +1,22 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: True
+  # autoscale_batch_size: false
+  batch_size: 32
+  patience: 200
+dataset:
+  augmentations:
+  - rand_crop_time # preset to crop to 1s
+  datasets:
+  - observation_CRS08.*
+  exclude_datasets: []
+model:
+  transformer:
+    n_layers: 6
+  task:
+    mask_ratio: 0.1
+  # lr_ramp_steps: 100
+inherit_exp: ""
+inherit_tag: ""

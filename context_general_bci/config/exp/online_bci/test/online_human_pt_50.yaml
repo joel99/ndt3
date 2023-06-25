@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
+tag: 'online_human_pt'
+notes: "Decoder base: human obs." # pitt_v3/decode_full/human
+model:
+  closed_loop_crop_bins: 50
