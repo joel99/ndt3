@@ -9,5 +9,7 @@ tag: 'online_human_refit'
 notes: "Decoder base: human obs." # pitt_v3/decode_full/human
 model:
   closed_loop_crop_bins: 50 # safe default.
-
+dataset:
+  fbc:
+    closed_loop_intention_estimation: 'refit'
 # Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)
