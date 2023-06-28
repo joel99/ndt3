@@ -17,8 +17,9 @@ function prep_all(subject)
     %
     % Returns:
     %     None
-
-    root_dir = "/home/joelye/projects/context_general_bci/data/pitt_misc/";
+    root_dir = char(pwd);
+    root_dir = fullfile(root_dir, "data/pitt_misc/");
+    % root_dir = "/home/joelye/projects/context_general_bci/data/pitt_misc/";
     experiments = dir(root_dir);
     subject_id = strcat(subject, '_');
     for experiment = experiments'
