@@ -55,5 +55,7 @@ class ExperimentalTaskRegistry:
 
     @classmethod
     def get_loader(cls, name: ExperimentalTask) -> ExperimentalTaskLoader:
+        if name not in cls._loaders:
+            raise ValueError(f'Loader for {name} not found.')
         return cls._loaders[name]
     # We cannot make the loader query by Enum because the enum is defined by loader attrs (which is a design decision)

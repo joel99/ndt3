@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - _default
+inherit_exp: pitt_v3/decode_online_bci
+inherit_tag: human_crs08_tune
+tag: online_human_pt_unsup_broad
+notes: "Unsupervised tuning of human-pt model, broad data."
+model:
+  closed_loop_crop_bins: 50 # safe default.
+  lr_init: 1e-4 # assuming broader batch size
+  task:
+    blacklist_session_supervision:
+    - CRS.* # Assuming crs08
+    # We still keep the extra task so the weights are kept in ckpt and can be loaded.
+    # But we effectively neuter it by removing its loss. (Ignore R2 if you like)
+train:
+  autoscale_batch_size: True

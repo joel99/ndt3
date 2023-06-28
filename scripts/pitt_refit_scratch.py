@@ -181,10 +181,3 @@ plot_trials(payload['trial_num'], ax=axes[1])
 # This is because I expect the velocities to always be going toward the right target.
 # There are jagged symptoms because the target updates before the cursor has finished arriving at the previous target.
 # However, even if I lag the goal significantly, the
-
-#%%
-
-# Anyway, let's plot some other data as well
-print(payload.keys())
-
-parse_

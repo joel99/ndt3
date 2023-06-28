@@ -67,7 +67,7 @@ def extract_reaches(payload):
 def get_times(payload):
     # https://github.com/pitt-rnel/motor_learning_BCI/blob/main/utility_fx/calculateAcquisitionTime.m
     reaches = extract_reaches(payload)
-    return [np.sum(times) * payload['bin_size_ms'] for pos, times, _ in reaches]
+    return [np.sum(times) * payload['bin_size_ms'] / 1000 for pos, times, _ in reaches]
 
 def get_path_efficiency(payload):
     # Success weighted by Path Length, in BCI! Who would have thought.
@@ -111,9 +111,16 @@ for r in session_runs:
         })
 all_trials = pd.DataFrame(all_trials)
 
-sns.boxplot(all_trials, x='spl', y='variant')
-# sns.boxplot(all_trials, x='time', y='variant')
-# sns.violinplot(all_trials, x='time', y='variant')
+ax = prep_plt()
+sns.boxplot(all_trials, y='spl', x='variant', ax=ax)
+ax.set_ylabel('Path Efficiency')
+ax.set_xlabel('Decoder Variant')
+# probably better conveyed as a table
 
-    # print(get_times(payload))
-    # sns.histplot(get_times(payload))
+# Pandas to latex table
+
+table = all_trials.groupby(['variant']).agg(['mean', 'std'])
+table = table[['spl', 'time']]
+table = table.round(2)
+table = table.to_latex()
+print(table)

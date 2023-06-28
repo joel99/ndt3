@@ -15,11 +15,12 @@ parts = split(experiment, '_');
 subject_name = parts(1);
 session = str2double(parts(2));
 set = str2double(parts(3));
-type_tag = parts(4);
+type_tag = 'unstructured'; % i.e. misc
+% type_tag = parts(4);
 
 root_path_out = fullfile(root_dir, 'mat');
 
-set_name = subject_name + "Lab" + ...
+set_name = subject_name + "Home" + ...
     "_session_" + num2str(session) + ...
     "_set_" + num2str(set) + ...
     "_type_" + type_tag;
@@ -38,6 +39,10 @@ try
             clearvars thin_data.pos; % abandon attempt
             clearvars thin_data.target; % abandon attempt
         end
+    else
+        % mock the same shape as SpikeCount, with zeros (just a hacky placeholder so we can do unsupervised experiments)
+        thin_data.pos = zeros(size(thin_data.SpikeCount, 1), 3, 'single');
+        thin_data.target = zeros(size(thin_data.SpikeCount, 1), 3, 'single');
     end
     save(out_path, 'thin_data');
 

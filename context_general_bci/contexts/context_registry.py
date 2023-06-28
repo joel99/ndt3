@@ -161,6 +161,8 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'obs': ExperimentalTask.observation,
             'ortho': ExperimentalTask.ortho,
             'fbc': ExperimentalTask.fbc,
+            'unstructured': ExperimentalTask.unstructured,
+            'free_play': ExperimentalTask.unstructured,
         }, alias_prefix='pitt_misc_'), # Don't use in pretraining
         *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
             'unstructured': ExperimentalTask.unstructured,

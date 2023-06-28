@@ -473,10 +473,11 @@ class BCIContextInfo(ReachingContextInfo):
                 subject = subject[:-4]
             elif subject.endswith('Lab'):
                 subject = subject[:-3]
-            alias = f'{task_map.get(session_type).value}_{alias}'
+            alias = f'{task_map.get(session_type, ExperimentalTask.unstructured).value}_{alias}'
+            # print(f"registering {alias} with type {session_type}, {task_map.get(session_type)}")
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
-                task=task_map.get(session_type),
+                task=task_map.get(session_type, ExperimentalTask.unstructured),
                 _arrays=[
                     'lateral_s1', 'medial_s1',
                     'lateral_m1', 'medial_m1',
@@ -518,9 +519,9 @@ class BCIContextInfo(ReachingContextInfo):
             subject = subject[:3].upper() + subject[3:]
             alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
             if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
-                task = task_map.get(control, task_map.get('default'))
+                task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
             else:
-                task = task_map.get('default')
+                task = task_map.get('default', ExperimentalTask.unstructured)
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
                 task=task,

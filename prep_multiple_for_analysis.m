@@ -8,7 +8,7 @@ src_files = cellfun(@(file) fullfile(root_dir, experiment, file), files, 'Unifor
 src_files_char = cellfun(@char, src_files, 'UniformOutput', false);
 % disp(src_files)
 [data, iData] = prepData('files', src_files_char);
-keyboard
+% keyboard
 %  Pitt patch for manual conversion to mimic pull_p_drive
 % Split the string based on underscore delimiter
 parts = split(experiment, '_');

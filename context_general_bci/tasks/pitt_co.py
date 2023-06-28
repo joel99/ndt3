@@ -111,13 +111,6 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True):
 @ExperimentalTaskRegistry.register
 class PittCOLoader(ExperimentalTaskLoader):
     name = ExperimentalTask.pitt_co
-    r"""
-    Churchland/Kaufman reaching data, from gdrive. Assorted extra sessions that don't overlap with DANDI release.
-
-    List of IDs
-    # - register, make task etc
-
-    """
 
     @staticmethod
     def get_velocity(position, kernel=np.ones((int(500 / 20), 2))/ (500 / 20)):
@@ -200,70 +193,65 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # if u >= 15 or c / elements < 1e-5: # anomalous, suppress to max. (Some bins randomly report impossibly high counts like 90 (in 20ms))
                     # spikes[spikes == u] = 0
 
-            if task == ExperimentalTask.unstructured:  # dont' bother with trial structure
-                spikes = chop_vector(spikes)
-                for i, trial_spikes in enumerate(spikes):
-                    save_trial_spikes(trial_spikes, i)
-            else:
-                # Iterate by trial, assumes continuity so we grab velocity outside
-                # start_pad = round(500 / cfg.bin_size_ms)
-                # end_pad = round(1000 / cfg.bin_size_ms)
-                # should_clip = False
-                exp_task_cfg: PittConfig = getattr(cfg, task.value)
+            # Iterate by trial, assumes continuity so we grab velocity outside
+            # start_pad = round(500 / cfg.bin_size_ms)
+            # end_pad = round(1000 / cfg.bin_size_ms)
+            # should_clip = False
+            exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
-                if (
-                    'position' in payload and \
-                    task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc] # and \
-                ): # We only "trust" in the labels provided by obs (for now)
-                    if len(payload['position']) == len(payload['trial_num']):
-                        if exp_task_cfg.closed_loop_intention_estimation == "refit":
-                            # breakpoint()
-                            session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
-                        else:
-                            session_vel = PittCOLoader.get_velocity(payload['position'])
-                        # if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
-                        #     should_clip = True
+            if (
+                'position' in payload and \
+                task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
+            ): # We only "trust" in the labels provided by obs (for now)
+                if len(payload['position']) == len(payload['trial_num']):
+                    if exp_task_cfg.closed_loop_intention_estimation == "refit":
+                        # breakpoint()
+                        session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                     else:
-                        session_vel = None
+                        session_vel = PittCOLoader.get_velocity(payload['position'])
+                    # if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
+                    #     should_clip = True
                 else:
                     session_vel = None
-                if exp_task_cfg.respect_trial_boundaries:
-                    for i in payload['trial_num'].unique():
-                        trial_spikes = payload['spikes'][payload['trial_num'] == i]
-                        # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
-                        # we assume intent labels are not reliable in this timeframe
-                        # if trial_spikes.size(0) <= start_pad + end_pad: # something's odd about this trial
-                        #     continue
-                        if session_vel is not None:
-                            trial_vel = session_vel[payload['trial_num'] == i]
-                        # if should_clip:
-                        #     trial_spikes = trial_spikes[start_pad:-end_pad]
-                        #     if session_vel is not None:
-                        #         trial_vel = trial_vel[start_pad:-end_pad]
-                        if trial_spikes.size(0) < 10:
-                            continue
-                        if trial_spikes.size(0) < round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms):
-                            save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
-                        else:
-                            chopped_spikes = chop_vector(trial_spikes)
-                            if session_vel is not None:
-                                chopped_vel = chop_vector(trial_vel)
-                            for j, subtrial_spikes in enumerate(chopped_spikes):
-                                save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
-
-                            end_of_trial = trial_spikes.size(0) % round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms)
-                            if end_of_trial > 10:
-                                trial_spikes_end = trial_spikes[-end_of_trial:]
-                                if session_vel is not None:
-                                    trial_vel_end = trial_vel[-end_of_trial:]
-                                save_trial_spikes(trial_spikes_end, f'{i}_end', {DataKey.bhvr_vel: trial_vel_end} if session_vel is not None else {})
-                else:
-                    # chop both
-                    spikes = chop_vector(spikes)
+            else:
+                session_vel = None
+            if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
+                for i in payload['trial_num'].unique():
+                    trial_spikes = payload['spikes'][payload['trial_num'] == i]
+                    # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
+                    # we assume intent labels are not reliable in this timeframe
+                    # if trial_spikes.size(0) <= start_pad + end_pad: # something's odd about this trial
+                    #     continue
                     if session_vel is not None:
-                        session_vel = chop_vector(session_vel)
-                    for i, trial_spikes in enumerate(spikes):
-                        save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: session_vel[i]} if session_vel is not None else {})
+                        trial_vel = session_vel[payload['trial_num'] == i]
+                    # if should_clip:
+                    #     trial_spikes = trial_spikes[start_pad:-end_pad]
+                    #     if session_vel is not None:
+                    #         trial_vel = trial_vel[start_pad:-end_pad]
+                    if trial_spikes.size(0) < 10:
+                        continue
+                    if trial_spikes.size(0) < round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms):
+                        save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
+                    else:
+                        chopped_spikes = chop_vector(trial_spikes)
+                        if session_vel is not None:
+                            chopped_vel = chop_vector(trial_vel)
+                        for j, subtrial_spikes in enumerate(chopped_spikes):
+                            save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
+
+                        end_of_trial = trial_spikes.size(0) % round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms)
+                        if end_of_trial > 10:
+                            trial_spikes_end = trial_spikes[-end_of_trial:]
+                            if session_vel is not None:
+                                trial_vel_end = trial_vel[-end_of_trial:]
+                            save_trial_spikes(trial_spikes_end, f'{i}_end', {DataKey.bhvr_vel: trial_vel_end} if session_vel is not None else {})
+            else:
+                # chop both
+                spikes = chop_vector(spikes)
+                if session_vel is not None:
+                    session_vel = chop_vector(session_vel)
+                for i, trial_spikes in enumerate(spikes):
+                    save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: session_vel[i]} if session_vel is not None else {})
         else: # folder style, preproc-ed on mind
             for i, fname in enumerate(datapath.glob("*.mat")):
                 if fname.stem.startswith('QL.Task'):
