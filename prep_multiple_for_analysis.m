@@ -1,13 +1,14 @@
 % For converting Pitt QL format to matlab objects (to then be ingested by my python libs..)
 % Requires Pitt RTMA lib in matlab path
 
-function prep_multiple(root_dir, experiment, files)
+function prep_multiple_for_analysis(root_dir, experiment, files)
 % Load quicklogger trial, cast StimData to a struct, and save as processed matlab
 
 src_files = cellfun(@(file) fullfile(root_dir, experiment, file), files, 'UniformOutput', false);
 src_files_char = cellfun(@char, src_files, 'UniformOutput', false);
 % disp(src_files)
-[data, iData] = prepData('files', src_files_char)
+[data, iData] = prepData('files', src_files_char);
+keyboard
 %  Pitt patch for manual conversion to mimic pull_p_drive
 % Split the string based on underscore delimiter
 parts = split(experiment, '_');
@@ -15,7 +16,8 @@ parts = split(experiment, '_');
 subject_name = parts(1);
 session = str2double(parts(2));
 set = str2double(parts(3));
-type_tag = parts(4);
+% type_tag = parts(4);
+type_tag = 'fbc';
 
 root_path_out = fullfile(root_dir, 'mat');
 
@@ -33,6 +35,8 @@ try
 %                 if strcmp(type_tag, 'fbc') || strcmp(type_tag, 'ortho') || strcmp(type_tag, 'obs')
         thin_data.pos = cast(data.Kinematics.ActualPos(:,1:3), 'single');
         thin_data.target = cast(data.TaskStateMasks.target(1:3, :), 'single');
+        thin_data.task_states = cast(data.TaskStateMasks.state_num, 'uint8');
+        thin_data.state_strs = data.TaskStateMasks.states;
         if size(thin_data.pos, 1) ~= size(thin_data.SpikeCount, 1)
             disp("mismatched shape, drop " + set_name);
             clearvars thin_data.pos; % abandon attempt

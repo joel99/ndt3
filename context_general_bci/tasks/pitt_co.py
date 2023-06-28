@@ -71,7 +71,7 @@ def events_to_raster(
     return spikes
 
 
-def load_trial(fn, use_ql=True, key='data'):
+def load_trial(fn, use_ql=True, key='data', copy_keys=True):
     # if `use_ql`, use the prebinned at 20ms and also pull out the kinematics
     # else take raw spikes
     # data = payload['data'] # 'data' is pre-binned at 20ms, we'd rather have more raw
@@ -102,6 +102,10 @@ def load_trial(fn, use_ql=True, key='data'):
         trial_data = extract_ql_data(data['QL']['Data'])
         out['src_file'] = data['QL']['FileName']
         out['spikes'] = events_to_raster(trial_data)
+    if copy_keys:
+        for k in payload:
+            if k not in out and k not in ['SpikeCount', 'trial_num', 'Kinematics', 'pos', 'target', 'QL', 'iData', 'data']:
+                out[k] = payload[k]
     return out
 
 @ExperimentalTaskRegistry.register

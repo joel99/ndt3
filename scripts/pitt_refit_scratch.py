@@ -26,53 +26,14 @@ session = 173 # pursuit
 
 data_dir = Path('./data/pitt_misc/mat')
 session = 7
+session = 11
 # session = 1407 # co
 
 # session_dir = data_dir / f'CRS02bHome.data.{session:05d}'
-session_dir = data_dir.glob(f'*{session}*ortho.mat').__next__()
+session_dir = data_dir.glob(f'*{session}*fbc.mat').__next__()
 if not session_dir.exists():
     print(f'Session {session_dir} not found; Run `prep_all` on the QL .bin files.')
 print(session_dir)
-
-def extract_ql_data(ql_data):
-    # ql_data: .mat['iData']['QL']['Data']
-    # Currently just equipped to extract spike snippets
-    # If you want more, look at `icms_modeling/scripts/preprocess_mat`
-    # print(ql_data.keys())
-    # print(ql_data['TASK_STATE_CONFIG'].keys())
-    # print(ql_data['TASK_STATE_CONFIG']['state_num'])
-    # print(ql_data['TASK_STATE_CONFIG']['state_name'])
-    # print(ql_data['TRIAL_METADATA'])
-    def extract_spike_snippets(spike_snippets):
-        THRESHOLD_SAMPLE = 12./30000
-        return {
-            "spikes_source_index": spike_snippets['source_index'], # JY: I think this is NSP box?
-            "spikes_channel": spike_snippets['channel'],
-            "spikes_source_timestamp": spike_snippets['source_timestamp'] + THRESHOLD_SAMPLE,
-            # "spikes_snippets": spike_snippets['snippet'], # for waveform
-        }
-
-    return {
-        **extract_spike_snippets(ql_data['SPIKE_SNIPPET']['ss'])
-    }
-
-def events_to_raster(
-    events,
-    channels_per_array=128,
-):
-    """
-        Tensorize sparse format.
-    """
-    events['spikes_channel'] = events['spikes_channel'] + events['spikes_source_index'] * channels_per_array
-    bins = np.arange(
-        events['spikes_source_timestamp'].min(),
-        events['spikes_source_timestamp'].max(),
-        0.001
-    )
-    timebins = np.digitize(events['spikes_source_timestamp'], bins, right=False) - 1
-    spikes = torch.zeros((len(bins), 256), dtype=torch.uint8)
-    spikes[timebins, events['spikes_channel']] = 1
-    return spikes
 
 
 from context_general_bci.tasks.pitt_co import load_trial
@@ -82,7 +43,7 @@ payload = load_trial(session_dir, key='thin_data')
 print(payload.keys())
 #%%
 # Make raster plot
-fig, ax = plt.subplots(figsize=(10, 10))
+fig, ax = plt.subplots(figsize=(20, 10))
 
 def plot_spikes(spikes, ax=None, vert_space=1):
 
@@ -97,9 +58,9 @@ def plot_spikes(spikes, ax=None, vert_space=1):
         time[spike_t], spike_c * vert_space,
         # c=colors,
         marker='|',
-        s=10,
-        alpha=0.9
-        # alpha=0.3
+        s=5,
+        # alpha=0.9
+        alpha=0.1
     )
     time_lim = spikes.shape[0] * 0.02
     ax.set_xticks(np.linspace(0, spikes.shape[0], 5))
@@ -220,3 +181,10 @@ plot_trials(payload['trial_num'], ax=axes[1])
 # This is because I expect the velocities to always be going toward the right target.
 # There are jagged symptoms because the target updates before the cursor has finished arriving at the previous target.
 # However, even if I lag the goal significantly, the
+
+#%%
+
+# Anyway, let's plot some other data as well
+print(payload.keys())
+
+parse_

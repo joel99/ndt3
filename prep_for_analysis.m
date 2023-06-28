@@ -25,12 +25,6 @@ for experiment = experiments'
         % mkdir(target_dir)
         % disp(ql_files)
         names = arrayfun(@(x) x.name, ql_files, 'UniformOutput', false);
-        prep_multiple(root_dir, experiment, names)
-        % for k = 1:length(ql_files)
-            % if startsWith(ql_files(k).name, "QL.Task")
-                % prep_and_cast(root_dir, experiment, ql_files(k).name)
-            % end
-        % end
-        % break
+        prep_multiple_for_analysis(root_dir, experiment, names)
     end
 end
