@@ -81,6 +81,9 @@ class ContextRegistry:
                 result = pd.Series(True, index=df.index)
             if 'alias' not in search:
                 return result
+            if 'alias' not in df:
+                print("no alias, nothing registered?")
+                return None # test time
             return result & df['alias'].str.contains(search['alias'])
 
         queried = self.search_index.loc[search_query]

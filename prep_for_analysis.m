@@ -5,19 +5,15 @@
 %   cd to somewhere where prep_all is available
 %   Call prep_all
 
-function prep_all
+function prep_all(subject)
 
-% root_dir = "/home/joelye/user_data/stim_team/s1_m1";
-% root_dir = "/home/joelye/projects/icms_modeling/data/detection";
-% root_dir = "/home/joelye/projects/context_general_bci/data/sample_crs02b_data/"
-% root_dir = "/home/joelye/projects/context_general_bci/data/pitt_co/"
-root_dir = "/home/joelye/projects/context_general_bci/data/pitt_misc/"
+root_dir = char(pwd);
+root_dir = fullfile(root_dir, "/data/pitt_misc/");
 experiments = dir(root_dir);
 for experiment = experiments'
-    if startsWith(experiment.name, "crs08_13")
+    if startsWith(experiment.name, subject)
         experiment = experiment.name
         disp(experiment)
-        % experiment = "CRS02bHome.data.00329";
         prefix = "QL.";
         experiment_dir = fullfile(root_dir, experiment);
         ql_files = dir(fullfile(experiment_dir,strcat(prefix, '*.bin')));

@@ -37,6 +37,9 @@ try
         thin_data.target = cast(data.TaskStateMasks.target(1:3, :), 'single');
         thin_data.task_states = cast(data.TaskStateMasks.state_num, 'uint8');
         thin_data.state_strs = data.TaskStateMasks.states;
+        keyboard
+        thin_data.passed = data.XM.passed;
+        thin_data.failed = data.XM.failed;
         if size(thin_data.pos, 1) ~= size(thin_data.SpikeCount, 1)
             disp("mismatched shape, drop " + set_name);
             clearvars thin_data.pos; % abandon attempt
