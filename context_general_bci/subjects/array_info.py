@@ -23,7 +23,7 @@ class GeometricArrayInfo(ArrayInfo):
         array: array of electrode indices, possibly reflects the geometry of the implanted array.
     """
 
-    array: np.ndarray = np.array([])
+    array: np.ndarray = field(default_factory=lambda: np.array([]))
     is_exact: bool = True
     one_indexed: bool = False
 

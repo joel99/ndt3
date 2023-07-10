@@ -22,6 +22,7 @@ class ModelTask(Enum):
     # But could hypothetically call for enc-dec etc
     heldout_decoding = 'heldout_decoding'
     kinematic_decoding = 'kinematic_decoding'
+    kinematic_classification = 'kinematic_classification'
 
     # Trial-summarizing
     detection_decoding = 'detection_decoding'
@@ -196,7 +197,7 @@ class TransformerConfig:
 class ModelConfig:
     hidden_size: int = 256 # For parts outside of backbones
     arch: Architecture = Architecture.ndt
-    transformer: TransformerConfig = TransformerConfig()
+    transformer: TransformerConfig = field(default_factory=lambda: TransformerConfig())
 
     # Asymmetric
     encode_decode: bool = False # If true, split model into encode-decode pathways per Kaiming's scaling vision/video papers.
@@ -219,7 +220,7 @@ class ModelConfig:
     weight_decay: float = 0.01
     dropout: float = 0.2 # not inherited by transformer (typically just for model IO)
     # The objective. Not intended to be multitask right now; intent is pretrain/fine-tune.
-    task: TaskConfig = TaskConfig()
+    task: TaskConfig = field(default_factory=lambda: TaskConfig())
 
     # Speed the learning rates of parameters that are freshly initialized (intended for fine-tuning)
     accelerate_new_params: float = 1.0
@@ -454,46 +455,49 @@ class DatasetConfig:
     # from `data_attrs`. Tasks may be specified to e.g. load specific subsets of targets rather than full data
     # and so Dataset must know about this; and probably better to propagate this to ModelConfig than to have
     # to track it in two places.
-    passive_icms: ExperimentalConfig = ExperimentalConfig()
-    nlb_maze: NLBConfig = NLBConfig()
-    nlb_rtt: NLBConfig = NLBConfig()
-    churchland_maze: MazeConfig = MazeConfig()
-    odoherty_rtt: RTTConfig = RTTConfig()
-    dyer_co: DyerCOConfig = DyerCOConfig()
-    gallego_co: ExperimentalConfig = ExperimentalConfig()
-    churchland_misc: ExperimentalConfig = ExperimentalConfig()
+    passive_icms: ExperimentalConfig = field(default_factory=ExperimentalConfig)
+    nlb_maze: NLBConfig = field(default_factory=NLBConfig)
+    nlb_rtt: NLBConfig = field(default_factory=NLBConfig)
+    churchland_maze: MazeConfig = field(default_factory=MazeConfig)
+    odoherty_rtt: RTTConfig = field(default_factory=RTTConfig)
+    dyer_co: DyerCOConfig = field(default_factory=DyerCOConfig)
+    gallego_co: ExperimentalConfig = field(default_factory=ExperimentalConfig)
+    churchland_misc: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
-    marino_batista_mp_bci: ExperimentalConfig = ExperimentalConfig()
-    marino_batista_mp_iso_force: ExperimentalConfig = ExperimentalConfig()
-    marino_batista_mp_reaching: ExperimentalConfig = ExperimentalConfig()
+    marino_batista_mp_bci: ExperimentalConfig = field(default_factory=ExperimentalConfig)
+    marino_batista_mp_iso_force: ExperimentalConfig = field(default_factory=ExperimentalConfig)
+    marino_batista_mp_reaching: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
-    pitt_co: PittConfig = PittConfig.create_with_arrays([ # This is actually the catch all for Pitt, and doesn't have any particular structure. No guarantees, might not even be CO.
+    pitt_co: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([ # This is actually the catch all for Pitt, and doesn't have any particular structure. No guarantees, might not even be CO.
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
         'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ])
-    observation: PittConfig = PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ])
-    ortho: PittConfig = PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ], closed_loop_intention_estimation="refit")
-    fbc: PittConfig = PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ], closed_loop_intention_estimation="refit")
-    unstructured: PittConfig = PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
+    ]))
 
-    ])
-    delay_reach: ExperimentalConfig = ExperimentalConfig()
+    observation: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
+        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
+        'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+    ]))
+
+    ortho: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
+        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
+        'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+    ], closed_loop_intention_estimation="refit"))
+
+    fbc: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
+        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
+        'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+    ], closed_loop_intention_estimation="refit"))
+
+    unstructured: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
+        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
+        'CRS07-lateral_m1', 'CRS07-medial_m1',
+        'CRS08-lateral_m1', 'CRS08-medial_m1',
+    ]))
+    delay_reach: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
     permute_channels: bool = False # test flag, permute channels randomly per session
 
@@ -532,9 +536,9 @@ class RootConfig:
     wandb_user: str = "joelye9"
     wandb_project: str = "context_general_bci"
     wandb_api_key_path: Path = Path("/home/joelye/.wandb_api").resolve()
-    model: ModelConfig = ModelConfig()
-    dataset: DatasetConfig = DatasetConfig()
-    train: TrainConfig = TrainConfig()
+    model: ModelConfig = field(default_factory=ModelConfig)
+    dataset: DatasetConfig = field(default_factory=DatasetConfig)
+    train: TrainConfig = field(default_factory=TrainConfig)
 
     # Initialization
 

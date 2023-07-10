@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - _default
+train:
+  autoscale_batch_size: false
+  batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
+model:
+  task:
+    tasks:
+    - ModelTask.shuffle_infill
+    - ModelTask.kinematic_classification
+    mask_ratio: 0.1
+inherit_tag: human_10l

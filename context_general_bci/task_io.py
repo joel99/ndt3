@@ -1312,6 +1312,159 @@ class BehaviorRegression(TaskPipeline):
                 batch_out[Metric.kinematic_r2_thresh] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
         return batch_out
 
+def symlog(x: torch.Tensor):
+    return torch.sign(x) * torch.log(1 + torch.abs(x))
+
+def unsymlog(x: torch.Tensor):
+    return torch.sign(x) * (torch.exp(torch.abs(x)) - 1)
+
+class BehaviorClassification(TaskPipeline):
+    r"""
+        In preparation for NDT3.
+        Assumes cross-attn, spacetime path.
+        Cross-attention, autoregressive classification.
+    """
+    QUANTIZE_CLASSES = 32 # simple coarse classes to begin with
+
+    def __init__(
+        self, backbone_out_size: int, channel_count: int, cfg: ModelConfig, data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        self.injector = TemporalTokenInjector(cfg, data_attrs, self.cfg.behavior_target, force_zero_mask=True)
+        self.time_pad = cfg.transformer.max_trial_length
+        self.decoder = SpaceTimeTransformer(
+            cfg.transformer,
+            max_spatial_tokens=0,
+            n_layers=cfg.decoder_layers,
+            allow_embed_padding=True,
+            context_integration=getattr(cfg, 'decoder_context_integration', 'in_context'),
+            embed_space=False
+        )
+        self.out = nn.Linear(cfg.hidden_size, self.QUANTIZE_CLASSES * data_attrs.behavior_dim)
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-1.7, 1.7, self.QUANTIZE_CLASSES)) # quite safe for expected z-score range, TODO add some clipping...
+
+        self.causal = cfg.causal
+        self.spacetime = cfg.transform_space
+
+        self.session_blacklist = []
+        if self.cfg.blacklist_session_supervision:
+            ctxs: List[ContextInfo] = []
+            for sess in self.cfg.blacklist_session_supervision:
+                sess = context_registry.query(alias=sess)
+                if isinstance(sess, list):
+                    ctxs.extend(sess)
+                else:
+                    ctxs.append(sess)
+            for ctx in ctxs:
+                if ctx.id in data_attrs.context.session:
+                    self.session_blacklist.append(data_attrs.context.session.index(ctx.id))
+
+        if self.cfg.decode_normalizer:
+            # See `data_kin_global_stat`
+            zscore_path = Path(self.cfg.decode_normalizer)
+            assert zscore_path.exists(), f'normalizer path {zscore_path} does not exist'
+            self.register_buffer('bhvr_mean', torch.load(zscore_path)['mean'])
+            self.register_buffer('bhvr_std', torch.load(zscore_path)['std'])
+        else:
+            self.bhvr_mean = None
+            self.bhvr_std = None
+
+    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
+        return batch
+
+    def quantize(self, x: torch.Tensor):
+        return torch.bucketize(symlog(x), self.zscore_quantile_buckets)
+
+    def dequantize(self, quantized: torch.Tensor):
+        return unsymlog(self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2
+
+    def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
+        batch_out = {}
+
+        temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
+        decode_tokens, decode_time, decode_space = self.injector.inject(batch)
+        # Clip decode space to 0, space isn't used for this decoder
+        src_time = batch.get(DataKey.time, None)
+        if temporal_padding_mask is not None:
+            temporal_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
+        trial_context = []
+        for key in ['session', 'subject', 'task']:
+            if key in batch and batch[key] is not None:
+                trial_context.append(batch[key].detach()) # Provide context, but hey, let's not make it easier for the decoder to steer the unsupervised-calibrated context
+
+        backbone_features: torch.Tensor = self.decoder(
+            decode_tokens,
+            temporal_padding_mask=temporal_padding_mask,
+            trial_context=trial_context,
+            times=decode_time,
+            positions=torch.zeros_like(decode_space),
+            space_padding_mask=None, # (low pri)
+            causal=self.causal,
+            memory=backbone_features,
+            memory_times=src_time,
+            memory_padding_mask=temporal_padding_mask,
+        )
+        bhvr = rearrange(self.out(backbone_features), 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
+
+        if Output.behavior_pred in self.cfg.outputs:
+            choice = bhvr.argmax(1)
+            batch_out[Output.behavior_pred] = self.dequantize(choice)
+            if self.bhvr_mean is not None:
+                batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
+        if Output.behavior in self.cfg.outputs:
+            batch_out[Output.behavior] = batch[self.cfg.behavior_target]
+        if not compute_metrics:
+            return batch_out
+        # Compute loss
+        _, length_mask, _ = self.get_masks(
+            batch, ref=backbone_features,
+            length_key=COVARIATE_LENGTH_KEY if self.cfg.decode_strategy == EmbedStrat.token else LENGTH_KEY,
+            compute_channel=False
+        )
+        bhvr_tgt = batch[self.cfg.behavior_target]
+
+        # mask nans
+        length_mask = length_mask & (~torch.isnan(bhvr_tgt).any(-1))
+        if self.bhvr_mean is not None: # else already normalized...
+            bhvr_tgt = bhvr_tgt - self.bhvr_mean
+            bhvr_tgt = bhvr_tgt / self.bhvr_std
+
+        breakpoint()
+        loss = F.cross_entropy(bhvr, self.quantize(bhvr_tgt), reduction='none')
+
+        loss_mask = length_mask
+
+        # blacklist
+        if self.session_blacklist:
+            session_mask = batch[MetaKey.session] != self.session_blacklist[0]
+            for sess in self.session_blacklist[1:]:
+                session_mask = session_mask & (batch[MetaKey.session] != sess)
+            loss_mask = loss_mask & session_mask[:, None]
+            if not session_mask.any(): # no valid sessions
+                loss = torch.zeros_like(loss).mean() # don't fail
+            else:
+                loss = loss[loss_mask].mean()
+        else:
+            loss = loss[loss_mask].mean()
+
+        r2_mask = length_mask
+
+        batch_out['loss'] = loss
+        if Metric.kinematic_r2 in self.cfg.metrics:
+            choice = bhvr.argmax(1)
+            cont_choice = self.dequantize(choice)
+            valid_bhvr = cont_choice[r2_mask]
+            valid_tgt = bhvr_tgt[r2_mask]
+            batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
+            if batch_out[Metric.kinematic_r2].mean() < -10:
+                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])# .mean() # mute, some erratic result from near zero target
+        return batch_out
+
 # === Utils ===
 
 def create_temporal_padding_mask(
@@ -1342,4 +1495,5 @@ task_modules = {
     # ModelTask.shuffle_next_step_prediction: ShuffleNextStepPrediction,
     ModelTask.heldout_decoding: HeldoutPrediction,
     ModelTask.kinematic_decoding: BehaviorRegression,
+    ModelTask.kinematic_classification: BehaviorClassification,
 }
