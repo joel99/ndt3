@@ -654,7 +654,11 @@ class SpaceTimeTransformer(nn.Module):
                             memory_padding_mask,
                             torch.zeros((memory_padding_mask.size(0), trial_context.size(1)), dtype=torch.bool, device=memory_padding_mask.device)
                         ], 1)
-
+                # convert padding masks to float to suppress torch 2 warnings
+                if padding_mask is not None:
+                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+                if memory_padding_mask is not None:
+                    memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
                 output = self.transformer_encoder(
                     contextualized_src,
                     memory,
@@ -664,7 +668,13 @@ class SpaceTimeTransformer(nn.Module):
                     memory_key_padding_mask=memory_padding_mask
                 )
             else:
-                output = self.transformer_encoder(contextualized_src, src_mask, src_key_padding_mask=padding_mask)
+                if padding_mask is not None:
+                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+                output = self.transformer_encoder(
+                    contextualized_src,
+                    src_mask,
+                    src_key_padding_mask=padding_mask
+                )
             output = output[:, : t * s]
             if not self.cfg.flat_encoder:
                 output = rearrange(output, 'b (t s) h -> b t s h', t=t, s=s)
