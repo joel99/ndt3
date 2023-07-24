@@ -1288,9 +1288,12 @@ class BehaviorRegression(TaskPipeline):
                     # print(f'loss: {loss:.3f}, blacklist loss: {blacklist_loss:.3f}, total = {(loss - (blacklist_loss) * self.cfg.adversarial_classify_lambda):.3f}')
                     loss += (-1 * blacklist_loss) * self.cfg.adversarial_classify_lambda # adversarial
             else:
-                if loss[loss_mask].mean().isnan().any():
-                    breakpoint()
-                loss = loss[loss_mask].mean()
+                if len(loss[loss_mask]) == 0:
+                    loss = torch.zeros_like(loss).mean()
+                else:
+                    if loss[loss_mask].mean().isnan().any():
+                        breakpoint()
+                    loss = loss[loss_mask].mean()
 
         r2_mask = length_mask
 

@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - _default
+inherit_exp: pitt_v3/decode_online_bci
+inherit_tag: human_crs08_ole_tune
+tag: 'online_ole_pt'
+notes: "Supervised tuning of human-pt-ole model. (i.e. CRS08 tune phase includes OLE FBC)"
+model:
+  closed_loop_crop_bins: 50 # safe default.
+
+# Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)
