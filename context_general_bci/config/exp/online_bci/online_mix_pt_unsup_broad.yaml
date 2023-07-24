@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - _default
+inherit_exp: pitt_v3/decode_online_bci
+inherit_tag: human_rtt_crs08_tune
+tag: 'online_mix_pt_unsup_broad'
+notes: "Supervised tuning of mix-pt model."
+model:
+  closed_loop_crop_bins: 50 # safe default.
+  task:
+    blacklist_session_supervision:
+    - CRS.* # Assuming crs08
+    - crs.*
+# Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)

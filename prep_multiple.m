@@ -15,8 +15,9 @@ parts = split(experiment, '_');
 subject_name = parts(1);
 session = str2double(parts(2));
 set = str2double(parts(3));
-type_tag = 'unstructured'; % i.e. misc
+% type_tag = 'unstructured'; % i.e. misc
 % type_tag = parts(4);
+type_tag = 'fbc';
 
 root_path_out = fullfile(root_dir, 'mat');
 
