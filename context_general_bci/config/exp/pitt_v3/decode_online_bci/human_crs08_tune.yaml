@@ -2,24 +2,17 @@
 defaults:
   - _default
 train:
-  autoscale_batch_size: True
-  # autoscale_batch_size: False
-  batch_size: 16
+  autoscale_batch_size: False
+  batch_size: 32
   patience: 200
-  max_batch_size: 32
 dataset:
   augmentations:
   - rand_crop_time # preset to crop to 1s
   datasets:
   - observation_CRS08.*
-  exclude_datasets:
-  # - CRS08_13.*
-  - CRS08_14.*
-  - CRS08_15.*
-  - CRS08_16.*
+  exclude_datasets: []
 model:
   task:
     mask_ratio: 0.1
 inherit_exp: pitt_v3/decode_online_bci
 inherit_tag: human_aug_m1
-# inherit_tag: human_10l

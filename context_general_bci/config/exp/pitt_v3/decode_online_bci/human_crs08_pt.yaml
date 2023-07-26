@@ -11,11 +11,7 @@ dataset:
   - rand_crop_time # preset to crop to 1s
   datasets:
   - observation_CRS08.*
-  exclude_datasets:
-  # - CRS08_13.* # Ok, there's 13Home, which is NDT, and 13Lab, which is older, observation, 6/26.
-  - CRS08_14.*
-  - CRS08_15.*
-  - CRS08_16.*
+  exclude_datasets: []
 model:
   transformer:
     n_layers: 6
