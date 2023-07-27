@@ -1,4 +1,8 @@
 #%%
+r"""
+JY Note to self: This data was imported with data_transfer/transfer_motor.py
+You still need to `prep_for_analysis` the QL data.
+"""
 import pandas as pd
 import numpy as np
 # import xarray as xr
@@ -34,6 +38,14 @@ SET_TO_VARIANT = {
     ('CRS08Home.data.00016', 4): 'OLE (Sup)', # Orochi
     ('CRS08Home.data.00016', 6): 'NDT2 Subject (Unsup)',
     ('CRS08Home.data.00016', 8): 'NDT2 Human (Unsup)',
+
+    ('CRS08Lab.data.00023', 4): 'Mix 0-Shot (2 day)',
+    ('CRS08Lab.data.00023', 5): 'OLE',
+    ('CRS08Lab.data.00023', 6): 'Human',
+    ('CRS08Lab.data.00023', 7): 'ReFIT Tune',
+    ('CRS08Lab.data.00023', 8): 'Subject',
+    ('CRS08Lab.data.00023', 9): 'Mix',
+    ('CRS08Lab.data.00023', 10): 'Subject 0-Shot (2 day)',
 }
 
 
@@ -99,6 +111,7 @@ def get_path_efficiency(payload):
 
 handle = 'CRS08Home.data.00013'
 handle = 'CRS08Home.data.00016'
+handle = 'CRS08Lab.data.00023'
 
 data_dir = Path('./data/pitt_misc/mat')
 session = int(handle.split('.')[2])
@@ -123,18 +136,32 @@ all_trials = pd.DataFrame(all_trials)
 ax = prep_plt()
 mode = 'spl'
 # mode = 'time'
-sns.boxplot(all_trials, y=mode, x='variant', ax=ax)
+order = [
+    'Subject 0-Shot (2 day)',
+    'Mix 0-Shot (2 day)',
+    'OLE',
+    'Subject',
+    'Human',
+    'Mix',
+    # 'ReFIT Tune',
+]
+sns.boxplot(all_trials, y=mode, x='variant', ax=ax, order=order)
+
 if mode == 'spl':
     ax.set_ylabel('Success weighted by Path Length')
 else:
     ax.set_ylabel('Average Reach Time (s)')
 ax.set_xlabel('Decoder Variant')
-# probably better conveyed as a table
 
+# Rotate x label
+for tick in ax.get_xticklabels():
+    tick.set_rotation(45)
+# probably better conveyed as a table
+ax.set_title(handle)
 # Pandas to latex table
 
 table = all_trials.groupby(['variant']).agg(['mean', 'std'])
 table = table[['spl', 'time']]
 table = table.round(2)
 table = table.to_latex()
-print(table)
+# print(table)
