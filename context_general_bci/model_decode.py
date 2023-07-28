@@ -389,8 +389,11 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
         )
 
         self.try_transfer('session_flag', transfer_model.session_flag)
-        self.try_transfer('subject_flag', transfer_model.subject_flag)
-        self.try_transfer('task_flag', transfer_model.task_flag)
+        try:
+            self.try_transfer('subject_flag', transfer_model.subject_flag)
+            self.try_transfer('task_flag', transfer_model.task_flag)
+        except:
+            print("failed to transfer extra flags, likely unimportant")
 
         self.try_transfer('readin', transfer_model.readin)
 
@@ -481,20 +484,25 @@ def transfer_model(old_model: BrainBertInterface, new_cfg: ModelConfig, new_data
     new_cls.transfer_io(old_model)
     # TODO more safety in this loading... like the injector is unhappy
     new_cls.decoder.load_state_dict(old_model.task_pipelines[ModelTask.kinematic_decoding.value].state_dict(), strict=False)
-
-    for embed_key in extra_embed_map:
-        logger.info(f"Transferring extra {embed_key}...")
-        extra_embed, extra_attrs = extra_embed_map[embed_key]
-        new_cls.try_transfer_embed(f'{embed_key}_embed', getattr(new_cls.data_attrs.context, embed_key), getattr(extra_attrs.context, embed_key), extra_embed)
+    try:
+        for embed_key in extra_embed_map:
+            logger.info(f"Transferring extra {embed_key}...")
+            extra_embed, extra_attrs = extra_embed_map[embed_key]
+            new_cls.try_transfer_embed(f'{embed_key}_embed', getattr(new_cls.data_attrs.context, embed_key), getattr(extra_attrs.context, embed_key), extra_embed)
+    except:
+        print("Failed extra transfer")
     new_cls.eval() # NO TRAINING, DISABLE DROPOUT.
     return new_cls
 
 def load_extra_embeds(tgt_cfg: ModelConfig) -> Dict[str, Tuple[Any, DataAttrs]]:
     out = {}
-    if tgt_cfg.extra_subject_embed_ckpt:
-        subject_model = load_from_checkpoint(tgt_cfg.extra_subject_embed_ckpt)
-        out['subject'] = (subject_model.subject_embed, subject_model.data_attrs)
-    if tgt_cfg.extra_task_embed_ckpt:
-        task_model = load_from_checkpoint(tgt_cfg.extra_task_embed_ckpt)
-        out['task'] = (task_model.task_embed, task_model.data_attrs)
+    try:
+        if tgt_cfg.extra_subject_embed_ckpt:
+            subject_model = load_from_checkpoint(tgt_cfg.extra_subject_embed_ckpt)
+            out['subject'] = (subject_model.subject_embed, subject_model.data_attrs)
+        if tgt_cfg.extra_task_embed_ckpt:
+            task_model = load_from_checkpoint(tgt_cfg.extra_task_embed_ckpt)
+            out['task'] = (task_model.task_embed, task_model.data_attrs)
+    except:
+        print("Failed extra embed")
     return out
