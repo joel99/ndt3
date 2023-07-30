@@ -450,23 +450,29 @@ class BrainBertInterface(pl.LightningModule):
             'session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session,
             getattr(transfer_model, 'session_embed', None)
         )
-        self.try_transfer_embed(
-            'subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject,
-            getattr(transfer_model, 'subject_embed', None)
-        )
-        self.try_transfer_embed(
-            'task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task,
-            getattr(transfer_model, 'task_embed', None)
-        )
-        self.try_transfer_embed(
-            'array_embed', self.data_attrs.context.array, transfer_data_attrs.context.array,
-            getattr(transfer_model, 'array_embed', None)
-        )
+        try:
+            self.try_transfer_embed(
+                'subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject,
+                getattr(transfer_model, 'subject_embed', None)
+            )
+            self.try_transfer_embed(
+                'task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task,
+                getattr(transfer_model, 'task_embed', None)
+            )
+            self.try_transfer_embed(
+                'array_embed', self.data_attrs.context.array, transfer_data_attrs.context.array,
+                getattr(transfer_model, 'array_embed', None)
+            )
+        except:
+            print("Failed extra embed transfer, likely no impt reason (model e.g. didn't have.)")
 
         self.try_transfer('session_flag', getattr(transfer_model, 'session_flag', None))
-        self.try_transfer('subject_flag', getattr(transfer_model, 'subject_flag', None))
-        self.try_transfer('task_flag', getattr(transfer_model, 'task_flag', None))
-        self.try_transfer('array_flag', getattr(transfer_model, 'array_flag', None))
+        try:
+            self.try_transfer('subject_flag', getattr(transfer_model, 'subject_flag', None))
+            self.try_transfer('task_flag', getattr(transfer_model, 'task_flag', None))
+            self.try_transfer('array_flag', getattr(transfer_model, 'array_flag', None))
+        except:
+            print("Failed extra embed transfer, likely no impt reason (model e.g. didn't have.)")
 
         self.try_transfer('context_project', getattr(transfer_model, 'context_project', None))
         self.try_transfer('readin', getattr(transfer_model, 'readin', None), transfer_data_attrs=transfer_data_attrs)
