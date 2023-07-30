@@ -25,27 +25,40 @@ import seaborn as sns
 # ! Note data was incorrectly labeled as a lab session but that's not impt for now
 
 SET_TO_VARIANT = {
-    ('CRS08Home.data.00013', 2): 'NDT2 Human',
-    ('CRS08Home.data.00013', 4): 'NDT2 Subject',
+    ('CRS08Home.data.00013', 2): 'Human',
+    ('CRS08Home.data.00013', 4): 'Subject',
     ('CRS08Home.data.00013', 5): 'OLE',
-    ('CRS08Home.data.00013', 6): 'NDT2 Subject',
-    ('CRS08Home.data.00013', 7): 'NDT2 Human',
+    ('CRS08Home.data.00013', 6): 'Subject',
+    ('CRS08Home.data.00013', 7): 'Human',
     ('CRS08Home.data.00013', 8): 'OLE',
     ('CRS08Home.data.00013', 9): 'OLE',
-    ('CRS08Home.data.00013', 10): 'NDT2 Subject',
-    ('CRS08Home.data.00013', 11): 'NDT2 Human',
+    ('CRS08Home.data.00013', 10): 'Subject',
+    ('CRS08Home.data.00013', 11): 'Human',
 
-    ('CRS08Home.data.00016', 4): 'OLE (Sup)', # Orochi
-    ('CRS08Home.data.00016', 6): 'NDT2 Subject (Unsup)',
-    ('CRS08Home.data.00016', 8): 'NDT2 Human (Unsup)',
+    ('CRS08Home.data.00016', 4): 'Orochi', # Orochi, not OLE..
+    # ('CRS08Home.data.00016', 4): 'OLE', # Orochi, not OLE..
+    ('CRS08Home.data.00016', 6): 'Subject Unsup',
+    ('CRS08Home.data.00016', 8): 'Human Unsup',
 
-    ('CRS08Lab.data.00023', 4): 'Mix 0-Shot (2 day)',
+    ('CRS08Lab.data.00023', 4): 'Mix 0-Shot',
     ('CRS08Lab.data.00023', 5): 'OLE',
     ('CRS08Lab.data.00023', 6): 'Human',
-    ('CRS08Lab.data.00023', 7): 'ReFIT Tune',
+    ('CRS08Lab.data.00023', 7): 'ReFIT',
     ('CRS08Lab.data.00023', 8): 'Subject',
     ('CRS08Lab.data.00023', 9): 'Mix',
-    ('CRS08Lab.data.00023', 10): 'Subject 0-Shot (2 day)',
+    ('CRS08Lab.data.00023', 10): 'Subject 0-Shot',
+
+    # ! Protocol defined at this point. 2 wide, 1 close calibration.
+    ('CRS08Lab.data.00025', 4): 'OLE 0-Shot', # THIS ONE REQUIRED TUNING
+    ('CRS08Lab.data.00025', 5): 'OLE',
+    ('CRS08Lab.data.00025', 6): 'Mix 0-Shot',
+    ('CRS08Lab.data.00025', 7): 'Subject 0-Shot',
+    ('CRS08Lab.data.00025', 8): 'Subject',
+    ('CRS08Lab.data.00025', 9): 'Mix Interrupt',
+    ('CRS08Lab.data.00025', 10): 'Mix',
+    ('CRS08Lab.data.00025', 11): 'Human',
+    ('CRS08Lab.data.00025', 12): 'Mix Unsup', # Subject got tired.
+    ('CRS08Lab.data.00025', 13): 'Subject Unsup',
 }
 
 
@@ -81,6 +94,7 @@ def extract_reaches(payload):
     ) if np.any(times)]
     for i, trial in enumerate(trial_data):
         trial['success'] = successes[i]
+        trial['id'] = i
 
     return trial_data
 
@@ -111,41 +125,139 @@ def get_path_efficiency(payload):
 
 handle = 'CRS08Home.data.00013'
 handle = 'CRS08Home.data.00016'
-handle = 'CRS08Lab.data.00023'
+# handle = 'CRS08Lab.data.00023'
+handle = 'CRS08Lab.data.00025'
 
-data_dir = Path('./data/pitt_misc/mat')
-session = int(handle.split('.')[2])
-session_runs = list(data_dir.glob(f'*{session}*fbc.mat'))
-all_trials = []
-for r in session_runs:
-    # r of the format "data/pitt_misc/mat/crs08Lab_session_13_set_11_type_fbc.mat"
-    r_set = int(r.name.split('_')[4])
+def get_handle_df(handle: str, remove_burn_in=True):
+    data_dir = Path('./data/pitt_misc/mat')
+    session = int(handle.split('.')[2])
+    session_runs = list(data_dir.glob(f'*session_{session}*fbc.mat'))
+    all_trials = []
+    for r in session_runs:
+        # r of the format "data/pitt_misc/mat/crs08Lab_session_13_set_11_type_fbc.mat"
+        r_set = int(r.name.split('_')[4])
 
-    payload = load_trial(r, key='thin_data')
-    times = get_times(payload)
-    spls = get_path_efficiency(payload)
-    for t, spl in zip(times, spls):
-        all_trials.append({
-            'r_set': r_set,
-            'variant': SET_TO_VARIANT[(handle, r_set)],
-            'time': t,
-            'spl': spl,
-        })
-all_trials = pd.DataFrame(all_trials)
+        payload = load_trial(r, key='thin_data')
+        times = get_times(payload)
+        spls = get_path_efficiency(payload)
+        trial_count = 0
+        for t, spl in zip(times, spls):
+            label = SET_TO_VARIANT[(handle, r_set)]
+            variant, *status = label.split()
+            if status:
+                status = ' '.join(status)
+            else:
+                status = 'Sup'
+            all_trials.append({
+                'r_set': r_set,
+                'variant': variant,
+                'status': status,
+                'time': t,
+                'spl': spl,
+                'id': trial_count,
+            })
+            trial_count += 1
+    all_trials = pd.DataFrame(all_trials)
+    all_trials['session'] = session
+    if remove_burn_in:
+        all_trials = all_trials[all_trials['id'] != 0]
+    return all_trials
 
+
+ax = prep_plt(big=True)
+mode = 'spl'
+mode = 'time'
+
+if handle == 'CRS08Lab.data.00023':
+    order = [
+        'Subject 0-Shot',
+        'Mix 0-Shot',
+        'OLE',
+        'Subject',
+        'Human',
+        'Mix',
+        # 'ReFIT Tune',
+    ]
+elif handle == 'CRS08Lab.data.00025':
+    order = [
+        # 'OLE 0-Shot',
+        'Subject 0-Shot',
+        'Mix 0-Shot',
+        'Subject Unsup',
+        'Mix Unsup',
+        'OLE',
+        'Subject',
+        'Human',
+        'Mix',
+    ]
+
+df = get_handle_df(handle)
+df['Group'] = df['variant'].apply(lambda x: '0-Shot' if '0-Shot' in x else ('Unsupervised' if 'Unsup' in x else 'Other'))
+df = df[df['variant'].isin(order)]
+
+x_order = ['0-Shot', 'Unsup', 'Sup']
+hue_order = ['OLE', 'Subject', 'Human', 'Mix']
+# Boxplot using Seaborn to show the distribution of data
+sns.boxplot(data=df, y=mode, x='status', hue='variant', order=x_order, hue_order=hue_order, ax=ax)
+# Use Seaborn strip plot to add data points on top of the boxplot
+sns.stripplot(data=df, y=mode, x='status', hue='variant', order=x_order, hue_order=hue_order, dodge=True, jitter=True, s=5, alpha=0.5, ax=ax)
+
+# Add some annotations
+ole_index = hue_order.index('OLE')
+estimate_group_offset = 0.6
+def estimate_offset(index):
+    return ((len(hue_order) // 2) - index) / len(hue_order) * estimate_group_offset
+offset = estimate_offset(ole_index)
+print(offset)
+ole_x, ole_y = '0-Shot', df[df['variant'] == 'OLE'][mode].iloc[0]
+ax.text(x_order.index(ole_x) - offset, ole_y, 'X', color='red', fontsize=18, ha='center', va='center')
+
+
+if mode == 'spl':
+    ax.set_ylabel('Success weighted by Path Length')
+else:
+    ax.set_ylabel('Reach Time (s)')
+    ax.set_ylim(0, 10) # timeout
+ax.set_xlabel('Decoder Variant')
+ax.set_xlabel('')
+# Rotate x label
+# for tick in ax.get_xticklabels():
+    # tick.set_rotation(45)
+# probably better conveyed as a table
+ax.set_title(handle)
+ax.set_title('N=1 (3 min calibration)')
+# Pandas to latex table
+
+# Move legend off to right side, middle of plot
+# Only include second half of legend, first half is redundant
+handles, labels = ax.get_legend_handles_labels()
+# ax.legend(loc='center left', bbox_to_anchor=(1, 0.5))
+ax.legend(handles[len(handles)//2:], labels[len(labels)//2:], loc='center left', bbox_to_anchor=(1, 0.5), frameon=False, fontsize=18)
+
+table = df.groupby(['variant']).agg(['mean', 'std'])
+table = table[['spl', 'time']]
+table = table.round(2)
+table = table.to_latex()
+# print(table)
+#%%
+handles = [
+    'CRS08Home.data.00013',
+    'CRS08Home.data.00016',
+    'CRS08Lab.data.00023',
+    'CRS08Lab.data.00025',
+]
+
+# df = get_handle_df(handle)
+df = pd.concat([get_handle_df(h) for h in handles])
+
+aggr_df = df.groupby(['session', 'variant'], as_index=False).agg(['mean', 'std'])
 ax = prep_plt()
 mode = 'spl'
-# mode = 'time'
-order = [
-    'Subject 0-Shot (2 day)',
-    'Mix 0-Shot (2 day)',
-    'OLE',
-    'Subject',
-    'Human',
-    'Mix',
-    # 'ReFIT Tune',
-]
-sns.boxplot(all_trials, y=mode, x='variant', ax=ax, order=order)
+mode = 'time'
+print(aggr_df[mode])
+aggr_df = aggr_df[mode].reset_index()
+
+sns.boxplot(data=aggr_df, y='mean', x='variant', ax=ax, order=order)
 
 if mode == 'spl':
     ax.set_ylabel('Success weighted by Path Length')
@@ -156,12 +268,4 @@ ax.set_xlabel('Decoder Variant')
 # Rotate x label
 for tick in ax.get_xticklabels():
     tick.set_rotation(45)
-# probably better conveyed as a table
-ax.set_title(handle)
-# Pandas to latex table
-
-table = all_trials.groupby(['variant']).agg(['mean', 'std'])
-table = table[['spl', 'time']]
-table = table.round(2)
-table = table.to_latex()
-# print(table)
+ax.set_title('NDT2 Pilots')

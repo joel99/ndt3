@@ -7,15 +7,15 @@ from einops import repeat, rearrange
 
 import logging
 
-from contexts import context_registry
-from config import DatasetConfig, DataKey, MetaKey
-from config.presets import FlatDataConfig
-from data import SpikingDataset
+from context_general_bci.contexts import context_registry
+from context_general_bci.config import DatasetConfig, DataKey, MetaKey
+from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.dataset import SpikingDataset
 
 from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
-from analyze_utils import prep_plt
+from context_general_bci.analyze_utils import prep_plt
 
 # dataset_name = 'odoherty_rtt-Indy.*'
 dataset_name = 'odoherty_rtt-Indy-20160627_01'
@@ -146,7 +146,9 @@ npt = dataset.cfg.neurons_per_token
 seed_everything(42)
 
 grid_mask = (torch.rand(pop_spikes.size()) < 0.0)[::npt, ::sample_times_per_token]
-# grid_mask = (torch.rand(pop_spikes.size()) < 0.5)[::npt, ::sample_times_per_token]
+
+grid_mask = (torch.rand(pop_spikes.size()) < 0.5)[::npt, ::sample_times_per_token]
+grid_mask = (torch.rand(pop_spikes.size(1)) < 0.5)[::sample_times_per_token].unsqueeze(0).repeat(pop_spikes.size(0), 1)
 # grid_mask = (torch.rand(pop_spikes.size()) < 0.5)[::npt, ::sample_times_per_token] * 0
 print(grid_mask.size())
 

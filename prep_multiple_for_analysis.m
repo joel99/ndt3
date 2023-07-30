@@ -21,7 +21,8 @@ type_tag = 'fbc'; % typically we are analyzing fbc, and we don't have this info 
 
 root_path_out = fullfile(root_dir, 'mat');
 
-set_name = subject_name + "Lab" + ... % Implied location
+% set_name = subject_name + "Lab" + ... % Implied location
+set_name = subject_name + "Home" + ... % Implied location
     "_session_" + num2str(session) + ...
     "_set_" + num2str(set) + ...
     "_type_" + type_tag;
