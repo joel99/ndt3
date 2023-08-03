@@ -99,7 +99,7 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
 
             min_spike_time = []
             for c in range(channels):
-                if h5file[spike_refs[c, mua_unit]].dtype != np.float:
+                if h5file[spike_refs[c, mua_unit]].dtype != float:
                     continue
                 unit_range = range(units)
                 # unit_range = range(units) if cfg.odoherty_rtt.include_sorted else [mua_unit]

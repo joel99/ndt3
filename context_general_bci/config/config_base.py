@@ -405,6 +405,8 @@ class DatasetConfig:
     eval_force_limit: bool = False # if true, ignore eval ratio, and simply reserve reserve the above `scale_limit_per_session``.
     eval_seed: int = 0 # for shuffling/splitting etc
 
+    eval_split_continuous: bool = False # For comparison with rEFH - make eval a continuous block that comes later in training.
+
     r"""
         `data_keys` and `meta_keys` specify the attributes of the dataset are served.
     """

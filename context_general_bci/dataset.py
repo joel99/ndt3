@@ -227,7 +227,10 @@ class SpikingDataset(Dataset):
         eval_pool = self.meta_df[(self.meta_df[MetaKey.session].isin(eval_ids)) & (self.meta_df['split'] == 'train')]
         if sorted(eval_ids) != sorted(eval_pool[MetaKey.session].unique()):
             raise Exception(f"Requested datasets {sorted(eval_ids)} not all found. Found {sorted(eval_pool[MetaKey.session].unique())}")
-        eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
+        if self.cfg.eval_split_continuous:
+            eval_subset = eval_pool.iloc[-int(self.cfg.eval_ratio * len(eval_pool)):] # take tail end, and we'll take head for train split
+        else:
+            eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
         self.meta_df['split'] = self.meta_df['split'].mask(self.meta_df.index.isin(eval_subset.index), 'eval')
 
     def load_single_session(self, context_meta: ContextInfo, override_preprocess_path: bool=False) -> pd.DataFrame:
@@ -719,14 +722,20 @@ class SpikingDataset(Dataset):
             eval_datasets = [ctx.id for ctx in self.list_alias_to_contexts(self.cfg.eval_datasets)]
 
             eval_session_df = self.meta_df[self.meta_df[MetaKey.session].isin(eval_datasets)]
-            if limit_per_eval_session:
+            # breakpoint()
+            if not limit_per_eval_session:
+                limit_per_eval_session = limit_per_session # default is to obey regular limit
+            if self.cfg.eval_split_continuous:
+                eval_keys = eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.iloc[:limit_per_eval_session])[MetaKey.unique]
+            else:
                 eval_keys = eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_eval_session))[MetaKey.unique]
-            else: # default is to obey regular limit
-                eval_keys = eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_session))[MetaKey.unique]
 
             train_session_df = self.meta_df[~self.meta_df[MetaKey.session].isin(eval_datasets)]
             if limit_per_session:
-                train_keys = train_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_session))[MetaKey.unique]
+                if self.cfg.eval_split_continuous:
+                    train_keys = train_session_df.groupby([MetaKey.session]).apply(lambda x: x.iloc[:limit_per_session])[MetaKey.unique]
+                else:
+                    train_keys = train_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_session))[MetaKey.unique]
             else: # default is to assume no limit
                 train_keys = train_session_df[MetaKey.unique]
 
