@@ -59,8 +59,21 @@ SET_TO_VARIANT = {
     ('CRS08Lab.data.00025', 11): 'Human',
     ('CRS08Lab.data.00025', 12): 'Mix Unsup', # Subject got tired.
     ('CRS08Lab.data.00025', 13): 'Subject Unsup',
+
+    ('CRS08Home.data.00019', 4): 'OLE',
+    ('CRS08Home.data.00019', 5): 'OLE 0-Shot', # No tuning, 5 day old
+    ('CRS08Home.data.00019', 6): 'Mix Unsup',
+    ('CRS08Home.data.00019', 7): 'Subject Unsup',
+    ('CRS08Home.data.00019', 8): 'Mix 0-Shot',
+    ('CRS08Home.data.00019', 9): 'Subject 0-Shot',
+    ('CRS08Home.data.00019', 10): 'Mix',
+    ('CRS08Home.data.00019', 11): 'Subject',
 }
 
+
+NEED_TUNING = [
+    'CRS08Lab.data.00025', # severe tuning means score should be zero-ed in my analysis
+]
 
 def extract_reaches(payload):
     reach_key = list(payload['state_strs']).index('Reach') + 1 # 1-indexed
@@ -127,8 +140,10 @@ handle = 'CRS08Home.data.00013'
 handle = 'CRS08Home.data.00016'
 # handle = 'CRS08Lab.data.00023'
 handle = 'CRS08Lab.data.00025'
+# handle = 'CRS08Home.data.00019'
 
 def get_handle_df(handle: str, remove_burn_in=True):
+    # remove_burn_in: don't count first trial, where participant often is not ready
     data_dir = Path('./data/pitt_misc/mat')
     session = int(handle.split('.')[2])
     session_runs = list(data_dir.glob(f'*session_{session}*fbc.mat'))
@@ -165,7 +180,7 @@ def get_handle_df(handle: str, remove_burn_in=True):
 
 
 ax = prep_plt(big=True)
-mode = 'spl'
+# mode = 'spl'
 mode = 'time'
 
 if handle == 'CRS08Lab.data.00023':
@@ -190,13 +205,25 @@ elif handle == 'CRS08Lab.data.00025':
         'Human',
         'Mix',
     ]
+elif handle == 'CRS08Home.data.00019':
+    order = [
+        'OLE 0-Shot',
+        'Subject 0-Shot',
+        'Mix 0-Shot',
+        'Subject Unsup',
+        'Mix Unsup',
+        'OLE',
+        'Subject',
+        'Mix',
+    ]
 
 df = get_handle_df(handle)
 df['Group'] = df['variant'].apply(lambda x: '0-Shot' if '0-Shot' in x else ('Unsupervised' if 'Unsup' in x else 'Other'))
 df = df[df['variant'].isin(order)]
 
 x_order = ['0-Shot', 'Unsup', 'Sup']
-hue_order = ['OLE', 'Subject', 'Human', 'Mix']
+hue_order = ['OLE', 'Subject', 'Mix']
+# hue_order = ['OLE', 'Subject', 'Human', 'Mix']
 # Boxplot using Seaborn to show the distribution of data
 sns.boxplot(data=df, y=mode, x='status', hue='variant', order=x_order, hue_order=hue_order, ax=ax)
 # Use Seaborn strip plot to add data points on top of the boxplot
@@ -206,7 +233,7 @@ sns.stripplot(data=df, y=mode, x='status', hue='variant', order=x_order, hue_ord
 ole_index = hue_order.index('OLE')
 estimate_group_offset = 0.6
 def estimate_offset(index):
-    return ((len(hue_order) // 2) - index) / len(hue_order) * estimate_group_offset
+    return ((len(hue_order) / 2.) - index) / len(hue_order) * estimate_group_offset
 offset = estimate_offset(ole_index)
 print(offset)
 ole_x, ole_y = '0-Shot', df[df['variant'] == 'OLE'][mode].iloc[0]
@@ -241,23 +268,60 @@ table = table.to_latex()
 # print(table)
 #%%
 handles = [
-    'CRS08Home.data.00013',
-    'CRS08Home.data.00016',
+    # 'CRS08Home.data.00013',
+    # 'CRS08Home.data.00016',
     'CRS08Lab.data.00023',
     'CRS08Lab.data.00025',
+    'CRS08Home.data.00019',
 ]
 
 # df = get_handle_df(handle)
 df = pd.concat([get_handle_df(h) for h in handles])
 
-aggr_df = df.groupby(['session', 'variant'], as_index=False).agg(['mean', 'std'])
+aggr_df = df.groupby(['session', 'status', 'variant'], as_index=False).agg(['mean', 'std'])
 ax = prep_plt()
 mode = 'spl'
 mode = 'time'
 print(aggr_df[mode])
 aggr_df = aggr_df[mode].reset_index()
+aggr_df = aggr_df[aggr_df['variant'].isin(hue_order)]
+aggr_df = aggr_df[aggr_df['status'].isin(x_order)]
 
-sns.boxplot(data=aggr_df, y='mean', x='variant', ax=ax, order=order)
+# sns.boxplot(data=aggr_df, y='mean', x='status', hue='variant', ax=ax, order=x_order, hue_order=hue_order)
+sns.stripplot(
+    data=aggr_df,
+    y='mean',
+    x='status',
+    hue='variant',
+    order=x_order,
+    hue_order=hue_order,
+    dodge=True,
+    jitter=True,
+    s=5,
+    alpha=0.8,
+    ax=ax
+)
+
+# stripplot X's over the need_tuning data
+# X's manually annotated, JY gives up trying to automate this
+# need_tuning_df = aggr_df[aggr_df['variant'].isin(NEED_TUNING) & aggr_df['status'].isin(['0-Shot'])]
+# print(need_tuning_df)
+# sns.stripplot(
+#     data=need_tuning_df,
+#     y='mean',
+#     x='status',
+#     hue='variant',
+#     order=x_order,
+#     hue_order=hue_order,
+#     dodge=True,
+#     jitter=True,
+#     s=5,
+#     alpha=0.8,
+#     ax=ax,
+#     color='red',
+#     marker='X',
+# )
+
 
 if mode == 'spl':
     ax.set_ylabel('Success weighted by Path Length')
@@ -265,7 +329,45 @@ else:
     ax.set_ylabel('Average Reach Time (s)')
 ax.set_xlabel('Decoder Variant')
 
+# relabel x ticks
+status_remap = {
+    '0-Shot': '0-Shot',
+    'Unsup': 'Unsupervised',
+    'Sup': 'Supervised',
+}
+ax.set_xticklabels([status_remap[x] for x in x_order])
+
 # Rotate x label
-for tick in ax.get_xticklabels():
-    tick.set_rotation(45)
-ax.set_title('NDT2 Pilots')
+# for tick in ax.get_xticklabels():
+    # tick.set_rotation(45)
+ax.set_title('NDT2 Human Control Pilots')
+
+
+# Redo legend
+handles, labels = ax.get_legend_handles_labels()
+labels[labels.index('Mix')] = 'Broad'
+ax.legend(
+    handles,
+    labels,
+    title='Model',
+    fontsize=16,
+    title_fontsize=16,
+    frameon=False
+)
+
+# sessions = aggr_df['session'].unique()
+
+# for session in sessions:
+#     session_data = aggr_df[aggr_df['session'] == session]
+#     x_coords = []
+#     y_coords = []
+#     for index, row in session_data.iterrows():
+#         # Find the correct x position for each status in the session
+#         x_pos = x_order.index(row['status'])
+#         y_pos = row['mean']
+
+#         x_coords.append(x_pos)
+#         y_coords.append(y_pos)
+
+#     # Plot a line connecting the points for this session
+#     ax.plot(x_coords, y_coords, color='grey', linestyle='-', linewidth=1, alpha=0.5)
