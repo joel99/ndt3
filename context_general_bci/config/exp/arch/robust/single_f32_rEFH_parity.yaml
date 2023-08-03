@@ -16,8 +16,10 @@ dataset:
   eval_split_continuous: True
   scale_limit_per_eval_session: 320
   datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
-  eval_datasets:
-  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy sesison
 
-fragment_datasets: False
+fragment_datasets: True
