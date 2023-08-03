@@ -4,6 +4,7 @@ from pathlib import Path
 import math
 import numpy as np
 import torch
+import torch.distributions as dists
 import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.io import loadmat
@@ -130,20 +131,48 @@ class PittCOLoader(ExperimentalTaskLoader):
         return vel
 
     @staticmethod
-    def ReFIT(positions: torch.Tensor, goals: torch.Tensor, reaction_lag_ms=200, bin_ms=20) -> torch.Tensor:
+    def ReFIT(positions: torch.Tensor, goals: torch.Tensor, reaction_lag_ms=100, bin_ms=20, oracle_blend=0.25) -> torch.Tensor:
         # positions, goals: Time x Hidden.
+        # weight: don't do a full refit correction, weight with original
         # defaults for lag experimented in `pitt_scratch`
+        lag_bins = reaction_lag_ms // bin_ms
         empirical = PittCOLoader.get_velocity(positions)
-        oracle = goals.roll(reaction_lag_ms // bin_ms) - positions
+        oracle = goals.roll(lag_bins, dims=0) - positions
         magnitudes = torch.linalg.norm(empirical, dim=1)  # Compute magnitudes of original velocities
-        angles = torch.atan2(oracle[:, 1], oracle[:, 0])  # Compute angles of velocities
+        # Oracle magnitude update - no good, visually
 
-        # Clip velocities with magnitudes below threshold to 0
-        # mask = (magnitudes < thresh)
-        # magnitudes[mask] = 0.0
+        # angles = torch.atan2(empirical[:, 1], empirical[:, 0])  # Compute angles of velocities
+        source_angles = torch.atan2(empirical[:, 1], empirical[:, 0])  # Compute angles of original velocities
+        oracle_angles = torch.atan2(oracle[:, 1], oracle[:, 0])  # Compute angles of velocities
+
+        # Develop a von mises update that blends the source and oracle angles
+        source_concentration = 10.0
+        oracle_concentration = source_concentration * oracle_blend
+
+        # Create Von Mises distributions for source and oracle
+        source_von_mises = dists.VonMises(source_angles, source_concentration)
+        updated_angles = torch.empty_like(source_angles)
+
+        # Mask for the nan values in oracle
+        nan_mask = torch.isnan(oracle_angles)
+
+        # Update angles where oracle is not nan
+        if (~nan_mask).any():
+            # Create Von Mises distributions for oracle where it's not nan
+            oracle_von_mises = dists.VonMises(oracle_angles[~nan_mask], oracle_concentration)
+
+            # Compute updated estimate as the circular mean of the two distributions.
+            # We weight the distributions by their concentration parameters.
+            updated_angles[~nan_mask] = (source_von_mises.concentration[~nan_mask] * source_von_mises.loc[~nan_mask] + \
+                                        oracle_von_mises.concentration * oracle_von_mises.loc) / (source_von_mises.concentration[~nan_mask] + oracle_von_mises.concentration)
+
+        # Use source angles where oracle is nan
+        updated_angles[nan_mask] = source_angles[nan_mask]
+        angles = updated_angles
+        angles = torch.atan2(torch.sin(angles), torch.cos(angles))
 
         new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
-        new_velocities[:reaction_lag_ms // bin_ms] = torch.nan  # Replace clipped velocities with original ones, for rolled time periods
+        new_velocities[:reaction_lag_ms // bin_ms] = torch.nan  # We don't know what the goal is before the reaction lag, so we clip it
         # new_velocities[reaction_lag_ms // bin_ms:] = empirical[reaction_lag_ms // bin_ms:]  # Replace clipped velocities with original ones, for rolled time periods
         return new_velocities
 
@@ -204,7 +233,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
             ): # We only "trust" in the labels provided by obs (for now)
                 if len(payload['position']) == len(payload['trial_num']):
-                    if exp_task_cfg.closed_loop_intention_estimation == "refit":
+                    if exp_task_cfg.closed_loop_intention_estimation == "refit" and task in [ExperimentalTask.ortho, ExperimentalTask.fbc]:
                         # breakpoint()
                         session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                     else:

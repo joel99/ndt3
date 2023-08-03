@@ -2,7 +2,6 @@
 defaults:
   - _default
 train:
-  # autoscale_batch_size: True
   autoscale_batch_size: False
   batch_size: 32
   patience: 200
@@ -11,7 +10,11 @@ dataset:
   - rand_crop_time # preset to crop to 1s
   datasets:
   - observation_CRS08.*
+  - fbc_CRS08_16* # NDT2 experiment set (6.28)
+  - fbc_CRS08_21_9 # NDT2 experiment set (7.24)
   exclude_datasets: []
+  fbc:
+    closed_loop_intention_estimation: 'refit'
 model:
   # FT-ing
   val_iters: 10
@@ -19,4 +22,4 @@ model:
     mask_ratio: 0.1
 inherit_exp: pitt_v3/decode_no_bounds
 inherit_tag: human_aug_full
-# inherit_tag: human_10l
+notes: "Includes some OLE, so hail mary that we get consistent nonzero intent."

@@ -8,5 +8,8 @@ tag: 'online_mix_pt'
 notes: "Supervised tuning of mix-pt model."
 model:
   closed_loop_crop_bins: 50 # safe default.
+train:
+  autoscale_batch_size: False
+  batch_size: 16
 
 # Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)

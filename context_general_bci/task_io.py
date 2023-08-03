@@ -1016,15 +1016,18 @@ class BehaviorRegression(TaskPipeline):
         self.session_blacklist = []
         if self.cfg.blacklist_session_supervision:
             ctxs: List[ContextInfo] = []
-            for sess in self.cfg.blacklist_session_supervision:
-                sess = context_registry.query(alias=sess)
-                if isinstance(sess, list):
-                    ctxs.extend(sess)
-                else:
-                    ctxs.append(sess)
-            for ctx in ctxs:
-                if ctx.id in data_attrs.context.session:
-                    self.session_blacklist.append(data_attrs.context.session.index(ctx.id))
+            try:
+                for sess in self.cfg.blacklist_session_supervision:
+                    sess = context_registry.query(alias=sess)
+                    if isinstance(sess, list):
+                        ctxs.extend(sess)
+                    else:
+                        ctxs.append(sess)
+                for ctx in ctxs:
+                    if ctx.id in data_attrs.context.session:
+                        self.session_blacklist.append(data_attrs.context.session.index(ctx.id))
+            except:
+                print("Blacklist not successfully loaded, skipping blacklist logic (not a concern for inference)")
 
         if getattr(self.cfg, 'adversarial_classify_lambda', 0.0) or getattr(self.cfg, 'kl_lambda', 0.0):
             assert self.cfg.decode_time_pool == 'mean', 'alignment path assumes mean pool'
@@ -1288,9 +1291,12 @@ class BehaviorRegression(TaskPipeline):
                     # print(f'loss: {loss:.3f}, blacklist loss: {blacklist_loss:.3f}, total = {(loss - (blacklist_loss) * self.cfg.adversarial_classify_lambda):.3f}')
                     loss += (-1 * blacklist_loss) * self.cfg.adversarial_classify_lambda # adversarial
             else:
-                if loss[loss_mask].mean().isnan().any():
-                    breakpoint()
-                loss = loss[loss_mask].mean()
+                if len(loss[loss_mask]) == 0:
+                    loss = torch.zeros_like(loss).mean()
+                else:
+                    if loss[loss_mask].mean().isnan().any():
+                        breakpoint()
+                    loss = loss[loss_mask].mean()
 
         r2_mask = length_mask
 
@@ -1324,7 +1330,7 @@ class BehaviorClassification(TaskPipeline):
         Assumes cross-attn, spacetime path.
         Cross-attention, autoregressive classification.
     """
-    QUANTIZE_CLASSES = 16 # simple coarse classes to begin with. # TODO add blank class, add CTC
+    QUANTIZE_CLASSES = 32 # simple coarse classes to begin with
 
     def __init__(
         self, backbone_out_size: int, channel_count: int, cfg: ModelConfig, data_attrs: DataAttrs,
@@ -1346,7 +1352,7 @@ class BehaviorClassification(TaskPipeline):
             embed_space=False
         )
         self.out = nn.Linear(cfg.hidden_size, self.QUANTIZE_CLASSES * data_attrs.behavior_dim)
-        self.register_buffer('zscore_quantize_buckets', torch.linspace(-2., 2., self.QUANTIZE_CLASSES + 1)) # quite safe for expected z-score range. +1 as these are boundaries, not centers
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-1.7, 1.7, self.QUANTIZE_CLASSES)) # quite safe for expected z-score range, TODO add some clipping...
 
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space
@@ -1378,12 +1384,10 @@ class BehaviorClassification(TaskPipeline):
         return batch
 
     def quantize(self, x: torch.Tensor):
-        return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
+        return torch.bucketize(symlog(x), self.zscore_quantile_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
-        if quantized.max() > self.zscore_quantize_buckets.shape[0]:
-            raise Exception("go implement quantization clipping man")
-        return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
+        return unsymlog(self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2
 
     def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
         batch_out = {}
@@ -1392,14 +1396,13 @@ class BehaviorClassification(TaskPipeline):
         decode_tokens, decode_time, decode_space = self.injector.inject(batch)
         # Clip decode space to 0, space isn't used for this decoder
         src_time = batch.get(DataKey.time, None)
-        memory_padding_mask = temporal_padding_mask
         if temporal_padding_mask is not None:
             temporal_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
         trial_context = []
         for key in ['session', 'subject', 'task']:
             if key in batch and batch[key] is not None:
                 trial_context.append(batch[key].detach()) # Provide context, but hey, let's not make it easier for the decoder to steer the unsupervised-calibrated context
-        # breakpoint()
+
         backbone_features: torch.Tensor = self.decoder(
             decode_tokens,
             temporal_padding_mask=temporal_padding_mask,
@@ -1410,7 +1413,7 @@ class BehaviorClassification(TaskPipeline):
             causal=self.causal,
             memory=backbone_features,
             memory_times=src_time,
-            memory_padding_mask=memory_padding_mask,
+            memory_padding_mask=temporal_padding_mask,
         )
         bhvr = rearrange(self.out(backbone_features), 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
 
@@ -1437,6 +1440,7 @@ class BehaviorClassification(TaskPipeline):
             bhvr_tgt = bhvr_tgt - self.bhvr_mean
             bhvr_tgt = bhvr_tgt / self.bhvr_std
 
+        breakpoint()
         loss = F.cross_entropy(bhvr, self.quantize(bhvr_tgt), reduction='none')
 
         loss_mask = length_mask

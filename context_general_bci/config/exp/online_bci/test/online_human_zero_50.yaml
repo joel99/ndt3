@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
+tag: 'human_rtt_crs08_tune' # CLIMBER decoder_module does a direct search for this tag, under either online_bci or pitt_v3/decode_online_bci (for direct inheritance).
+notes: "Zero shot evaluation."
+model:
+  closed_loop_crop_bins: 50

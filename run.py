@@ -348,7 +348,7 @@ def run_exp(cfg : RootConfig) -> None:
         default_root_dir=cfg.default_root_dir,
         # track_grad_norm=2 if cfg.train.log_grad else -1, # this is quite cluttered, but probably better that way. See https://github.com/Lightning-AI/lightning/issues/1462#issuecomment-1190253742 for patch if needed, though.
         precision=16 if cfg.model.half_precision else 32,
-        strategy=DDPStrategy(find_unused_parameters=False) if is_distributed else 'auto',
+        strategy=DDPStrategy(find_unused_parameters=False) if is_distributed else None,
         gradient_clip_val=cfg.train.gradient_clip_val,
         accumulate_grad_batches=cfg.train.accumulate_batches,
         profiler=cfg.train.profiler if cfg.train.profiler else None,

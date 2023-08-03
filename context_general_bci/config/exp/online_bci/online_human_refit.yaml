@@ -6,7 +6,7 @@ inherit_exp: pitt_v3/decode_online_bci
 inherit_tag: human_crs08_tune
 # inherit_tag: human_aug_only_full # JY backup, not clear on lineage here
 tag: 'online_human_refit'
-notes: "Decoder base: human obs." # pitt_v3/decode_full/human
+notes: "Inits from refit-ed ckpt. Can be used for further closed loop tune or just observation." # pitt_v3/decode_full/human
 model:
   closed_loop_crop_bins: 50 # safe default.
 dataset:

@@ -15,5 +15,6 @@ model:
     # We still keep the extra task so the weights are kept in ckpt and can be loaded.
     # But we effectively neuter it by removing its loss. (Ignore R2 if you like)
 train:
-  autoscale_batch_size: False
-  batch_size: 16 # smaller batch sizes miraculously more useful...?
+  autoscale_batch_size: True
+  # batch_size: 16 # smaller batch sizes miraculously more useful...?
+  max_batch_size: 128

@@ -3,7 +3,8 @@
 defaults:
   - _default
 init_ckpt: '{shared_dir}/pretrained/human_obs.ckpt'
-tag: 'online_human_tune'
+tag: 'online_obs_tune'
 notes: "Decoder base: human obs." # pitt_v3/decode_full/human
 model:
   closed_loop_crop_bins: 75
+  extra_task_embed_ckpt: ''
