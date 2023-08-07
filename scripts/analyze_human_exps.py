@@ -279,7 +279,7 @@ handles = [
 df = pd.concat([get_handle_df(h) for h in handles])
 
 aggr_df = df.groupby(['session', 'status', 'variant'], as_index=False).agg(['mean', 'std'])
-ax = prep_plt()
+ax = prep_plt(size='medium')
 mode = 'spl'
 mode = 'time'
 print(aggr_df[mode])
@@ -297,7 +297,7 @@ sns.stripplot(
     hue_order=hue_order,
     dodge=True,
     jitter=True,
-    s=5,
+    s=8,
     alpha=0.8,
     ax=ax
 )
@@ -326,7 +326,7 @@ sns.stripplot(
 if mode == 'spl':
     ax.set_ylabel('Success weighted by Path Length')
 else:
-    ax.set_ylabel('Average Reach Time (s)')
+    ax.set_ylabel('Reach Time (s, $\leftarrow$)')
 ax.set_xlabel('Decoder Variant')
 
 # relabel x ticks
@@ -337,14 +337,15 @@ status_remap = {
 }
 ax.set_xticklabels([status_remap[x] for x in x_order])
 
-# Rotate x label
-# for tick in ax.get_xticklabels():
-    # tick.set_rotation(45)
-ax.set_title('NDT2 Human Control Pilots')
+# ax.set_title('NDT2 Cursor Control')
+# just put as text
+# ax.text(0.35, 0.92, 'NDT2 Cursor Control', transform=ax.transAxes, ha='center', va='center', fontsize=18)
 
+ax.set_ylim(1, 5)
 
 # Redo legend
 handles, labels = ax.get_legend_handles_labels()
+labels[labels.index('Subject')] = 'Session'
 labels[labels.index('Mix')] = 'Broad'
 ax.legend(
     handles,
@@ -352,8 +353,11 @@ ax.legend(
     title='Model',
     fontsize=16,
     title_fontsize=16,
-    frameon=False
+    frameon=True,
+    # loc='upper right', # Not quite high enough
+    loc=(0.65, 0.65),
 )
+ax.set_xlabel('')
 
 # sessions = aggr_df['session'].unique()
 

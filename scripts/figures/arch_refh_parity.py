@@ -31,16 +31,10 @@ USE_SORTED = False
 exp_tag = f'robust{"" if USE_SORTED else "_unsort"}'
 EXPERIMENTS_KIN = [
     f'arch/{exp_tag}/probe',
-    f'arch/{exp_tag}_s2/probe',
-    # f'arch/{exp_tag}_s3/probe',
 ]
 EXPERIMENTS_NLL = [
     f'arch/{exp_tag}',
     f'arch/{exp_tag}/tune',
-    f'arch/{exp_tag}_s2',
-    f'arch/{exp_tag}_s2/tune',
-    # f'arch/{exp_tag}_s3',
-    # f'arch/{exp_tag}_s3/tune',
 ]
 # am missing for s2 tune
 # 1 task_f32
@@ -48,23 +42,8 @@ EXPERIMENTS_NLL = [
 # 1 f32
 
 queries = [
-    # 'single_f8',
-    # 'f8',
-    # 'subject_f8',
-    # 'task_f8',
-
     'single_f32_rEFH_parity',
-    # 'single_time',
-    # 'single_f32',
-    # 'f32',
-    # 'stitch',
-
-    # 'subject_f32',
-    # 'subject_stitch',
-    # 'task_f32',
-    # 'task_stitch',
-
-    # 'stitch_96',
+    'single_f32',
 ]
 if not USE_SORTED:
     queries.append('time')
