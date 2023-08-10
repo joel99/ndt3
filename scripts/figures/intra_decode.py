@@ -213,7 +213,6 @@ df.loc[df['variant'].isin(prescribed_limits.keys()) & (df['series'] == 'scale_v3
 print(df[(df['series'] == 'scale_v3/intra_unsort/probe') & (df['variant'] == 's3200')])
 
 #%%
-# TODO style this...
 # from context_general_bci.analyze_utils import STYLEGUIDE
 sans_robust_df = df[df['series'] != 'session_robust']
 palette = sns.color_palette('colorblind', n_colors=len(sans_robust_df['series'].unique()))
@@ -251,15 +250,15 @@ def deco(data, use_title=True, **kws):
     robust_kin_r2 = df[(df['series'] == 'session_robust') & (df['dataset'] == dataset)]['kin_r2'].values[0]
     ax.axhline(robust_kin_r2, color='k', linestyle='--', linewidth=1)
     # Annotate as 'session robust'
-    ax.text(18, robust_kin_r2 - 0.01, 'Untuned Pretrained', va='top', ha='left', fontsize=16)
+    ax.text(18, robust_kin_r2 - 0.01, 'Pretrained (0-Shot)', va='top', ha='left', fontsize=16)
     if not use_title:
         ax.set_title('')
 
 relabel = {
-    'scale_v3/intra_unsort/probe': 'Scratch (100 Trial Sup)',
+    'scale_v3/intra_unsort/probe': 'Scratch\n(100 Supervised Trials)',
     'scale_v3/intra_unsort/decode': 'Scratch',
-    'scale_decode/probe_sup': 'Sup tune',
-    'scale_decode/probe_unsup': 'Unsup tune',
+    'scale_decode/probe_sup': 'Supervised tune',
+    'scale_decode/probe_unsup': 'Unsupervised tune',
     'session_robust': 'Session Robust',
 }
 g._legend.set_title('Variant')
@@ -276,6 +275,10 @@ g.fig.suptitle(f'Tuning a Decoder ({"Unsorted" if UNSORT else "Sorted"})', y=1.0
 middle_data = df[df['dataset'] == 'odoherty_rtt-Indy-20160627_01']
 
 # Plot the middle panel data
+plt.rc('axes', labelsize=18)    # fontsize of the x and y labels
+plt.rc('xtick', labelsize=18)    # fontsize of the tick labels
+plt.rc('ytick', labelsize=18)    # fontsize of the tick labels
+# plt.rc('legend', fontsize=SMALL_SIZE)    # legend fontsize
 fig = plt.figure(figsize=(6, 6))
 ax = prep_plt(fig.gca())
 
@@ -303,6 +306,7 @@ for t, l in zip(middle_plot.get_legend().texts, middle_plot.get_legend().legendH
 # for t, l in zip(middle_plot._legend.texts, middle_plot._legend.legendHandles):
     t.set_text(relabel.get(t.get_text(), t.get_text()))
     t.set_fontsize(16)
+    l.set_markersize(10)
     # Exclude Session robust
     if t.get_text() == 'Session Robust':
         l.set_visible(False)
@@ -310,12 +314,16 @@ for t, l in zip(middle_plot.get_legend().texts, middle_plot.get_legend().legendH
 # middle_plot._legend.remove()
 # Reposition legend to the bottom right
 
-middle_plot.get_legend().set_bbox_to_anchor((0.4, 0.32))
+middle_plot.get_legend().set_bbox_to_anchor((0.4, 0.35))
 # Turn off frame
-middle_plot.get_legend().get_frame().set_linewidth(0.0)
+# middle_plot.get_legend().get_frame().set_linewidth(0.0)
+middle_plot.get_legend().get_frame().set_visible(False)
+
 # drop title
 middle_plot.get_legend().set_title('')
 
 middle_plot.set_ylabel('Velocity $R^2$')
 
 # middle_plot.legend.set_bbox_to_anchor((0.6, 0.3))
+# save fig as svg
+fig.savefig('intra_decode.svg', bbox_inches='tight')
