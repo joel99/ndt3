@@ -142,14 +142,23 @@ def prep_plt(ax=None, **kwargs):
         ax = _prep_plt(ax, **kwargs)
     return ax
 
-def _prep_plt(ax=None, spine_alpha=0.3, big=False):
+def _prep_plt(ax=None, spine_alpha=0.3, size="small", big=False):
     SMALL_SIZE = 10
     MEDIUM_SIZE = 12
     LARGE_SIZE = 15
     if big:
-        SMALL_SIZE = 20
-        MEDIUM_SIZE = 24
-        LARGE_SIZE = 28
+        size = "large"
+    if size == "medium":
+        SMALL_SIZE = 12
+        MEDIUM_SIZE = 16
+        LARGE_SIZE = 20
+    if size == "large":
+        SMALL_SIZE = 18
+        # SMALL_SIZE = 20
+        MEDIUM_SIZE = 22
+        # MEDIUM_SIZE = 24
+        LARGE_SIZE = 26
+        # LARGE_SIZE = 28
     plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
     plt.rc('axes', labelsize=LARGE_SIZE)    # fontsize of the x and y labels
     plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels

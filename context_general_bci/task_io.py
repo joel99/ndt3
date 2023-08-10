@@ -1016,15 +1016,18 @@ class BehaviorRegression(TaskPipeline):
         self.session_blacklist = []
         if self.cfg.blacklist_session_supervision:
             ctxs: List[ContextInfo] = []
-            for sess in self.cfg.blacklist_session_supervision:
-                sess = context_registry.query(alias=sess)
-                if isinstance(sess, list):
-                    ctxs.extend(sess)
-                else:
-                    ctxs.append(sess)
-            for ctx in ctxs:
-                if ctx.id in data_attrs.context.session:
-                    self.session_blacklist.append(data_attrs.context.session.index(ctx.id))
+            try:
+                for sess in self.cfg.blacklist_session_supervision:
+                    sess = context_registry.query(alias=sess)
+                    if isinstance(sess, list):
+                        ctxs.extend(sess)
+                    else:
+                        ctxs.append(sess)
+                for ctx in ctxs:
+                    if ctx.id in data_attrs.context.session:
+                        self.session_blacklist.append(data_attrs.context.session.index(ctx.id))
+            except:
+                print("Blacklist not successfully loaded, skipping blacklist logic (not a concern for inference)")
 
         if getattr(self.cfg, 'adversarial_classify_lambda', 0.0) or getattr(self.cfg, 'kl_lambda', 0.0):
             assert self.cfg.decode_time_pool == 'mean', 'alignment path assumes mean pool'
@@ -1288,9 +1291,12 @@ class BehaviorRegression(TaskPipeline):
                     # print(f'loss: {loss:.3f}, blacklist loss: {blacklist_loss:.3f}, total = {(loss - (blacklist_loss) * self.cfg.adversarial_classify_lambda):.3f}')
                     loss += (-1 * blacklist_loss) * self.cfg.adversarial_classify_lambda # adversarial
             else:
-                if loss[loss_mask].mean().isnan().any():
-                    breakpoint()
-                loss = loss[loss_mask].mean()
+                if len(loss[loss_mask]) == 0:
+                    loss = torch.zeros_like(loss).mean()
+                else:
+                    if loss[loss_mask].mean().isnan().any():
+                        breakpoint()
+                    loss = loss[loss_mask].mean()
 
         r2_mask = length_mask
 

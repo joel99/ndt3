@@ -72,6 +72,11 @@ dataset_name = 'odoherty_rtt-Loco-20170210_03'
 # dataset_name = 'ortho_CRS07'
 # dataset_name = "observation_CRS02bLab_session_1908_set_1"
 dataset_name = 'observation_CRS02b_1953_2'
+dataset_name = 'observation_CRS08_13_3'
+dataset_name = 'observation_CRS08_21_3'
+dataset_name = 'observation_CRS08_23_1'
+dataset_name = 'observation_CRS08_23_3'
+dataset_name = 'observation_CRS08_23_4'
 
 # dataset_name = 'marino_Earl-Del*'
 # dataset_name = 'marino_Earl-BCI*'
@@ -98,12 +103,13 @@ default_cfg.max_arrays = min(max(1, len(context.array)), 2)
 # default_cfg.max_channels = 250
 default_cfg.datasets = [context.alias]
 # default_cfg.datasets = ['observation_CRS02bHome.']
-#%%
+
 dataset = SpikingDataset(default_cfg)
 dataset.build_context_index()
 dataset.subset_split()
 print(context.alias)
 print(f'Length: {len(dataset)}')
+print()
 
 #%%
 lengths = []

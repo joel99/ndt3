@@ -4,12 +4,16 @@ defaults:
   - _default
 inherit_exp: pitt_v3/decode_online_bci
 inherit_tag: human_rtt_crs08_tune
-tag: 'online_mix_pt'
+tag: 'online_mix_pt_unsup_broad'
 notes: "Supervised tuning of mix-pt model."
 model:
   closed_loop_crop_bins: 50 # safe default.
-train:
-  autoscale_batch_size: False
-  batch_size: 16
-
+  task:
+    blacklist_session_supervision:
+    - CRS.* # Assuming crs08
+    - crs.*
 # Note, if you plan on using multisession, then specify: dataset.datasets=['observation_CRS08.*'] (this will integrate the new session automatically)
+train:
+  autoscale_batch_size: True
+  max_batch_size: 128
+  # batch_size: 16 # smaller batch sizes miraculously more useful...?

@@ -4,8 +4,8 @@ defaults:
 train:
   autoscale_batch_size: True # For some unknown reason, this is critical to perf. Model is brittle to training noise (not enough data)
   # autoscale_batch_size: false
-  batch_size: 16
   patience: 200
+  max_batch_size: 32
 dataset:
   augmentations:
   - rand_crop_time # preset to crop to 1s

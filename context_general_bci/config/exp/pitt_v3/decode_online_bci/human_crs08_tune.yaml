@@ -2,9 +2,8 @@
 defaults:
   - _default
 train:
-  # autoscale_batch_size: True
   autoscale_batch_size: False
-  batch_size: 16
+  batch_size: 32
   patience: 200
 dataset:
   augmentations:
@@ -13,11 +12,7 @@ dataset:
   - observation_CRS08.*
   exclude_datasets: []
 model:
-  # FT-ing
-  lr_init: 4e-5
-  val_iters: 10
   task:
     mask_ratio: 0.1
 inherit_exp: pitt_v3/decode_online_bci
 inherit_tag: human_aug_m1
-# inherit_tag: human_10l

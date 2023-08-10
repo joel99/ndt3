@@ -25,11 +25,11 @@ data_dir = Path("./data/pitt_co/")
 session = 173 # pursuit
 
 data_dir = Path('./data/pitt_misc/mat')
-session = 7
+session = 16
 # session = 1407 # co
 
 # session_dir = data_dir / f'CRS02bHome.data.{session:05d}'
-session_dir = data_dir.glob(f'*{session}*ortho.mat').__next__()
+session_dir = data_dir.glob(f'*{session}*fbc.mat').__next__()
 if not session_dir.exists():
     print(f'Session {session_dir} not found; Run `prep_all` on the QL .bin files.')
 print(session_dir)
@@ -180,23 +180,81 @@ from context_general_bci.tasks.pitt_co import PittCOLoader
 vel = PittCOLoader.get_velocity(payload['position'])
 refit_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
 
-def refit_mock(positions, goals, thresh=0.001, lag_bins=0):
+import torch.distributions as dists
+def refit_mock(positions, goals, thresh=0.001, lag_bins=0, oracle_blend=.25):
     # Based on plots, it looks like the new target onsets before the previous movement is really even fully over.
     # There is no way the intent changes instantaneously, a simple model is to add a lag to compensate.
     empirical = PittCOLoader.get_velocity(positions)
     oracle = goals.roll(lag_bins, dims=0) - positions
     magnitudes = torch.linalg.norm(empirical, dim=1)  # Compute magnitudes of original velocities
-    # angles = torch.atan2(empirical[:, 1], empirical[:, 0])  # Compute angles of velocities
-    angles = torch.atan2(oracle[:, 1], oracle[:, 0])  # Compute angles of velocities
+    # Oracle magnitude update - no good, visually
 
-    # Clip velocities with magnitudes below threshold to 0
-    # mask = (magnitudes < thresh)
-    # magnitudes[mask] = 0.0
+    # angles = torch.atan2(empirical[:, 1], empirical[:, 0])  # Compute angles of velocities
+    source_angles = torch.atan2(empirical[:, 1], empirical[:, 0])  # Compute angles of original velocities
+    oracle_angles = torch.atan2(oracle[:, 1], oracle[:, 0])  # Compute angles of velocities
+
+    # Develop a von mises update that blends the source and oracle angles
+    source_concentration = 10.0
+    oracle_concentration = source_concentration * oracle_blend
+
+    # Create Von Mises distributions for source and oracle
+    source_von_mises = dists.VonMises(source_angles, source_concentration)
+    updated_angles = torch.empty_like(source_angles)
+
+    # Mask for the nan values in oracle
+    nan_mask = torch.isnan(oracle_angles)
+
+    # Update angles where oracle is not nan
+    if (~nan_mask).any():
+        # Create Von Mises distributions for oracle where it's not nan
+        oracle_von_mises = dists.VonMises(oracle_angles[~nan_mask], oracle_concentration)
+
+        # Compute updated estimate as the circular mean of the two distributions.
+        # We weight the distributions by their concentration parameters.
+        updated_angles[~nan_mask] = (source_von_mises.concentration[~nan_mask] * source_von_mises.loc[~nan_mask] + \
+                                     oracle_von_mises.concentration * oracle_von_mises.loc) / (source_von_mises.concentration[~nan_mask] + oracle_von_mises.concentration)
+
+    # Use source angles where oracle is nan
+    updated_angles[nan_mask] = source_angles[nan_mask]
+    angles = updated_angles
+    angles = torch.atan2(torch.sin(angles), torch.cos(angles))
 
     new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
     return new_velocities
 refit_vel = refit_mock(payload['position'], payload['target'])
 refit_vel_lag = refit_mock(payload['position'], payload['target'], lag_bins=10)
+
+# plot cumulative trajectories
+fig, ax = plt.subplots(figsize=(20, 10))
+ax = prep_plt(ax)
+time_limit = 500
+step = 5
+# Scatter a gradient of points to track time progression
+ax.scatter(payload['position'][:time_limit:step,0], payload['position'][:time_limit:step,1], c=np.arange(0, time_limit, step), cmap='viridis', s=200)
+ax.scatter(payload['target'][:time_limit:step,0], payload['target'][:time_limit:step,1], c=np.arange(0, time_limit, step), cmap='viridis', marker='x', s=2000)
+for i in range(0, time_limit, step):
+    # plot the direction of the velocity
+    ax.arrow(
+        payload['position'][i,0], payload['position'][i,1],
+        vel[i,0], vel[i,1],
+        color='r',
+        alpha=0.2,
+        width=0.001
+    )
+    ax.arrow(
+        payload['position'][i,0], payload['position'][i,1],
+        refit_vel[i,0], refit_vel[i,1],
+        color='b',
+        alpha=0.2,
+        width=0.001
+    )
+
+# ax.plot(payload['position'][:time_limit,0], payload['position'][:time_limit,1], alpha=0.4)
+# ax.plot(payload['target'][:time_limit,0], payload['target'][:time_limit,1], alpha=0.4)
+print(refit_vel.shape)
+# ax.plot(refit_vel[:,0], refit_vel[:,1], alpha=0.1)
+
+#%%
 # refit_vel = payload['target']
 
 # plot the times when payload['target'].any(-1) is nan
