@@ -119,6 +119,8 @@ class TaskConfig:
 
     # infill
     mask_ratio: float = 0.25 # we don't have any schedule right now - the smaller this is, the higher the ceiling (probably), the slower the training
+
+    # These ratios are only relevant for non-asymmetric path (i.e. defunct)
     mask_token_ratio: float = 0.8
     mask_random_ratio: float = 0.2 # It's really important to keep this quite high (in fact, anything lower than full seems to break)
     mask_random_shuffle: bool = False # doesn't actually seem more helpful
@@ -137,6 +139,8 @@ class TaskConfig:
     unique_no_head: bool = False # overrides above
 
     # kinematic decode
+    covariate_mask_ratio: float = 1.0 # If < 1.0, unmask some covariates and send them to encoder. Assumes asymmetric path
+
     behavior_lag: int = 0 # in ms
     behavior_target: DataKey = DataKey.bhvr_vel
     behavior_lag_lookahead: bool = True # if true, allow lookahead up to `lag`. Only applied in causal path
@@ -206,6 +210,8 @@ class ModelConfig:
     decoder_layers: int = 2
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     # 1. makes masking shuffle-based
+
+    encode_covariate: bool = False
 
     half_precision: bool = True
     lr_init: float = 0.0005 # be careful of interxn with bsz
