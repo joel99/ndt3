@@ -1002,7 +1002,6 @@ class CovariateReadout(TaskPipeline):
                 embed_space=not self.decode_cross_attn
             )
         self.out_dims = data_attrs.behavior_dim
-        self.initialize_readout(cfg.hidden_size)
 
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space
@@ -1035,6 +1034,9 @@ class CovariateReadout(TaskPipeline):
             self.bhvr_mean = None
             self.bhvr_std = None
 
+        self.initialize_readout(cfg.hidden_size)
+
+
     @abc.abstractmethod
     def initialize_readout(self):
         raise NotImplementedError
@@ -1051,7 +1053,7 @@ class CovariateReadout(TaskPipeline):
         covariates = batch[self.cfg.behavior_target]
         pass # TODO
 
-    def get_cov_pred(self, batch: Dict[str, torch.Tensor], eval_mode=False, batch_out={}) -> torch.Tensor:
+    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         if self.cfg.decode_separate:
             temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
             if self.cfg.decode_time_pool: # B T H -> B T H
@@ -1162,16 +1164,12 @@ class CovariateReadout(TaskPipeline):
     def compute_loss(self, bhvr, bhvr_tgt):
         pass
 
-    def get_loss_mask_and_apply_to_loss(self, loss: torch.Tensor, length_mask: torch.Tensor, target: torch.Tensor):
-        pass
-
     def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
         batch_out = {}
         bhvr = self.get_cov_pred(batch, backbone_features, eval_mode=eval_mode, batch_out=batch_out)
         # At this point (computation and beyond) it is easiest to just restack tokenized targets, merge into regular API
         # The whole point of all this intervention is to test whether separate tokens affects perf (we hope not)
-        if getattr(self.cfg, 'decode_tokenize_dims', False):
-            bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.out_dims)
+
         if self.bhvr_lag_bins:
             bhvr = bhvr[..., :-self.bhvr_lag_bins, :]
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
@@ -1189,7 +1187,7 @@ class CovariateReadout(TaskPipeline):
         bhvr_tgt = self.get_target(batch)
 
         _, length_mask, _ = self.get_masks(
-            batch, ref=bhvr,
+            batch, ref=bhvr_tgt,
             length_key=COVARIATE_LENGTH_KEY if self.cfg.decode_strategy == EmbedStrat.token else LENGTH_KEY,
             compute_channel=False
         )
@@ -1261,7 +1259,11 @@ class BehaviorRegression(CovariateReadout):
             loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')
         return loss
 
-
+    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
+        bhvr = super().get_cov_pred(batch, backbone_features, eval_mode, batch_out)
+        if getattr(self.cfg, 'decode_tokenize_dims', False):
+            bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.out_dims)
+        return bhvr
 
 def symlog(x: torch.Tensor):
     return torch.sign(x) * torch.log(1 + torch.abs(x))
@@ -1287,9 +1289,6 @@ class BehaviorClassification(CovariateReadout):
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
-        return batch
-
     def quantize(self, x: torch.Tensor):
         return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
@@ -1297,6 +1296,14 @@ class BehaviorClassification(CovariateReadout):
         if quantized.max() > self.zscore_quantize_buckets.shape[0]:
             raise Exception("go implement quantization clipping man")
         return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
+
+    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
+        bhvr = super().get_cov_pred(batch, backbone_features, eval_mode, batch_out)
+        if self.cfg.decode_tokenize_dims:
+            bhvr = rearrange(bhvr, 'b (t d) c -> b c t d', d=self.out_dims)
+        else:
+            bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
+        return bhvr
 
     def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
         return self.dequantize(bhvr.argmax(1))
