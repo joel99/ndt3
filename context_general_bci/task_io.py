@@ -1154,6 +1154,14 @@ class CovariateReadout(TaskPipeline):
             tgt = tgt / self.bhvr_std
         return tgt
 
+    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
+        # no op for regression, argmax + dequantize for classification
+        return bhvr
+
+    @abc.abstractmethod
+    def compute_loss(self, bhvr, bhvr_tgt):
+        pass
+
     def get_loss_mask_and_apply_to_loss(self, loss: torch.Tensor, length_mask: torch.Tensor, target: torch.Tensor):
         pass
 
@@ -1165,11 +1173,11 @@ class CovariateReadout(TaskPipeline):
         if getattr(self.cfg, 'decode_tokenize_dims', False):
             bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.out_dims)
         if self.bhvr_lag_bins:
-            bhvr = bhvr[:, :-self.bhvr_lag_bins]
+            bhvr = bhvr[..., :-self.bhvr_lag_bins, :]
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
 
         if Output.behavior_pred in self.cfg.outputs:
-            batch_out[Output.behavior_pred] = bhvr
+            batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr)
             if self.bhvr_mean is not None:
                 batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
         if Output.behavior in self.cfg.outputs:
@@ -1186,18 +1194,9 @@ class CovariateReadout(TaskPipeline):
             compute_channel=False
         )
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
-        # mask nans
         length_mask = length_mask & (~torch.isnan(bhvr_tgt).any(-1))
-        if self.cfg.behavior_tolerance > 0:
-            # Calculate mse with a tolerance floor
-            loss = torch.clamp((bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
-            # loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
-            if self.cfg.behavior_tolerance_ceil > 0:
-                loss = torch.clamp(loss, -self.cfg.behavior_tolerance_ceil, self.cfg.behavior_tolerance_ceil)
-            loss = loss.pow(2)
-        else:
-            loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')
 
+        loss = self.compute_loss(bhvr, bhvr_tgt)
         if self.cfg.behavior_fit_thresh:
             loss_mask = length_mask & (bhvr_tgt.abs() > self.cfg.behavior_fit_thresh).any(-1)
         else:
@@ -1225,7 +1224,7 @@ class CovariateReadout(TaskPipeline):
 
         batch_out['loss'] = loss
         if Metric.kinematic_r2 in self.cfg.metrics:
-            valid_bhvr = bhvr[r2_mask]
+            valid_bhvr = self.simplify_logits_to_prediction(bhvr)[r2_mask]
             valid_tgt = bhvr_tgt[r2_mask]
             batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
             if batch_out[Metric.kinematic_r2].mean() < -10:
@@ -1249,6 +1248,19 @@ class BehaviorRegression(CovariateReadout):
             self.out = nn.Linear(backbone_size, 1)
         else:
             self.out = nn.Linear(backbone_size, self.out_dims)
+
+    def compute_loss(self, bhvr, bhvr_tgt):
+        if self.cfg.behavior_tolerance > 0:
+            # Calculate mse with a tolerance floor
+            loss = torch.clamp((bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
+            # loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
+            if self.cfg.behavior_tolerance_ceil > 0:
+                loss = torch.clamp(loss, -self.cfg.behavior_tolerance_ceil, self.cfg.behavior_tolerance_ceil)
+            loss = loss.pow(2)
+        else:
+            loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')
+        return loss
+
 
 
 def symlog(x: torch.Tensor):
@@ -1286,63 +1298,11 @@ class BehaviorClassification(CovariateReadout):
             raise Exception("go implement quantization clipping man")
         return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
 
-    def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
-        batch_out = {}
-        bhvr = self.get_cov_pred(batch, backbone_features, eval_mode=eval_mode, batch_out=batch_out)
-        if self.cfg.decode_tokenize_dims:
-            bhvr = rearrange(bhvr, 'b (t d) c -> b c t d', d=self.out_dims)
-        else:
-            bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
+    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
+        return self.dequantize(bhvr.argmax(1))
 
-        if Output.behavior_pred in self.cfg.outputs:
-            choice = bhvr.argmax(1)
-            batch_out[Output.behavior_pred] = self.dequantize(choice)
-            if self.bhvr_mean is not None:
-                batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
-        if Output.behavior in self.cfg.outputs:
-            batch_out[Output.behavior] = batch[self.cfg.behavior_target]
-        if not compute_metrics:
-            return batch_out
-
-        # Compute loss
-        bhvr_tgt = self.get_target(batch)
-
-        _, length_mask, _ = self.get_masks(
-            batch, ref=bhvr,
-            length_key=COVARIATE_LENGTH_KEY if self.cfg.decode_strategy == EmbedStrat.token else LENGTH_KEY,
-            compute_channel=False
-        )
-        length_mask = length_mask & (~torch.isnan(bhvr_tgt).any(-1))
-
-        loss = F.cross_entropy(bhvr, self.quantize(bhvr_tgt), reduction='none')
-
-        loss_mask = length_mask
-
-        # blacklist
-        if self.session_blacklist:
-            session_mask = batch[MetaKey.session] != self.session_blacklist[0]
-            for sess in self.session_blacklist[1:]:
-                session_mask = session_mask & (batch[MetaKey.session] != sess)
-            loss_mask = loss_mask & session_mask[:, None]
-            if not session_mask.any(): # no valid sessions
-                loss = torch.zeros_like(loss).mean() # don't fail
-            else:
-                loss = loss[loss_mask].mean()
-        else:
-            loss = loss[loss_mask].mean()
-
-        r2_mask = length_mask
-
-        batch_out['loss'] = loss
-        if Metric.kinematic_r2 in self.cfg.metrics:
-            choice = bhvr.argmax(1)
-            cont_choice = self.dequantize(choice)
-            valid_bhvr = cont_choice[r2_mask]
-            valid_tgt = bhvr_tgt[r2_mask]
-            batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
-            if batch_out[Metric.kinematic_r2].mean() < -10:
-                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])# .mean() # mute, some erratic result from near zero target
-        return batch_out
+    def compute_loss(self, bhvr, bhvr_tgt):
+        return F.cross_entropy(bhvr, self.quantize(bhvr_tgt), reduction='none')
 
 # === Utils ===
 
