@@ -5,7 +5,7 @@ import torch
 from torch import nn, optim
 import torch.nn.functional as F
 import pytorch_lightning as pl
-from einops import rearrange, repeat, reduce, pack # baby steps...
+from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
 from einops.layers.torch import Rearrange
 from sklearn.metrics import r2_score
 import logging
@@ -762,8 +762,14 @@ class TemporalTokenInjector(nn.Module):
     ):
         super().__init__()
         self.reference = reference
+        self.cfg = cfg.task
         if force_zero_mask:
             self.register_buffer('cls_token', torch.zeros(cfg.hidden_size))
+        if getattr(self.cfg, 'decode_tokenize_dims', False):
+            # this logic is for covariate decode, not heldout neurons
+            assert reference != DataKey.spikes, "Decode tokenization should not run for spikes, this is for covariate exps"
+            self.decode_dims = data_attrs.behavior_dim
+            self.cls_token = nn.Parameter(torch.randn(data_attrs.behavior_dim, cfg.hidden_size))
         else:
             self.cls_token = nn.Parameter(torch.randn(cfg.hidden_size))
         self.pad_value = data_attrs.pad_token
@@ -773,27 +779,38 @@ class TemporalTokenInjector(nn.Module):
         # Implement injection
         # Assumption is that behavior time == spike time (i.e. if spike is packed, so is behavior), and there's no packing
         b, t = batch[self.reference].size()[:2]
-        injected_tokens = repeat(self.cls_token, 'h -> b t h',
-            b=b,
-            t=t, # Time (not _token_, i.e. in spite of flat serving)
-        )
-        injected_time = repeat(torch.arange(
-            t, device=batch[self.reference].device
-        ), 't -> b t', b=b)
-        injected_space = torch.full(
-            (b, t),
-            self.max_space - 1, # ! For heldout prediction path, we want to inject a clearly distinguished space token
-            # ! This means - 1. make sure `max_channels` is configured high enough that this heldout token is unique (since we will _not_ always add a mask token)
-            # self.pad_value, # There is never more than one injected space token
-            device=batch[self.reference].device
-        )
+        if getattr(self.cfg, 'decode_tokenize_dims', False):
+            injected_tokens = repeat(self.cls_token, 'd h -> b (t d) h',
+                b=b,
+                t=t, # Time (not _token_, i.e. in spite of flat serving)
+                d=self.decode_dims,
+            )
+            injected_time = repeat(torch.arange(
+                t, device=batch[self.reference].device
+            ), 't -> b (t d)', b=b, d=self.decode_dims)
+            injected_space = repeat(torch.arange(
+                self.decode_dims, device=batch[self.reference].device
+            ), 'd -> b (t d)', b=b, t=t)
+        else:
+            injected_tokens = repeat(self.cls_token, 'h -> b t h',
+                b=b,
+                t=t, # Time (not _token_, i.e. in spite of flat serving)
+            )
+            injected_time = repeat(torch.arange(
+                t, device=batch[self.reference].device
+            ), 't -> b t', b=b)
+            injected_space = torch.full(
+                (b, t),
+                self.max_space - 1, # ! For heldout prediction path, we want to inject a clearly distinguished space token
+                # ! This means - 1. make sure `max_channels` is configured high enough that this heldout token is unique (since we will _not_ always add a mask token)
+                # self.pad_value, # There is never more than one injected space token
+                device=batch[self.reference].device
+            )
         # I want to inject padding tokens for space so nothing actually gets added on that dimension
         if in_place:
             batch[DataKey.extra] = injected_tokens # B T H
             batch[DataKey.extra_time] = injected_time
-            # batch[DataKey.time] = torch.cat([batch[DataKey.time], injected_time], dim=1)
             batch[DataKey.extra_position] = injected_space
-            # batch[DataKey.position] = torch.cat([batch[DataKey.position], injected_space], dim=1)
         return injected_tokens, injected_time, injected_space
 
     def extract(self, batch: Dict[str, torch.Tensor], features: torch.Tensor) -> torch.Tensor:
@@ -831,21 +848,6 @@ class HeldoutPrediction(RatePrediction):
             data_attrs=data_attrs,
             decoder=decoder
         )
-        # if self.cfg.decode_strategy == EmbedStrat.project:
-        #     if self.concatenating:
-        #         # It takes too much memory to concatenate full length tokens x however many tokens there are
-        #         # Project down to neuron dim first.
-        #         decoder_layers = [
-        #             nn.Linear(backbone_out_size, backbone_out_size),
-        #             nn.ReLU() if cfg.activation == 'relu' else nn.GELU(),
-        #             nn.Linear(backbone_out_size, cfg.neurons_per_token),
-        #             Rearrange('b t a s_a c -> b t (a s_a c)'),
-        #             nn.ReLU() if cfg.activation == 'relu' else nn.GELU(),
-        #             nn.Linear(data_attrs.max_arrays * data_attrs.max_channel_count, channel_count),
-        #         ]
-        #         if not cfg.lograte:
-        #             decoder_layers.append(nn.ReLU())
-        #         self.out = nn.Sequential(*decoder_layers) # override
         if self.cfg.decode_strategy == EmbedStrat.token:
             assert self.spacetime, "Only spacetime transformer is supported for token decoding"
             self.time_pad = cfg.transformer.max_trial_length
@@ -995,7 +997,7 @@ class BehaviorRegression(TaskPipeline):
                 )
         elif self.cfg.decode_strategy == EmbedStrat.token:
             self.decode_cross_attn = getattr(cfg, 'decoder_context_integration', 'in_context') == 'cross_attn'
-            self.injector = TemporalTokenInjector(cfg, data_attrs, self.cfg.behavior_target, force_zero_mask=cfg.force_zero_mask or self.decode_cross_attn)
+            self.injector = TemporalTokenInjector(cfg, data_attrs, self.cfg.behavior_target, force_zero_mask=self.decode_cross_attn and not getattr(self.cfg, 'decode_tokenize_dims', False))
             self.time_pad = cfg.transformer.max_trial_length
             if self.cfg.decode_separate:
                 # This is more aesthetic flow, but both encode-only and this strategy seems to overfit.
@@ -1007,7 +1009,11 @@ class BehaviorRegression(TaskPipeline):
                     context_integration=getattr(cfg, 'decoder_context_integration', 'in_context'),
                     embed_space=not self.decode_cross_attn
                 )
-            self.out = nn.Linear(cfg.hidden_size, data_attrs.behavior_dim)
+            if getattr(self.cfg, 'decode_tokenize_dims', False):
+                self.out = nn.Linear(cfg.hidden_size, 1)
+            else:
+                self.out = nn.Linear(cfg.hidden_size, data_attrs.behavior_dim)
+        self.out_dims = data_attrs.behavior_dim
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space
         self.bhvr_lag_bins = round(self.cfg.behavior_lag / data_attrs.bin_size_ms)
@@ -1029,43 +1035,6 @@ class BehaviorRegression(TaskPipeline):
             except:
                 print("Blacklist not successfully loaded, skipping blacklist logic (not a concern for inference)")
 
-        if getattr(self.cfg, 'adversarial_classify_lambda', 0.0) or getattr(self.cfg, 'kl_lambda', 0.0):
-            assert self.cfg.decode_time_pool == 'mean', 'alignment path assumes mean pool'
-            self.alignment_enc = nn.Sequential(
-                nn.Linear(cfg.hidden_size, cfg.hidden_size),
-                nn.ReLU(),
-                nn.Linear(cfg.hidden_size, cfg.hidden_size),
-            )
-            # self.alignment_dec = nn.Sequential(
-            #     nn.Linear(cfg.hidden_size, cfg.hidden_size),
-            #     nn.ReLU(),
-            #     nn.Linear(cfg.hidden_size, cfg.hidden_size),
-            # ) # cycle-gan path, 2x the adversarial pain..
-
-            # It doesn't quite make sense to build out our own reconstruction in here when the infill modules exist and can be transferred
-            # self.reconstruct = nn.Sequential(
-            #     nn.Linear(cfg.hidden_size, cfg.hidden_size),
-            #     nn.ReLU(),
-            #     nn.Linear(cfg.hidden_size, data_attrs.max_spatial_tokens * cfg.hidden_size)
-            # )
-        if getattr(self.cfg, 'adversarial_classify_lambda', 0.0):
-            self.blacklist_classifier = nn.Sequential(
-                nn.Linear(cfg.hidden_size, cfg.hidden_size),
-                nn.ReLU(),
-                nn.Linear(cfg.hidden_size, 1)
-            )
-            self.blacklist_loss = nn.BCEWithLogitsLoss(
-                reduction='none',
-                pos_weight=torch.tensor(len(self.session_blacklist) / (len(data_attrs.context.session) - len(self.session_blacklist)))
-            )
-        elif getattr(self.cfg, 'kl_lambda', 0.0):
-            normal_params = torch.load(self.cfg.alignment_distribution_path)
-            self.alignment_dist = torch.distributions.MultivariateNormal(
-                # Generate in `kin_distributions.py`
-                loc=normal_params['mean'],
-                covariance_matrix=torch.diag(torch.diag(normal_params['cov'])) # covariance is unstable
-            )
-
         if getattr(self.cfg, 'decode_normalizer', ''):
             # See `data_kin_global_stat`
             zscore_path = Path(self.cfg.decode_normalizer)
@@ -1076,9 +1045,6 @@ class BehaviorRegression(TaskPipeline):
             self.bhvr_mean = None
             self.bhvr_std = None
 
-        if getattr(self.cfg, 'behavior_contrastive', ""):
-            self.contrast_bce = nn.BCEWithLogitsLoss(reduction='none')
-
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
         if self.cfg.decode_strategy != EmbedStrat.token or self.cfg.decode_separate:
             return batch
@@ -1087,14 +1053,6 @@ class BehaviorRegression(TaskPipeline):
 
     def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
         batch_out = {}
-
-        if getattr(self.cfg, 'kl_lambda', 0.0):
-            # Note: We want to _align_ at pool/population level
-            # Since it doesn't make sense to try to align individual spatial tokens, many to many map?
-            # But for reconstruction purposes it is _much_ more convenient to learn the alignment pre-pool
-            # We are still _not_ trying a many to many map; it is a many to one.
-            backbone_features = self.alignment_enc(backbone_features)
-            batch_out['update_features'] = backbone_features # pipe back out for reconstruction
         if self.cfg.decode_strategy == EmbedStrat.token:
             if self.cfg.decode_separate:
                 temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
@@ -1102,48 +1060,28 @@ class BehaviorRegression(TaskPipeline):
                     backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
                     if Output.pooled_features in self.cfg.outputs:
                         batch_out[Output.pooled_features] = backbone_features.detach()
-                if getattr(self.cfg, 'adversarial_classify_lambda', 0.0):
-                    raise NotImplementedError("didn't think about how to separate the alignment mapping for just blacklisted")
-                    logits = self.blacklist_classifier(backbone_features)[..., 0]
-                elif getattr(self.cfg, 'kl_lambda', 0.0):
-                    emp_dist = backbone_features[~temporal_padding_mask]
-                    emp_mu = emp_dist.mean(0)
-                    emp_cov = torch.matmul((emp_dist - emp_mu).T, (emp_dist - emp_mu)) / (emp_dist.shape[0])
-                    emp_cov = torch.diag(torch.diag(
-                        torch.cov(backbone_features[~temporal_padding_mask].T)
-                    )) # covariance is unstable
-                    emp_normal = torch.distributions.MultivariateNormal(emp_mu.float(), emp_cov.float())
-                    alignment_dist = torch.distributions.MultivariateNormal(
-                        loc=self.alignment_dist.loc.to(emp_dist.device),
-                        covariance_matrix=self.alignment_dist.covariance_matrix.to(emp_dist.device)
-                    )
-                    batch_out['alignment_kl'] = torch.distributions.kl.kl_divergence(alignment_dist, emp_normal)
-                    # forward KL - optimize empirical to fit reference
-                    # Hm, this fails if the empirical distribution is not full rank
-                    # switch to MLE
-                    # ll = alignment_dist.to(emp_dist.device).log_prob(emp_dist)
-                    # ll = self.alignment_dist.to(emp_dist.device).log_prob(emp_dist)
-                    # batch_out['alignment_kl_loss'] = -ll.mean() * self.cfg.kl_lambda
-
                 decode_tokens, decode_time, decode_space = self.injector.inject(batch)
-                # Clip decode space to 0, space isn't used for this decoder
-                decode_space = torch.zeros_like(decode_space)
+                if not getattr(self.cfg, 'decode_tokenize_dims', False):
+                    # Clip decode space to 0, space isn't used for this decoder
+                    decode_space = torch.zeros_like(decode_space)
 
                 if self.cfg.decode_time_pool:
+                    assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'time pool not implemented with tokenized dims'
                     src_time = decode_time
                     src_space = torch.zeros_like(decode_space)
                     if backbone_features.size(1) < src_time.size(1):
-                        # We pooled, but encoding doesn't have all timesteps. Pad to match
+                        # We want to pool, but encoding doesn't necessarily have all timesteps. Pad to match
                         backbone_features = F.pad(backbone_features, (0, 0, 0, src_time.size(1) - backbone_features.size(1)), value=0)
                         temporal_padding_mask = F.pad(temporal_padding_mask, (0, src_time.size(1) - temporal_padding_mask.size(1)), value=True)
                 else:
                     src_time = batch.get(DataKey.time, None)
+                    # Only used in non-cross attn path. JY doesn't remember why I zero-ed this out, but skipping over for tokenize dim decode
                     if DataKey.position not in batch:
                         src_space = None
                     else:
                         src_space = torch.zeros_like(batch[DataKey.position])
                 if self.causal and self.cfg.behavior_lag_lookahead:
-                    # allow looking N-bins of neural data into the "future"; we back-shift during the actual decode comparison.
+                    # allow looking N-bins of neural data into the "future"; we back-shift during the actual loss comparison.
                     decode_time = decode_time + self.bhvr_lag_bins
                 if self.spacetime:
                     if self.decode_cross_attn:
@@ -1156,8 +1094,14 @@ class BehaviorRegression(TaskPipeline):
                             'memory_padding_mask': temporal_padding_mask,
                         }
                         if temporal_padding_mask is not None:
-                            temporal_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
+                            temporal_padding_mask = create_temporal_padding_mask(
+                                decode_tokens,
+                                batch,
+                                length_key=COVARIATE_LENGTH_KEY,
+                                duplicity=self.out_dims if getattr(self.cfg, 'decode_tokenize_dims', False) else 1
+                            )
                     else:
+                        assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'non-cross attn not implemented with tokenized dims'
                         decoder_input = torch.cat([backbone_features, decode_tokens], dim=1)
                         times = torch.cat([src_time, decode_time], dim=1)
                         # Ok, this is subtle
@@ -1172,7 +1116,9 @@ class BehaviorRegression(TaskPipeline):
                             temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
                         other_kwargs = {}
                 else:
-                    decoder_input, _ = pack([backbone_features, decode_tokens], 'b t * h') # add as another space dimension
+                    # non-flat path
+                    assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'non-spacetime not implemented with tokenized dims'
+                    decoder_input, ps = pack([backbone_features, decode_tokens], 'b t * h') # add as another space dimension
                     # The assumptions for this path - designed for decode of non-flat models -- are brittle, only for square batches e.g. in cropped RTT.
                     times = None
                     positions = None
@@ -1189,7 +1135,7 @@ class BehaviorRegression(TaskPipeline):
                     trial_context=trial_context,
                     times=times,
                     positions=positions,
-                    space_padding_mask=None, # (low pri)
+                    space_padding_mask=None, # (low pri, only needed if space queries are heterogeneous. Needed for NDT3 in general)
                     causal=self.causal,
                     **other_kwargs
                 )
@@ -1198,12 +1144,19 @@ class BehaviorRegression(TaskPipeline):
                 if not self.decode_cross_attn:
                     backbone_features = self.injector.extract(batch, backbone_features)
             else:
-                backbone_features = backbone_features[...,-1, :]
+                # nonflat path
+                _, backbone_features = unpack(backbone_features, ps, 'b t * h')
+                # backbone_features = backbone_features[...,-1, :]
         elif self.cfg.decode_strategy == EmbedStrat.project: # linear
             temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
             if self.cfg.decode_time_pool and DataKey.time in batch: # B T H -> B T H
                 backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
         bhvr = self.out(backbone_features)
+        # At this point (computation and beyond) it is easiest to just restack tokenized targets, merge into regular API
+        # The whole point of all this intervention is to test whether separate tokens affects perf (we hope not)
+        # TODO this won't work once we intro grasp/or have different target flows
+        if getattr(self.cfg, 'decode_tokenize_dims', False):
+            bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.out_dims)
         if self.bhvr_lag_bins:
             bhvr = bhvr[:, :-self.bhvr_lag_bins]
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
@@ -1217,7 +1170,7 @@ class BehaviorRegression(TaskPipeline):
             return batch_out
         # Compute loss
         _, length_mask, _ = self.get_masks(
-            batch, ref=backbone_features,
+            batch, ref=bhvr,
             length_key=COVARIATE_LENGTH_KEY if self.cfg.decode_strategy == EmbedStrat.token else LENGTH_KEY,
             compute_channel=False
         )
@@ -1230,78 +1183,48 @@ class BehaviorRegression(TaskPipeline):
         if self.bhvr_mean is not None:
             bhvr_tgt = bhvr_tgt - self.bhvr_mean
             bhvr_tgt = bhvr_tgt / self.bhvr_std
-        if getattr(self.cfg, 'behavior_contrastive', "") != "":
-            if self.cfg.behavior_contrastive == "sum":
-                # Extract sum of valid mask - should probably extend be subslices but uh..
-                # Hm, I should consider fragmenting... but then we have no guarantees on validity of data (i.e. we might be using mask)
-                # Do all-to-all mask https://lilianweng.github.io/posts/2021-05-31-contrastive/#infonce
-                # zero according to non-length mask
-
-                # B T H Unfold into maybe like 200ms snippets, i.e. 10 bins
-                bhvr_end = bhvr * length_mask.unsqueeze(-1)
-                # bhvr_end = bhvr_end.sum(1) # B x 2
-                # bhvr_end = bhvr_end.unfold(1, 10, 10).flatten(2).flatten(0, 1) # B' x 2
-                bhvr_end = bhvr_end.unfold(1, 10, 10).sum(-1).flatten(0, 1) # B' x 2
-                # bhvr_tgt_end = (bhvr_tgt * length_mask.unsqueeze(-1)).sum(1) # B x 2
-                bhvr_tgt_end = bhvr_tgt * length_mask.unsqueeze(-1)
-                # bhvr_tgt_end = bhvr_tgt_end.unfold(1, 10, 10).flatten(2).flatten(0, 1) # B' x 2
-                bhvr_tgt_end = bhvr_tgt_end.unfold(1, 10, 10).sum(-1).flatten(0, 1) # B' x 2
-                scores = bhvr_end @ bhvr_tgt_end.T # B x B
-                # Try CLIP-type cross-entropy instead?
-
-                loss = F.cross_entropy(scores, torch.arange(scores.shape[0], device=scores.device)) \
-                    + F.cross_entropy(scores.T, torch.arange(scores.shape[0], device=scores.device))
-
-                # Direct
-                # loss = logsumexp(scores) - logsumexp(scores.diag()) # tehnically should have a triu somewhere
-
-                # ! TODO support session blacklist
+        if self.cfg.behavior_tolerance > 0:
+            # Calculate mse with a tolerance floor
+            loss = torch.clamp((bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
+            # loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
+            if self.cfg.behavior_tolerance_ceil > 0:
+                loss = torch.clamp(loss, -self.cfg.behavior_tolerance_ceil, self.cfg.behavior_tolerance_ceil)
+            loss = loss.pow(2)
         else:
-            if self.cfg.behavior_tolerance > 0:
-                # Calculate mse with a tolerance floor
-                loss = torch.clamp((bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
-                # loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
-                if self.cfg.behavior_tolerance_ceil > 0:
-                    loss = torch.clamp(loss, -self.cfg.behavior_tolerance_ceil, self.cfg.behavior_tolerance_ceil)
-                loss = loss.pow(2)
-            else:
-                loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')
+            loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')
 
-            if self.cfg.behavior_fit_thresh:
-                loss_mask = length_mask & (bhvr_tgt.abs() > self.cfg.behavior_fit_thresh).any(-1)
-            else:
-                loss_mask = length_mask
+        if self.cfg.behavior_fit_thresh:
+            loss_mask = length_mask & (bhvr_tgt.abs() > self.cfg.behavior_fit_thresh).any(-1)
+        else:
+            loss_mask = length_mask
 
-            # blacklist
-            if self.session_blacklist:
-                session_mask = batch[MetaKey.session] != self.session_blacklist[0]
-                for sess in self.session_blacklist[1:]:
-                    session_mask = session_mask & (batch[MetaKey.session] != sess)
-                if self.cfg.adversarial_classify_lambda:
-                    logits = self.blacklist_classifier(backbone_features)[..., 0]
-                    blacklist_loss = self.blacklist_loss(logits, repeat((~session_mask).float(), 'b -> b t', t=backbone_features.shape[1]))
-                    blacklist_loss = blacklist_loss[loss_mask].mean()
-                    batch_out['adversarial_loss'] = blacklist_loss
-                loss_mask = loss_mask & session_mask[:, None]
-                if not session_mask.any(): # no valid sessions
-                    loss = torch.zeros_like(loss).mean() # don't fail
-                else:
-                    loss = loss[loss_mask].mean()
-                if self.cfg.adversarial_classify_lambda:
-                    # print(f'loss: {loss:.3f}, blacklist loss: {blacklist_loss:.3f}, total = {(loss - (blacklist_loss) * self.cfg.adversarial_classify_lambda):.3f}')
-                    loss += (-1 * blacklist_loss) * self.cfg.adversarial_classify_lambda # adversarial
+        # blacklist
+        if self.session_blacklist:
+            session_mask = batch[MetaKey.session] != self.session_blacklist[0]
+            for sess in self.session_blacklist[1:]:
+                session_mask = session_mask & (batch[MetaKey.session] != sess)
+            if self.cfg.adversarial_classify_lambda:
+                logits = self.blacklist_classifier(backbone_features)[..., 0]
+                blacklist_loss = self.blacklist_loss(logits, repeat((~session_mask).float(), 'b -> b t', t=backbone_features.shape[1]))
+                blacklist_loss = blacklist_loss[loss_mask].mean()
+                batch_out['adversarial_loss'] = blacklist_loss
+            loss_mask = loss_mask & session_mask[:, None]
+            if not session_mask.any(): # no valid sessions
+                loss = torch.zeros_like(loss).mean() # don't fail
             else:
-                if len(loss[loss_mask]) == 0:
-                    loss = torch.zeros_like(loss).mean()
-                else:
-                    if loss[loss_mask].mean().isnan().any():
-                        breakpoint()
-                    loss = loss[loss_mask].mean()
+                loss = loss[loss_mask].mean()
+            if self.cfg.adversarial_classify_lambda:
+                # print(f'loss: {loss:.3f}, blacklist loss: {blacklist_loss:.3f}, total = {(loss - (blacklist_loss) * self.cfg.adversarial_classify_lambda):.3f}')
+                loss += (-1 * blacklist_loss) * self.cfg.adversarial_classify_lambda # adversarial
+        else:
+            if len(loss[loss_mask]) == 0:
+                loss = torch.zeros_like(loss).mean()
+            else:
+                if loss[loss_mask].mean().isnan().any():
+                    breakpoint()
+                loss = loss[loss_mask].mean()
 
         r2_mask = length_mask
-
-        if self.cfg.kl_lambda:
-            loss = loss + self.cfg.kl_lambda * batch_out['alignment_kl']
 
         batch_out['loss'] = loss
         if Metric.kinematic_r2 in self.cfg.metrics:
@@ -1479,7 +1402,8 @@ def create_temporal_padding_mask(
     reference: torch.Tensor,
     batch: Dict[str, torch.Tensor],
     length_key: str = LENGTH_KEY,
-    truncate_shuffle: bool = True
+    truncate_shuffle: bool = True,
+    duplicity=1,
 ) -> torch.Tensor:
     # temporal_padding refers to general length padding in `serve_tokens_flat` case
 
@@ -1491,7 +1415,7 @@ def create_temporal_padding_mask(
         if truncate_shuffle:
             token_position = token_position[:batch['encoder_frac']]
     else:
-        token_position = torch.arange(reference.size(1), device=reference.device)
+        token_position = repeat(torch.arange(reference.size(1) // duplicity, device=reference.device), 't -> (t d)', d=duplicity)
     token_position = rearrange(token_position, 't -> () t')
     return token_position >= rearrange(batch[length_key], 'b -> b ()')
 

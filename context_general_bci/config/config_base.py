@@ -153,6 +153,7 @@ class TaskConfig:
     decode_separate: bool = False # for bhvr decoding, use a separate transformer decoder? (Only compat with EmbedStrat.token)
     decode_time_pool: str = "" # none or 'mean'
     decode_strategy: EmbedStrat = EmbedStrat.project # or EmbedStrat.token
+    decode_tokenize_dims: bool = False # If true, each decode dimension gets its own token
     decode_normalizer: str = '' # If provided, use this path to normalize
     decode_use_shuffle_backbone: bool = False # Don't discard shuffle infill decode, take full rates as input to backbone features (useful specifically for parity on HeldoutPrediction)
 
