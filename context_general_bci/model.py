@@ -942,7 +942,7 @@ class BrainBertInterface(pl.LightningModule):
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
             if m == Metric.kinematic_r2 or m == Metric.kinematic_r2_thresh:
-                labels = ['x', 'y', 'z']
+                labels = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy']
                 for i, r2 in enumerate(metrics[m]):
                     self.log(f'{prefix}_{m.value}_{labels[i]}', r2, **kwargs)
                 self.log(f'{prefix}_{m.value}', metrics[m].mean(), **kwargs)
