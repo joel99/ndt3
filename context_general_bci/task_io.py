@@ -1224,6 +1224,7 @@ class CovariateReadout(TaskPipeline):
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = self.simplify_logits_to_prediction(bhvr)[r2_mask]
             valid_tgt = bhvr_tgt[r2_mask]
+            # breakpoint()
             batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
             if batch_out[Metric.kinematic_r2].mean() < -10:
                 batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])# .mean() # mute, some erratic result from near zero target
@@ -1233,6 +1234,9 @@ class CovariateReadout(TaskPipeline):
                 valid_bhvr = valid_bhvr[valid_tgt.abs() > self.cfg.behavior_metric_thresh]
                 valid_tgt = valid_tgt[valid_tgt.abs() > self.cfg.behavior_metric_thresh]
                 batch_out[Metric.kinematic_r2_thresh] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
+        if Metric.kinematic_acc in self.cfg.metrics:
+            acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
+            batch_out[Metric.kinematic_acc] = acc[r2_mask].float().mean()
         return batch_out
 
 
@@ -1277,7 +1281,7 @@ class BehaviorClassification(CovariateReadout):
         Assumes cross-attn, spacetime path.
         Cross-attention, autoregressive classification.
     """
-    QUANTIZE_CLASSES = 16 # simple coarse classes to begin with.
+    QUANTIZE_CLASSES = 64 # simple coarse classes to begin with.
 
     def initialize_readout(self, backbone_size):
         if self.cfg.decode_tokenize_dims:
@@ -1290,6 +1294,7 @@ class BehaviorClassification(CovariateReadout):
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
 
     def quantize(self, x: torch.Tensor):
+        x = torch.where(x != self.pad_value, x, 0)
         return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
