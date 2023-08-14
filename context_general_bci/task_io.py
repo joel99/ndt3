@@ -1053,11 +1053,7 @@ class CovariateReadout(TaskPipeline):
         covariates = batch[self.cfg.behavior_target]
         pass # TODO
 
-<<<<<<< HEAD
-    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features, eval_mode=False, batch_out={}) -> torch.Tensor:
-=======
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
->>>>>>> dcbe4e33aa6ea7b5a740a58e3dab29a706448f94
         if self.cfg.decode_separate:
             temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
             if self.cfg.decode_time_pool: # B T H -> B T H
