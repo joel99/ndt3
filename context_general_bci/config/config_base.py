@@ -378,6 +378,7 @@ class PittConfig(ExperimentalConfig):
     chop_size_ms: int = 2500
     respect_trial_boundaries: bool = False # keep this off for simplicity
     closed_loop_intention_estimation: str = ""
+    limit_kin_dims: int = 8 # First 8 dims are taken (historically idx 6 is grasp velocity, 7 is grasp force)
 
 @dataclass
 class DatasetConfig:
