@@ -72,7 +72,7 @@ def events_to_raster(
     return spikes
 
 
-def load_trial(fn, use_ql=True, key='data', copy_keys=True):
+def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
     # if `use_ql`, use the prebinned at 20ms and also pull out the kinematics
     # else take raw spikes
     # data = payload['data'] # 'data' is pre-binned at 20ms, we'd rather have more raw
@@ -91,13 +91,15 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True):
         out['trial_num'] = torch.from_numpy(payload['trial_num'])
         if 'Kinematics' in payload:
             # cursor x, y
-            out['position'] = torch.from_numpy(payload['Kinematics']['ActualPos'][:,1:3]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
+            # breakpoint()
+            out['position'] = torch.from_numpy(payload['Kinematics']['ActualPos'][:,:limit_dims]) # index 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
         elif 'pos' in payload:
-            out['position'] = torch.from_numpy(payload['pos'][:,1:3]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
-        out['position'] = out['position'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
+            out['position'] = torch.from_numpy(payload['pos'][:,:limit_dims]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
+        # out['position'] = out['position'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
         if 'target' in payload:
-            out['target'] = torch.from_numpy(payload['target'][1:3].T) # dimensions flipped here, originally C x T
-            out['target'] = out['target'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
+            out['target'] = torch.from_numpy(payload['target'][:limit_dims]) # dimensions flipped here, originally C x T
+            # out['target'] = torch.from_numpy(payload['target'][1:3].T) # dimensions flipped here, originally C x T
+            # out['target'] = out['target'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -114,9 +116,11 @@ class PittCOLoader(ExperimentalTaskLoader):
     name = ExperimentalTask.pitt_co
 
     @staticmethod
-    def get_velocity(position, kernel=np.ones((int(500 / 20), 2))/ (500 / 20)):
+    def get_velocity(position, kernel=np.ones((int(200 / 20), 1))/ (200 / 20)):
+    # def get_velocity(position, kernel=np.ones((int(500 / 20), 1))/ (500 / 20)):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
-        # position = gaussian_filter1d(position, 2.5, axis=0) # This seems reasonable, but useless since we can't compare to Pitt codebase without below
+        # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
+        # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
         int_position = pd.Series(position.flatten()).interpolate()
         position = torch.tensor(int_position).view(-1, position.shape[-1])
         position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
@@ -210,7 +214,7 @@ class PittCOLoader(ExperimentalTaskLoader):
             torch.save(single_payload, single_path)
 
         if not datapath.is_dir() and datapath.suffix == '.mat': # payload style, preproc-ed/binned elsewhere
-            payload = load_trial(datapath, key='thin_data')
+            payload = load_trial(datapath, key='thin_data', limit_dims=cfg.pitt_co.limit_kin_dims)
 
             # Sanitize
             spikes = payload['spikes']

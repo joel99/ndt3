@@ -24,10 +24,6 @@ import matplotlib.pyplot as plt
 
 import logging
 
-import pynwb
-from pynwb import TimeSeries, ProcessingModule, NWBFile, NWBHDF5IO
-from pynwb.core import MultiContainerInterface
-
 from context_general_bci.config import DataKey, DatasetConfig
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
