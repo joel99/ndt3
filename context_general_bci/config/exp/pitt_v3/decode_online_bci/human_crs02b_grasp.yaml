@@ -11,8 +11,9 @@ dataset:
   datasets:
   - observation_CRS02b_1959.*
   exclude_datasets: []
+  behavior_dim: 8
 model:
   task:
     mask_ratio: 0.1
-inherit_exp: pitt_v3/decode_online_bci
-inherit_tag: human_aug_m1
+    decode_normalizer: ""
+inherit_tag: human_10l

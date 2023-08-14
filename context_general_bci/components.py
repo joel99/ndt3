@@ -655,10 +655,11 @@ class SpaceTimeTransformer(nn.Module):
                             torch.zeros((memory_padding_mask.size(0), trial_context.size(1)), dtype=torch.bool, device=memory_padding_mask.device)
                         ], 1)
                 # convert padding masks to float to suppress torch 2 warnings
-                if padding_mask is not None:
-                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
-                if memory_padding_mask is not None:
-                    memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
+                if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
+                    if padding_mask is not None:
+                        padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+                    if memory_padding_mask is not None:
+                        memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
                 output = self.transformer_encoder(
                     contextualized_src,
                     memory,
@@ -669,7 +670,8 @@ class SpaceTimeTransformer(nn.Module):
                 )
             else:
                 if padding_mask is not None:
-                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+                    if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
+                        padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
                 output = self.transformer_encoder(
                     contextualized_src,
                     src_mask,

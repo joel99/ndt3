@@ -1051,7 +1051,7 @@ class CovariateReadout(TaskPipeline):
         covariates = batch[self.cfg.behavior_target]
         pass # TODO
 
-    def get_cov_pred(self, batch: Dict[str, torch.Tensor], eval_mode=False, batch_out={}) -> torch.Tensor:
+    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features, eval_mode=False, batch_out={}) -> torch.Tensor:
         if self.cfg.decode_separate:
             temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
             if self.cfg.decode_time_pool: # B T H -> B T H
@@ -1224,7 +1224,8 @@ class CovariateReadout(TaskPipeline):
 
         batch_out['loss'] = loss
         if Metric.kinematic_r2 in self.cfg.metrics:
-            valid_bhvr = self.simplify_logits_to_prediction(bhvr)[r2_mask]
+            valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
+            valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask]
             valid_tgt = bhvr_tgt[r2_mask]
             batch_out[Metric.kinematic_r2] = r2_score(valid_tgt.float().detach().cpu(), valid_bhvr.float().detach().cpu(), multioutput='raw_values')
             if batch_out[Metric.kinematic_r2].mean() < -10:
@@ -1250,15 +1251,16 @@ class BehaviorRegression(CovariateReadout):
             self.out = nn.Linear(backbone_size, self.out_dims)
 
     def compute_loss(self, bhvr, bhvr_tgt):
+        comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
         if self.cfg.behavior_tolerance > 0:
             # Calculate mse with a tolerance floor
-            loss = torch.clamp((bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
+            loss = torch.clamp((comp_bhvr - bhvr_tgt).abs(), min=self.cfg.behavior_tolerance) - self.cfg.behavior_tolerance
             # loss = torch.where(loss.abs() < self.cfg.behavior_tolerance, torch.zeros_like(loss), loss)
             if self.cfg.behavior_tolerance_ceil > 0:
                 loss = torch.clamp(loss, -self.cfg.behavior_tolerance_ceil, self.cfg.behavior_tolerance_ceil)
             loss = loss.pow(2)
         else:
-            loss = F.mse_loss(bhvr, bhvr_tgt, reduction='none')
+            loss = F.mse_loss(comp_bhvr, bhvr_tgt, reduction='none')
         return loss
 
 
@@ -1302,7 +1304,8 @@ class BehaviorClassification(CovariateReadout):
         return self.dequantize(bhvr.argmax(1))
 
     def compute_loss(self, bhvr, bhvr_tgt):
-        return F.cross_entropy(bhvr, self.quantize(bhvr_tgt), reduction='none')
+        comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
+        return F.cross_entropy(comp_bhvr, self.quantize(bhvr_tgt), reduction='none')
 
 # === Utils ===
 

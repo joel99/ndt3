@@ -72,7 +72,7 @@ class DataAttrs:
     rtt_heldout_channel_count: int = 0 # Only for NLB, kinda hacky
     maze_heldout_channel_count: int = 0
 
-    behavior_dim: int = 2
+    behavior_dim: int = 2 # This is the _max_ number of features expected, in NDT2 simply also the readout dim. Will compare first N dimensions if fewer are available.
     pad_token: int = 20 # this needs to be a value that definitely won't appear as a natural spike count for your used bin size.
     serve_tokens: bool = False # if true, serves flat data tokens with additional keys for annotations (e.g. array + timestep) instead of structured data (e.g. with array dimensions)
     serve_tokens_flat: bool = False
@@ -627,7 +627,6 @@ class SpikingDataset(Dataset):
         """
         if self.context_index is None:
             self.build_context_index()
-
         return DataAttrs(
             bin_size_ms=self.cfg.bin_size_ms,
             max_channel_count=self.cfg.max_channels,

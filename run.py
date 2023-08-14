@@ -333,7 +333,7 @@ def run_exp(cfg : RootConfig) -> None:
     init_wandb(cfg, wandb_logger) # needed for checkpoint to save under wandb dir, for some reason wandb api changed.
 
     is_distributed = (torch.cuda.device_count() > 1) or getattr(cfg, 'nodes', 1) > 1
-
+    default_strat = 'auto' if torch.__version__.startswith('2.0') else None
     trainer = pl.Trainer(
         logger=wandb_logger,
         max_epochs=epochs,
@@ -348,7 +348,7 @@ def run_exp(cfg : RootConfig) -> None:
         default_root_dir=cfg.default_root_dir,
         # track_grad_norm=2 if cfg.train.log_grad else -1, # this is quite cluttered, but probably better that way. See https://github.com/Lightning-AI/lightning/issues/1462#issuecomment-1190253742 for patch if needed, though.
         precision=16 if cfg.model.half_precision else 32,
-        strategy=DDPStrategy(find_unused_parameters=False) if is_distributed else 'auto',
+        strategy=DDPStrategy(find_unused_parameters=False) if is_distributed else default_strat,
         gradient_clip_val=cfg.train.gradient_clip_val,
         accumulate_grad_batches=cfg.train.accumulate_batches,
         profiler=cfg.train.profiler if cfg.train.profiler else None,
