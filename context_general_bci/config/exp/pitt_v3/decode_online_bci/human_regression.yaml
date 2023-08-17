@@ -5,10 +5,16 @@ train:
   autoscale_batch_size: false
   batch_size: 128 # being run on A100 with 80G memory. No need for multinode.
   # batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
+dataset:
+  datasets:
+  - observation_.*
+  exclude_datasets: []
+  behavior_dim: 8
 model:
   task:
     tasks:
     - ModelTask.shuffle_infill
     - ModelTask.kinematic_decoding
     mask_ratio: 0.1
+    decode_normalizer: ''
 inherit_tag: human_10l

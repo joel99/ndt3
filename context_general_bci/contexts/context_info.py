@@ -492,7 +492,7 @@ class BCIContextInfo(ReachingContextInfo):
 
 
     @classmethod
-    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"], alias_prefix=''):
+    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"], alias_prefix='', simple=False):
         if not Path(root).exists():
             logger.warning(f"Datapath not found, skipping ({root})")
             return []
@@ -517,11 +517,15 @@ class BCIContextInfo(ReachingContextInfo):
             elif subject.endswith('Lab'):
                 subject = subject[:-3]
             subject = subject[:3].upper() + subject[3:]
-            alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
-            if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
+            if simple:
+                alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}'
                 task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
             else:
-                task = task_map.get('default', ExperimentalTask.unstructured)
+                alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
+                if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
+                    task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
+                else:
+                    task = task_map.get('default', ExperimentalTask.unstructured)
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
                 task=task,

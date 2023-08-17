@@ -144,34 +144,39 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
 
         *GallegoCOContextInfo.build_from_dir('./data/gallego_co', task=ExperimentalTask.gallego_co),
         *GDrivePathContextInfo.build_from_dir('./data/churchland_misc'),
-        *BCIContextInfo.build_from_dir('./data/pitt_co', task_map={
+        # *BCIContextInfo.build_from_dir('./data/pitt_co', task_map={
+        #     'obs': ExperimentalTask.observation,
+        #     'ortho': ExperimentalTask.ortho,
+        #     'ortho/fbc': ExperimentalTask.fbc, # when both types are used, opt for more expressive
+        #     'fbc': ExperimentalTask.fbc,
+        #     'fbc-stitch': ExperimentalTask.fbc,
+        #     'unstructured': ExperimentalTask.unstructured,
+        #     'free_play': ExperimentalTask.unstructured,
+        #     'default': ExperimentalTask.pitt_co,
+        #     'unk': ExperimentalTask.pitt_co,
+        # }),
+        # *BCIContextInfo.build_from_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={
+        #     'obs': ExperimentalTask.observation,
+        #     'ortho': ExperimentalTask.ortho,
+        #     'fbc': ExperimentalTask.fbc,
+        # }, alias_prefix='closed_loop_'),
+        *BCIContextInfo.build_from_dir(f'./data/pitt_full', task_map={
             'obs': ExperimentalTask.observation,
             'ortho': ExperimentalTask.ortho,
-            'ortho/fbc': ExperimentalTask.fbc, # when both types are used, opt for more expressive
             'fbc': ExperimentalTask.fbc,
-            'fbc-stitch': ExperimentalTask.fbc,
-            'unstructured': ExperimentalTask.unstructured,
-            'free_play': ExperimentalTask.unstructured,
-            'default': ExperimentalTask.pitt_co,
-            'unk': ExperimentalTask.pitt_co,
-        }),
-        *BCIContextInfo.build_from_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={
-            'obs': ExperimentalTask.observation,
-            'ortho': ExperimentalTask.ortho,
-            'fbc': ExperimentalTask.fbc,
-        }, alias_prefix='closed_loop_'),
-        *BCIContextInfo.build_from_dir(f'./data/pitt_misc/mat', task_map={
-            'obs': ExperimentalTask.observation,
-            'ortho': ExperimentalTask.ortho,
-            'fbc': ExperimentalTask.fbc,
-            'unstructured': ExperimentalTask.unstructured,
-            'free_play': ExperimentalTask.unstructured,
-        }, alias_prefix='pitt_misc_'), # Don't use in pretraining
-        *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
-            'unstructured': ExperimentalTask.unstructured,
-            'free_play': ExperimentalTask.unstructured,
-            'default': ExperimentalTask.pitt_co,
-        }),
+        }, alias_prefix='pitt_full_'),
+        # *BCIContextInfo.build_from_dir(f'./data/pitt_misc/mat', task_map={
+        #     'obs': ExperimentalTask.observation,
+        #     'ortho': ExperimentalTask.ortho,
+        #     'fbc': ExperimentalTask.fbc,
+        #     'unstructured': ExperimentalTask.unstructured,
+        #     'free_play': ExperimentalTask.unstructured,
+        # }, alias_prefix='pitt_misc_'), # Don't use in pretraining
+        # *BCIContextInfo.build_from_dir_varied('./data/pitt_varied', task_map={
+        #     'unstructured': ExperimentalTask.unstructured,
+        #     'free_play': ExperimentalTask.unstructured,
+        #     'default': ExperimentalTask.pitt_co,
+        # }),
 
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_isometric_force', task=ExperimentalTask.marino_batista_mp_iso_force),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_bci', task=ExperimentalTask.marino_batista_mp_bci),
