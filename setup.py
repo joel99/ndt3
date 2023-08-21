@@ -12,7 +12,7 @@ setup(
     py_modules=['context_general_bci'],
 
     install_requires=[
-        'torch==1.13.1+cu117', # 2.0 onnx export doesn't work, install with --extra-index-url https://download.pytorch.org/whl/cu117
+        'torch==2.0.1+cu117', # 2.0 onnx export doesn't work, install with --extra-index-url https://download.pytorch.org/whl/cu117
         'seaborn',
         'pandas',
         'numpy',
