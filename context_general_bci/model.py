@@ -527,9 +527,11 @@ class BrainBertInterface(pl.LightningModule):
                 static_context: List(T') [B x H]
                 temporal_context: List(?) [B x T x H]
         """
+        assert self.cfg.array_embed_strategy == EmbedStrat.none, "Array embed strategy deprecated"
         temporal_context = []
         for task in self.cfg.task.tasks:
-            temporal_context.extend(self.task_pipelines[task.value].get_temporal_context(batch))
+            temporal_context.extend(self.task_pipelines[task.value].get_temporal_context(batch)) # Should arrive embedded...
+
 
         if self.cfg.session_embed_strategy is not EmbedStrat.none:
             if self.cfg.session_embed_token_count > 1:
@@ -539,7 +541,7 @@ class BrainBertInterface(pl.LightningModule):
         else:
             session = None
         if self.cfg.subject_embed_strategy is not EmbedStrat.none:
-            if getattr(self.cfg, 'subject_embed_token_count', 1) > 1:
+            if self.cfg.subject_embed_token_count > 1:
                 subject: torch.Tensor = self.subject_embed[batch[MetaKey.subject]]
             else:
                 subject: torch.Tensor = self.subject_embed(batch[MetaKey.subject]) # B x H
@@ -552,10 +554,6 @@ class BrainBertInterface(pl.LightningModule):
                 task: torch.Tensor = self.task_embed(batch[MetaKey.task])
         else:
             task = None
-        if self.cfg.array_embed_strategy is not EmbedStrat.none:
-            array: torch.Tensor = self.array_embed(batch[MetaKey.array])
-        else:
-            array = None
         if self.cfg.transform_space:
             # collapse space/array, channel/feature --> # b t s h
             state_in = torch.as_tensor(batch[DataKey.spikes], dtype=int)
@@ -619,34 +617,10 @@ class BrainBertInterface(pl.LightningModule):
         _add_context(session, getattr(self, 'session_flag', None), self.cfg.session_embed_strategy)
         _add_context(subject, getattr(self, 'subject_flag', None), self.cfg.subject_embed_strategy)
         _add_context(task, getattr(self, 'task_flag', None), self.cfg.task_embed_strategy)
-        # array embed deprecated
-        # if self.cfg.array_embed_strategy is not EmbedStrat.none: # Note we check earlier that this doesn't accidentally get set for space-time, not supported yet (we need to pass/infer array metadata)
-        #     assert not self.cfg.transform_space, 'not implemented'
-        #     if self.cfg.array_embed_strategy == EmbedStrat.token:
-        #         array = array + self.array_flag
-        #         static_context.extend(array.unbind(1)) # path not yet tested
-        #     elif self.cfg.array_embed_strategy == EmbedStrat.token_add:
-        #         state_in = state_in + rearrange(array, 'b a h -> b 1 a h') # redundant op since array uses 0s for padding
-        #     elif self.cfg.array_embed_strategy == EmbedStrat.concat:
-        #         array = repeat(array, 'b a h -> b t a h', t=state_in.shape[1])
-        #         project_context.append(array)
-        # # TODO support temporal embed + temporal project
-        # # Do not concat static context - list default is easier to deal with
-        # # static_context = rearrange(static_context, 't0 b h -> b t0 h') if static_context else None
-        # if project_context: # someone wanted it
-        #     raise NotImplementedError # not tested
-        #     # B T' H, and we want to merge into B T A H (specifically add T' to each token)
-        #     augmented_tokens, ps = pack([state_in, *project_context], 'b * a h')
-        #     augmented_tokens = self.context_project(augmented_tokens)
-        #     state_in = rearrange(augmented_tokens, ps, 'b (t a) h', t=state_in.size(1))
-        # if self.cfg.layer_norm_input:
-        #     state_in = self.layer_norm_input(state_in)
         return state_in, static_context, temporal_context
 
     def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         # returns backbone features B T S H
-
-
         state_in, trial_context, temporal_context = self._prepare_inputs(batch)
         temporal_padding_mask = create_temporal_padding_mask(state_in, batch)
         if DataKey.extra in batch and not self.data_attrs.serve_tokens_flat: # serve_tokens_flat is enc dec, don't integrate extra (query) tokens in enc

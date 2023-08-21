@@ -1049,9 +1049,35 @@ class CovariateReadout(TaskPipeline):
         self.injector.inject(batch, in_place=True)
         return batch
 
+    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
+        return {}
+
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
-        covariates = batch[self.cfg.behavior_target]
-        pass # TODO
+        covariates = batch[self.cfg.behavior_target] # Assume B x T x H
+        target = covariates
+        if eval_mode:
+            batch.update({
+                f'covariate_{SHUFFLE_KEY}': torch.arange(covariates.size(1), device=covariates.device),
+                'covariate_target': target,
+                'covariate_encoder_frac': covariates.size(1)
+            })
+        # TODO this will be tricky if we are tokenizing the covariate H dimension (then flatten T x H to TH x 1)
+        shuffle = torch.randperm(covariates.size(1), device=covariates.device)
+        encoder_frac = int((1 - mask_ratio) * covariates.size(1))
+        for key in [f'covariate_{DataKey.time}']: # TODO if tokenizing, add another position key
+            if key in batch:
+                shuffled = apply_shuffle(batch[key], shuffle)
+                batch.update({
+                    key: shuffled[:, :encoder_frac],
+                    f'{key}_target': shuffled[:, encoder_frac:],
+                })
+        batch.update({
+            self.cfg.behavior_target: apply_shuffle(covariates, shuffle)[:, :encoder_frac],
+            'covariate_target': apply_shuffle(target, shuffle)[:, encoder_frac:],
+            'covariate_encoder_frac': encoder_frac,
+            f'covariate_{SHUFFLE_KEY}': shuffle,
+        })
+        return batch
 
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         if self.cfg.decode_separate:

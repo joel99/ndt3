@@ -213,7 +213,8 @@ class ModelConfig:
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     # 1. makes masking shuffle-based
 
-    encode_covariate: bool = False
+    encode_covariate: bool = False # Should we encode the relevant covariates? (Assumes that `shuffle_covariate` has already excluded target covariates)
+    shuffle_covariate: bool = False
 
     half_precision: bool = True
     lr_init: float = 0.0005 # be careful of interxn with bsz
