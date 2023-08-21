@@ -333,7 +333,7 @@ def run_exp(cfg : RootConfig) -> None:
     init_wandb(cfg, wandb_logger) # needed for checkpoint to save under wandb dir, for some reason wandb api changed.
 
     is_distributed = (torch.cuda.device_count() > 1) or getattr(cfg, 'nodes', 1) > 1
-    default_strat = 'auto' if torch.__version__.startswith('2.0') else None
+    default_strat = 'auto' if pl.__version__.startswith('2.0') else None
     trainer = pl.Trainer(
         logger=wandb_logger,
         max_epochs=epochs,

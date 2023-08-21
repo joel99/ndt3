@@ -98,7 +98,7 @@ class SubjectInfoPittChicago(SubjectInfo):
         else:
             return cls.blacklist_channels, cls.blacklist_pedestals
 
-@SubjectArrayRegistry.register
+@SubjectArrayRegistry.register(other_aliases=['CRS02bLab', 'CRS02bHome'])
 class CRS02b(SubjectInfoPittChicago):
     # Layout shared across motor channels
     name = SubjectName.CRS02b
@@ -153,7 +153,7 @@ class CRS02b(SubjectInfoPittChicago):
     ]
     # NB: We don't clone sensory like motor bc there's a small diff
 
-@SubjectArrayRegistry.register
+@SubjectArrayRegistry.register(other_aliases=['CRS07Lab', 'CRS07Home'])
 class CRS07(SubjectInfoPittChicago):
     # Layout shared across motor channels
     name = SubjectName.CRS07
@@ -192,7 +192,7 @@ class CRS07(SubjectInfoPittChicago):
         PittChicagoArrayInfo(array=_sensory_layout, pedestal_index=1)
     ]
 
-@SubjectArrayRegistry.register
+@SubjectArrayRegistry.register(other_aliases=['CRS08Lab', 'CRS08Home'])
 class CRS08(SubjectInfoPittChicago):
     # Identical to CRS07
     # Layout shared across motor channels
@@ -231,6 +231,12 @@ class CRS08(SubjectInfoPittChicago):
         PittChicagoArrayInfo(array=_sensory_layout),
         PittChicagoArrayInfo(array=_sensory_layout, pedestal_index=1)
     ]
+
+
+@SubjectArrayRegistry.register
+class CRSTest(CRS07):
+    # Proxy subject used in debugging. We just need to give them some array mapping.
+    pass
 
 @SubjectArrayRegistry.register
 class BCI02(SubjectInfoPittChicago):

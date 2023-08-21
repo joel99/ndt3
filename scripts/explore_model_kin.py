@@ -23,7 +23,7 @@ from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
 
 mode = 'train'
-mode = 'test'
+# mode = 'test'
 
 # query = "human-sweep-simpler_lr_sweep-dgnx7mn9"
 # query = "human_only-5a62oz96"
@@ -42,6 +42,7 @@ query = 'human_crs08_tune-mip3powm'
 # query = 'online_human_pt-5ytq361d'
 query = 'online_human_pt-cfzx5heb'
 query = 'online_human_pt-w3rnnpj4'
+query = 'human_regression-rl2e5tw5'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -59,28 +60,11 @@ if pipeline_model:
     pipeline_model = load_wandb_run(wandb_query_latest(pipeline_model, allow_running=True, use_display=True)[0], tag='val_loss')[0]
     cfg.model.task = pipeline_model.cfg.task
 
-# target_dataset = 'observation_CRS02bLab_session_1908_set_1'
-# target_dataset = 'observation_CRS02bLab_session_1913_set_1'
 # target_dataset = 'observation_CRS02bLab_session_1827.*'
 # target_dataset = 'observation_CRS02bLab_session_1922_set_6'
-target_dataset = 'observation_CRS02b_1904_6'
-# target_dataset = 'observation_CRS02bLab_session_1925_set_3'
-# target_dataset = 'observation_CRS07_150_1_2d_cursor_center_out'
+target_dataset = 'observation_CRS02bLab_1925_3'
 
-# cfg.dataset.datasets = ["observation_CRS02bLab_session_1908_set_1"]
-# cfg.dataset.eval_datasets = ["observation_CRS02bLab_session_1908_set_1"]
-target_dataset = 'observation_CRS08_10_2'
-target_dataset = 'observation_CRS08_11_16'
 
-# target_dataset = 'odoherty_rtt-Indy-20160627_01'
-# cfg.dataset.datasets = ["odoherty_rtt-Indy-20160627_01"]
-# cfg.dataset.eval_datasets = ["odoherty_rtt-Indy-20160627_01"]
-
-# cfg.dataset.datasets = [target_dataset]
-# cfg.dataset.eval_datasets = [target_dataset]
-# cfg.dataset.eval_datasets = []
-# cfg.dataset.eval_ratio = 0.5
-# cfg.model.task.decode_normalizer = 'pitt_obs_zscore.pt'
 
 dataset = SpikingDataset(cfg.dataset)
 print("Original length: ", len(dataset))
@@ -96,13 +80,13 @@ else:
     dataset = train
     dataset = val
 
+
 dataset.subset_by_key([ctx.id], MetaKey.session)
 print("Subset length: ", len(dataset))
 
 
 data_attrs = dataset.get_data_attrs()
 print(data_attrs)
-print(f'{len(dataset)} examples')
 cfg.model.task.tasks = [ModelTask.kinematic_decoding]
 
 model = transfer_model(src_model, cfg.model, data_attrs)
@@ -116,9 +100,6 @@ if pipeline_model:
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=300, num_workers=1, **kwargs) -> DataLoader:
 def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=200, num_workers=1, **kwargs) -> DataLoader:
-    # Defaults set for evaluation on 1 GPU.
     return DataLoader(dataset,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -132,6 +113,7 @@ heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 # A note on fullbatch R2 calculation - in my experience by bsz 128 the minibatch R2 ~ fullbatch R2 (within 0.01); for convenience we use minibatch R2
 
 offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
+breakpoint()
 
 #%%
 pred = heldin_outputs[Output.behavior_pred]
