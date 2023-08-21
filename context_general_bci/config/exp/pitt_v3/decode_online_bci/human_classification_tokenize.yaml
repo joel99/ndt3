@@ -13,7 +13,9 @@ model:
     - ModelTask.shuffle_infill
     - ModelTask.kinematic_classification
     mask_ratio: 0.1
+    decode_normalizer: ''
 dataset:
+  behavior_dim: 8
   datasets:
   - observation_.*
   exclude_datasets: []
