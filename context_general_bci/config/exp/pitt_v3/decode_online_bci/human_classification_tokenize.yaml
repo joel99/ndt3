@@ -8,8 +8,13 @@ train:
 model:
   task:
     decode_tokenize_dims: True
+    decode_label_smooth: 0.1
     tasks:
     - ModelTask.shuffle_infill
     - ModelTask.kinematic_classification
     mask_ratio: 0.1
+dataset:
+  datasets:
+  - observation_.*
+  exclude_datasets: []
 inherit_tag: human_10l

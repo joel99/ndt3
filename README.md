@@ -6,7 +6,7 @@ Codebase for Neural Data Transformer 2. Should provide everything you need to ru
 ### Code Requirements
 We recommend setting up with setup.py (the env.ymls lists a dump of an active environment, but setup.py lists the core dependencies)
 ```
-conda create --name onnx python=3.9
+conda/mamba create --name torch2 python=3.11
 pip install -e . --extra-index-url https://download.pytorch.org/whl/cu117
 ```
 

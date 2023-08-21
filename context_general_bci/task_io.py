@@ -1283,7 +1283,7 @@ class BehaviorClassification(CovariateReadout):
         Assumes cross-attn, spacetime path.
         Cross-attention, autoregressive classification.
     """
-    QUANTIZE_CLASSES = 64 # simple coarse classes to begin with.
+    QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
 
     def initialize_readout(self, backbone_size):
         if self.cfg.decode_tokenize_dims:
@@ -1317,7 +1317,7 @@ class BehaviorClassification(CovariateReadout):
 
     def compute_loss(self, bhvr, bhvr_tgt):
         comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
-        return F.cross_entropy(comp_bhvr, self.quantize(bhvr_tgt), reduction='none')
+        return F.cross_entropy(comp_bhvr, self.quantize(bhvr_tgt), reduction='none', label_smoothing=self.cfg.decode_label_smooth)
 
 # === Utils ===
 

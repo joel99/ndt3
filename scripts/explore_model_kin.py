@@ -62,7 +62,8 @@ if pipeline_model:
 
 # target_dataset = 'observation_CRS02bLab_session_1827.*'
 # target_dataset = 'observation_CRS02bLab_session_1922_set_6'
-target_dataset = 'observation_CRS02bLab_1925_3'
+target_dataset = 'observation_CRS02bLab_1925_3' # 0.97 click acc
+target_dataset = 'observation_CRS02bLab_1923_7' # 0.95 click acc
 
 
 
@@ -120,19 +121,28 @@ pred = heldin_outputs[Output.behavior_pred]
 pred = [p[offset_bins:] for p in pred]
 true = heldin_outputs[Output.behavior]
 true = [t[offset_bins:] for t in true]
+# for trial_true in true:
+#     print(trial_true.any(0))
 
+print(pred[0].shape)
+print(true[0].shape)
 flat_pred = np.concatenate(pred) if isinstance(pred, list) else pred.flatten()
 flat_true = np.concatenate(true) if isinstance(true, list) else true.flatten()
 flat_pred = flat_pred[(flat_true != model.data_attrs.pad_token).any(-1)]
 flat_true = flat_true[(flat_true != model.data_attrs.pad_token).any(-1)]
 
+coords = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy']
+coords_arr = np.stack([flat_pred.shape[0] * [i] for i in coords], axis=1)
 df = pd.DataFrame({
     'pred': flat_pred.flatten(),
     'true': flat_true.flatten(),
-    'coord': flat_pred.shape[0] * ['x'] + flat_pred.shape[0] * ['y'],
+    'coord': coords_arr.flatten(),
 })
 # plot marginals
-g = sns.jointplot(x='true', y='pred', hue='coord', data=df, s=3, alpha=0.4)
+subdf = df
+subdf = df[df['coord'].isin(['y'])]
+
+g = sns.jointplot(x='true', y='pred', hue='coord', data=subdf, s=3, alpha=0.4)
 
 # set title
 g.fig.suptitle(f'{query} {mode} {target_dataset} Velocity R2: {heldin_metrics["test_kinematic_r2"]:.2f}')
