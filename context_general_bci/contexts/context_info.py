@@ -512,10 +512,6 @@ class BCIContextInfo(ReachingContextInfo):
                 if blacklist_check_key in pitt_metadata:
                     session_type = pitt_metadata[blacklist_check_key]
                     control = 'default'
-            if subject.endswith('Home'):
-                subject = subject[:-4]
-            elif subject.endswith('Lab'):
-                subject = subject[:-3]
             subject = subject[:3].upper() + subject[3:]
             if simple:
                 alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}'

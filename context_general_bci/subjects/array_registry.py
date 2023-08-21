@@ -36,8 +36,8 @@ class SubjectArrayRegistry:
                 cls._alias_registry[to_register.wrap_array(alias)] = [to_register.wrap_array(a) for a in to_register.aliases[alias]]
 
             if other_aliases:
-                for alias in other_aliases:
-                    cls._alias_registry[alias] = to_register # or whatever you intend to do with other aliases
+                for alias in other_aliases: # Lol, these are subject aliases, not array aliases
+                    cls._subject_registry[alias] = to_register # or whatever you intend to do with other aliases
 
             return to_register
 
@@ -87,7 +87,7 @@ class SubjectArrayRegistry:
 
     @classmethod
     def query_by_subject(cls, id: Union[SubjectName, str]) -> SubjectInfo:
-        if isinstance(id, str):
+        if isinstance(id, str) and id in SubjectName.__members__:
             id = getattr(SubjectName, id)
         return cls._subject_registry[id]
 
