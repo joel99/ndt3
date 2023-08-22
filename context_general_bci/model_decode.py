@@ -46,7 +46,7 @@ from context_general_bci.components import (
     ReadinCrossAttention,
     ContextualMLP,
 )
-from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_temporal_padding_mask, TaskPipeline
+from context_general_bci.task_io import task_modules, SHUFFLE_KEY, TaskPipeline
 from context_general_bci.tasks.pitt_co import CLAMP_MAX
 logger = logging.getLogger(__name__)
 
@@ -448,7 +448,6 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             times=time,
             positions=position,
             trial_context=trial_context,
-            # temporal_padding_mask=None,
             causal=self.causal,
         ) # B x Token x H (flat)
         # print(f'feat iter: ', features.shape, features.sum())

@@ -35,7 +35,7 @@ from context_general_bci.components import (
     ReadinCrossAttention,
     ContextualMLP,
 )
-from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_temporal_padding_mask
+from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_token_padding_mask
 from context_general_bci.utils import enum_backport
 
 logger = logging.getLogger(__name__)
@@ -631,12 +631,9 @@ class BrainBertInterface(pl.LightningModule):
 
         breakpoint() # Deal with padding from additional temporal context input?
 
-        temporal_padding_mask = create_token_padding_mask(state_in, batch)
-        if DataKey.extra in batch and not self.data_attrs.serve_tokens_flat: # serve_tokens_flat is enc dec, don't integrate extra (query) tokens in enc
-            state_in = torch.cat([state_in, batch[DataKey.extra]], dim=1)
-            if temporal_padding_mask is not None: # Implicit - if we have extra that warrants padding, base certainly warrants padding
-                extra_padding_mask = create_token_padding_mask(batch[DataKey.extra], batch, length_key=COVARIATE_LENGTH_KEY)
-                temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
+        token_padding_mask = create_token_padding_mask(state_in, batch)
+        # truncate to length of actual tokens (function will return full padding mask, disregarding crop done in shuffling)
+        token_padding_mask = token_padding_mask[:, :state_in.shape[1]] # TODO: technically should match encoder_frac
 
         # Merge temporal context into mainline seq (in NDT3, data/neuro is not revealed to backbone)
         state_in, ps = pack([state_in, pipeline_context], 'b * h')
@@ -645,7 +642,6 @@ class BrainBertInterface(pl.LightningModule):
 
         # TODO make sure the padding is right, accounting for shuffled in data.
         breakpoint()
-        print(temporal_padding_mask) # what is this even...
 
         if self.cfg.transformer.n_layers == 0:
             outputs = state_in
@@ -653,8 +649,7 @@ class BrainBertInterface(pl.LightningModule):
             outputs: torch.Tensor = self.backbone(
                 state_in,
                 trial_context=trial_context,
-                temporal_padding_mask=temporal_padding_mask,
-                space_padding_mask=None,
+                padding_mask=token_padding_mask,
                 causal=self.cfg.causal,
                 times=times,
                 positions=space,

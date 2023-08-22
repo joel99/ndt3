@@ -414,44 +414,13 @@ class SpaceTimeTransformer(nn.Module):
             src_mask = repeat(src_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
         return src_mask
 
-    def make_padding_mask(
-        self, b, t, s, src: torch.Tensor, temporal_context: Optional[torch.Tensor], space_padding_mask: Optional[torch.Tensor], temporal_padding_mask: Optional[torch.Tensor],
-    ):
-        r"""
-            return (b t s) src_key_pad_mask - prevents attending _to_, but not _from_. That should be fine.
-            This doesn't include trial context pad (we keep unsquashed so spacetime code can reuse)
-        """
-        if temporal_padding_mask is not None or space_padding_mask is not None:
-            padding_mask = torch.zeros((b, t, s), dtype=torch.bool, device=src.device)
-
-            # Deal with known src padding tokens
-            if space_padding_mask is not None:
-                padding_mask |= rearrange(space_padding_mask, 'b s -> b () s')
-
-            # Concat padding mask with temporal context (which augments spatial)
-            if temporal_context is not None:
-                raise NotImplementedError # ! Bugcheck, pretty sure this should be in time dim
-                padding_mask = F.pad(padding_mask, (0, temporal_context.size(-2)), value=False)
-            # Temporal context can be padding, according to temporal padding mask
-            if temporal_padding_mask is not None:
-                padding_mask |= rearrange(temporal_padding_mask, 'b t -> b t ()')
-            return padding_mask
-            # padding_mask = rearrange(padding_mask, 'b t s -> b (t s)')
-            # # Trial context is never padded
-            # if len(trial_context) > 0:
-            #     padding_mask = F.pad(padding_mask, (0, trial_context.size(1)), value=False)
-            # return padding_mask
-        else:
-            return None
-
     def forward(
         self,
-        src: torch.Tensor, # B T A H - embedded already (or possibly B T A S_A H), or B Token H. NDT3 assuems last.
+        src: torch.Tensor, # B T H, already embedded. (Flat spacetime path now asserted, can't deal with heterogeneity otherwise (need to implement hierarchy carefully again if so).)
         trial_context: List[torch.Tensor] = [], # T' [B H]
+        padding_mask: Optional[torch.Tensor] = None, # B T
         temporal_context: List[torch.Tensor | None] = [], # cov_types [B TC H]
         temporal_times: List[torch.Tensor | None] = [], # cov_types [B TC]
-        temporal_padding_mask: Optional[torch.Tensor] = None, # B T
-        space_padding_mask: Optional[torch.Tensor] = None, # B A/S
         causal: bool=True,
         times: Optional[torch.Tensor] = None, # for flat spacetime path, B x Token
         positions: Optional[torch.Tensor] = None, # for flat spacetime path
@@ -463,7 +432,6 @@ class SpaceTimeTransformer(nn.Module):
             Each H is a token to be transformed with other T x A tokens.
             Additional T' and T tokens from context are included as well.
 
-            `space_padding_mask`: Second dim is Array if src has_array_dim, else Space.
             We assume that the provided trial and temporal context is consistently shaped. i.e. any context provided is provided for all samples.
             (So attention masks do not vary across batch)
         """
@@ -489,155 +457,89 @@ class SpaceTimeTransformer(nn.Module):
         else:
             trial_context = None
         # === Transform ===
-        if self.cfg.factorized_space_time:
-            assert temporal_context_stack == None, "Temporal context not supported with factorized space time"
-            padding_mask = self.make_padding_mask(b, t, s, src, temporal_context, space_padding_mask, temporal_padding_mask)
-            # space first
-            space_src = [src]
+        contextualized_src = [src]
+        if not self.cross_attn_enabled: # If cross attn is enabled, context goes into memory. Otherwise, it's in src.
             if temporal_context is not None:
-                space_src.append(temporal_context)
-                temporal_context_size = temporal_context.size(-2)
-            else:
-                temporal_context_size = 0
+                contextualized_src.append(temporal_context)
             if trial_context is not None:
-                trial_context_size = trial_context.size(-2)
-                space_trial_context = repeat(trial_context, 'b tc h -> b t tc h', t=t)
-                space_src.append(space_trial_context)
-            else:
-                trial_context_size = 0
-            space_src, ps = pack(space_src, 'b t * h')
-            space_src = rearrange(space_src, 'b t k h -> (b t) k h') # k = s + temp_ctx + trial_ctx
+                contextualized_src.append(trial_context)
+        contextualized_src, ps = pack(contextualized_src, 'b * h') # b [(t a) + (t n) + t'] h
 
-            space_padding_mask = rearrange(padding_mask, 'b t s -> (b t) s')
-            space_padding_mask = F.pad(space_padding_mask, (0, trial_context_size), value=False)
+        src_mask = self.make_src_mask(src, temporal_context, trial_context, times, t, s, causal=causal) # TODO
 
-            # if there are no context tokens, some spatial sequences may be all padding (e.g. if we pad a trial to a fixed length)
-            # in this case, attention will by default produce nans
-            # filtering after the fact didn't work (nans still propagated for some unknown reason)
-            # so here we filter before hand, which seems to work...
-            # note that this empty seq issue only occurs in space; there is always at least one time token to transform
-            if not trial_context_size:
-                is_empty_seq = torch.all(space_padding_mask, dim=-1)
-                # we'll just allow attention in this case, but mask out after the fact to avoid nans
-                space_padding_mask[is_empty_seq] = False
-            space_src = self.space_transformer_encoder(
-                space_src,
-                self.make_src_mask(src, temporal_context, trial_context, times, 1, s, causal=causal),
-                src_key_padding_mask=space_padding_mask
-            )
-            if not trial_context_size:
-                space_src = torch.where(rearrange(is_empty_seq, 'bt -> bt 1 1'), 0, space_src)
+        if padding_mask is None:
+            padding_mask = torch.zeros((b, t), dtype=torch.bool, device=src.device)
 
-            space_src, space_trial_context = torch.split(space_src, [s + temporal_context_size, trial_context_size], 1)
+        # Trial context is never padded
+        if trial_context is not None and not self.cross_attn_enabled:
+            padding_mask = F.pad(padding_mask, (0, trial_context.size(-2)), value=False)
 
-            # we can either use this updated context
-            # trial context may have updated from spatial transformations (e.g. subject-session interxns)
-            # we still want to provide this context to temporal transformer;
-            # we can either use this updated context or take trial_context from before
-            # we'll prefer to use updated context
-            time_src = rearrange(space_src, '(b t) s h -> (b s) t h', b=b)
+        # TODO temporal context padding
+
+        # import pdb;pdb.set_trace()
+        # print(t, s, contextualized_src.size(), src_mask.size(), padding_mask.size())
+        # ! Bug patch note
+        # There's an edge case that nans out outputs. It occurs when a padding token can't attend to anything.
+        # This occurs specifically due to confluence of:
+        # 1. padding specified by `src_key_padding_mask` can't be attended to (no self attending)
+        # 2. we use shuffle on heterogeneous datasets. So we may get datapoints that have no real data in given timesteps.
+        # 3. pad value set to 0, so padding gets marked at time 0
+        # 4. all timestep 0 tokens are padding (no other tokens in sequence that can be attended to)
+        # Suggested fix: pad value set to something nonzero. (IDR why we didn't set that in the first place, I think concerns about attending to sub-chunk padding?)
+        # import pdb;pdb.set_trace()
+        if self.cross_attn_enabled:
+            # cross_ctx = [i for i in [memory, trial_context] if i is not None] # verbose for torchscript
+            cross_ctx = []
+            if memory is not None:
+                cross_ctx.append(memory)
             if trial_context is not None:
-                space_trial_context = reduce(space_trial_context, '(b t) tc h -> b tc h', t=t, reduction='mean')
-                time_trial_context = repeat(space_trial_context, 'b tc h -> (b s) tc h', s=s)
-                time_src, ps = pack([time_src, time_trial_context], 'b * h')
-
-            time_padding_mask = rearrange(padding_mask, 'b t s -> (b s) t')
-            time_padding_mask = F.pad(time_padding_mask, (0, trial_context_size), value=False)
-
-            time_src = self.time_transformer_encoder(
-                time_src,
-                self.make_src_mask(src, temporal_context, trial_context, times, t, 1, causal=causal),
-                src_key_padding_mask=time_padding_mask
-            )
-            if trial_context_size:
-                time_src = time_src[:, :-trial_context_size]
-            output = rearrange(time_src, '(b s) t h -> b t s h', b=b)
-        else:
-            contextualized_src = [src]
-            if not self.cross_attn_enabled: # If cross attn is enabled, context goes into memory. Otherwise, it's in src.
-                if temporal_context is not None:
-                    contextualized_src.append(temporal_context)
+                cross_ctx.append(trial_context)
+            memory = torch.cat(cross_ctx, dim=1)
+            if memory_times is None: # No mask needed for trial-context only, unless specified
+                memory_mask = None
+            else: # This is the covariate decode path
+                memory_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(
+                    times, memory_times
+                )
                 if trial_context is not None:
-                    contextualized_src.append(trial_context)
-            contextualized_src, ps = pack(contextualized_src, 'b * h') # b [(t a) + (t n) + t'] h
-
-            src_mask = self.make_src_mask(src, temporal_context, trial_context, times, t, s, causal=causal) # TODO
-
-            if temporal_padding_mask is not None:
-                padding_mask = temporal_padding_mask
-            else:
-                padding_mask = torch.zeros((b, t), dtype=torch.bool, device=src.device)
-
-            # Trial context is never padded
-            if trial_context is not None and not self.cross_attn_enabled:
-                padding_mask = F.pad(padding_mask, (0, trial_context.size(-2)), value=False)
-
-            # TODO temporal context padding
-
-            # import pdb;pdb.set_trace()
-            # print(t, s, contextualized_src.size(), src_mask.size(), padding_mask.size())
-            # ! Bug patch note
-            # There's an edge case that nans out outputs. It occurs when a padding token can't attend to anything.
-            # This occurs specifically due to confluence of:
-            # 1. padding specified by `src_key_padding_mask` can't be attended to (no self attending)
-            # 2. we use shuffle on heterogeneous datasets. So we may get datapoints that have no real data in given timesteps.
-            # 3. pad value set to 0, so padding gets marked at time 0
-            # 4. all timestep 0 tokens are padding (no other tokens in sequence that can be attended to)
-            # Suggested fix: pad value set to something nonzero. (IDR why we didn't set that in the first place, I think concerns about attending to sub-chunk padding?)
-            # import pdb;pdb.set_trace()
-            if self.cross_attn_enabled:
-                # cross_ctx = [i for i in [memory, trial_context] if i is not None] # verbose for torchscript
-                cross_ctx = []
-                if memory is not None:
-                    cross_ctx.append(memory)
-                if trial_context is not None:
-                    cross_ctx.append(trial_context)
-                memory = torch.cat(cross_ctx, dim=1)
-                if memory_times is None: # No mask needed for trial-context only, unless specified
-                    memory_mask = None
-                else: # This is the covariate decode path
-                    memory_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(
-                        times, memory_times
-                    )
+                    memory_mask = torch.cat([memory_mask, torch.zeros(
+                        (memory_mask.size(0), contextualized_src.size(1), trial_context.size(1)),
+                        dtype=torch.float, device=memory_mask.device
+                    )], dim=-1)
+                if temporal_context is not None: # P sure last dim is the attended to dim
+                    breakpoint()
+                    memory_mask = F.pad(memory_mask, (0, temporal_context.size(-2)), value=float('-inf')) # ! No! We want to be able to attend to this, precisely using temporal_times
+                memory_mask = repeat(memory_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
+                if memory_padding_mask is not None:
                     if trial_context is not None:
-                        memory_mask = torch.cat([memory_mask, torch.zeros(
-                            (memory_mask.size(0), contextualized_src.size(1), trial_context.size(1)),
-                            dtype=torch.float, device=memory_mask.device
-                        )], dim=-1)
-                    if temporal_context is not None: # P sure last dim is the attended to dim
-                        breakpoint()
-                        memory_mask = F.pad(memory_mask, (0, temporal_context.size(-2)), value=float('-inf')) # ! No! We want to be able to attend to this, precisely using temporal_times
-                    memory_mask = repeat(memory_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
-                    if memory_padding_mask is not None:
-                        if trial_context is not None:
-                            memory_padding_mask = F.pad(memory_padding_mask, (0, trial_context.size(1)), value=False)
-                        if temporal_context is not None:
-                            memory_padding_mask = F.pad(memory_padding_mask, (0, temporal_context.size(1)), value=False)
+                        memory_padding_mask = F.pad(memory_padding_mask, (0, trial_context.size(1)), value=False)
+                    if temporal_context is not None:
+                        memory_padding_mask = F.pad(memory_padding_mask, (0, temporal_context.size(1)), value=False)
 
-                # convert padding masks to float to suppress torch 2 warnings
-                if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
-                    if padding_mask is not None:
-                        padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
-                    if memory_padding_mask is not None:
-                        memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
-                output = self.transformer_encoder(
-                    contextualized_src,
-                    memory,
-                    tgt_mask=src_mask,
-                    tgt_key_padding_mask=padding_mask,
-                    memory_mask=memory_mask,
-                    memory_key_padding_mask=memory_padding_mask
-                )
-            else:
+            # convert padding masks to float to suppress torch 2 warnings
+            if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
                 if padding_mask is not None:
-                    if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
-                        padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
-                output = self.transformer_encoder(
-                    contextualized_src,
-                    src_mask,
-                    src_key_padding_mask=padding_mask
-                )
-            output, *_ = unpack(output, ps, 'b * h')
+                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+                if memory_padding_mask is not None:
+                    memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
+            output = self.transformer_encoder(
+                contextualized_src,
+                memory,
+                tgt_mask=src_mask,
+                tgt_key_padding_mask=padding_mask,
+                memory_mask=memory_mask,
+                memory_key_padding_mask=memory_padding_mask
+            )
+        else:
+            if padding_mask is not None:
+                if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
+                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+            output = self.transformer_encoder(
+                contextualized_src,
+                src_mask,
+                src_key_padding_mask=padding_mask
+            )
+        output, *_ = unpack(output, ps, 'b * h')
 
         output = self.dropout_out(output)
         if self.cfg.pre_norm and self.cfg.final_norm:
@@ -761,7 +663,7 @@ class SpaceTimeTransformerDecoderScript(nn.Module):
         # trial_context: List[torch.Tensor], # T' [B H]
         memory: torch.Tensor, # memory as other context if needed for covariate decoder flow
         memory_times: Optional[torch.Tensor] = None, # solely for causal masking, not for re-embedding
-        temporal_padding_mask: Optional[torch.Tensor] = None, # B T
+        padding_mask: Optional[torch.Tensor] = None, # B T
         memory_padding_mask: Optional[torch.Tensor] = None,
         causal: bool=True,
     ) -> torch.Tensor: # T B H
@@ -775,12 +677,8 @@ class SpaceTimeTransformerDecoderScript(nn.Module):
 
         src_mask = self.make_src_mask(src, trial_context, times, t, s, causal=causal)
 
-        if temporal_padding_mask is not None:
-            padding_mask = temporal_padding_mask
-        else:
-            # padding_mask = torch.zeros((b, t), dtype=torch.float, device=src.device) # pytorch compile complains
+        if padding_mask is None:
             padding_mask = torch.zeros((b, t), dtype=torch.bool, device=src.device)
-            # padding_mask = padding_mask.masked_fill(padding_mask, float('-inf'))
 
         # Trial context is never padded
         memory = torch.cat([memory, trial_context], dim=1)
@@ -911,7 +809,6 @@ class SpaceTimeTransformerEncoderScript(nn.Module):
         times: torch.Tensor, # for flat spacetime path, B x Token
         positions: torch.Tensor, # for flat spacetime path
         trial_context: torch.Tensor, # B T' H
-        # temporal_padding_mask: Optional[torch.Tensor] = None, # B T
         causal: bool=True,
     ) -> torch.Tensor: # T B H
         r"""
