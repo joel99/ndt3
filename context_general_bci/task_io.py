@@ -11,6 +11,8 @@ from einops.layers.torch import Rearrange
 from sklearn.metrics import r2_score
 import logging
 
+logger = logging.getLogger(__name__)
+
 from context_general_bci.config import (
     ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey,
 )
@@ -767,19 +769,19 @@ class TemporalTokenInjector(nn.Module):
         self.pad_value = data_attrs.pad_token
         self.max_space = data_attrs.max_spatial_tokens
 
-    def inject(self, batch: Dict[str, torch.Tensor], in_place=False):
+    def inject(self, batch: Dict[str, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None):
         # Implement injection
         # Assumption is that behavior time == spike time (i.e. if spike is packed, so is behavior), and there's no packing
         b, t = batch[self.reference].size()[:2]
+        if injected_time is None:
+            injected_time = torch.arange(t, device=batch[self.reference].device)
         if getattr(self.cfg, 'decode_tokenize_dims', False):
             injected_tokens = repeat(self.cls_token, 'd h -> b (t d) h',
                 b=b,
                 t=t, # Time (not _token_, i.e. in spite of flat serving)
                 d=self.decode_dims,
             )
-            injected_time = repeat(torch.arange(
-                t, device=batch[self.reference].device
-            ), 't -> b (t d)', b=b, d=self.decode_dims)
+            injected_time = repeat(injected_time, 't -> b (t d)', b=b, d=self.decode_dims)
             injected_space = repeat(torch.arange(
                 self.decode_dims, device=batch[self.reference].device
             ), 'd -> b (t d)', b=b, t=t)
@@ -788,9 +790,7 @@ class TemporalTokenInjector(nn.Module):
                 b=b,
                 t=t, # Time (not _token_, i.e. in spite of flat serving)
             )
-            injected_time = repeat(torch.arange(
-                t, device=batch[self.reference].device
-            ), 't -> b t', b=b)
+            injected_time = repeat(injected_time, 't -> b t', b=b)
             injected_space = torch.full(
                 (b, t),
                 self.max_space - 1, # ! For heldout prediction path, we want to inject a clearly distinguished space token
@@ -978,7 +978,7 @@ class CovariateReadout(TaskPipeline):
         self.injector = TemporalTokenInjector(
             cfg,
             data_attrs,
-            self.cfg.behavior_target,
+            self.cfg.behavior_target if self.cfg.covariate_mask_ratio == 1.0 else 'covariate_target',
             force_zero_mask=self.decode_cross_attn and not getattr(self.cfg, 'decode_tokenize_dims', False)
         )
         self.time_pad = cfg.transformer.max_trial_length
@@ -1035,15 +1035,14 @@ class CovariateReadout(TaskPipeline):
         raise NotImplementedError
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
-        if getattr(self.cfg, 'covariate_mask_ratio', 1.0) < 1.0:
-            batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode)
+        if self.cfg.covariate_mask_ratio < 1.0:
+            batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
         if self.cfg.decode_strategy != EmbedStrat.token or self.cfg.decode_separate:
             return batch
+        logger.warning('Legacy injection path - should this be running?')
+        breakpoint()
         self.injector.inject(batch, in_place=True)
         return batch
-
-    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
-        return batch[self.cfg.behavior_target], batch[f'covariate_{DataKey.time}']
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
         covariates = batch[self.cfg.behavior_target] # Assume B x T x H
@@ -1082,13 +1081,16 @@ class CovariateReadout(TaskPipeline):
                 backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
                 if Output.pooled_features in self.cfg.outputs:
                     batch_out[Output.pooled_features] = backbone_features.detach()
-            decode_tokens, decode_time, decode_space = self.injector.inject(batch)
-            if not getattr(self.cfg, 'decode_tokenize_dims', False):
+            decode_tokens, decode_time, decode_space = self.injector.inject(
+                batch,
+                injected_time=batch['covariate_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
+            )
+            if not self.cfg.decode_tokenize_dims:
                 # Clip decode space to 0, space isn't used for this decoder
                 decode_space = torch.zeros_like(decode_space)
-
             if self.cfg.decode_time_pool:
-                assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'time pool not implemented with tokenized dims'
+                assert not self.cfg.covariate_mask_ratio < 1.0, "not implemented"
+                assert not self.cfg.decode_tokenize_dims, 'time pool not implemented with tokenized dims'
                 src_time = decode_time
                 src_space = torch.zeros_like(decode_space)
                 if backbone_features.size(1) < src_time.size(1):
@@ -1097,11 +1099,8 @@ class CovariateReadout(TaskPipeline):
                     temporal_padding_mask = F.pad(temporal_padding_mask, (0, src_time.size(1) - temporal_padding_mask.size(1)), value=True)
             else:
                 src_time = batch.get(DataKey.time, None)
-                # Only used in non-cross attn path. JY doesn't remember why I zero-ed this out, but skipping over for tokenize dim decode
-                if DataKey.position not in batch:
-                    src_space = None
-                else:
-                    src_space = torch.zeros_like(batch[DataKey.position])
+                # Space only used in non-cross attn path. JY doesn't remember why I zero-ed this out, but skipping over for tokenize dim decode
+                src_space = torch.zeros_like(batch[DataKey.position]) if DataKey.position in batch else None
             if self.causal and self.cfg.behavior_lag_lookahead:
                 # allow looking N-bins of neural data into the "future"; we back-shift during the actual loss comparison.
                 decode_time = decode_time + self.bhvr_lag_bins
@@ -1120,10 +1119,10 @@ class CovariateReadout(TaskPipeline):
                             decode_tokens,
                             batch,
                             length_key=COVARIATE_LENGTH_KEY,
-                            duplicity=self.cov_dims if getattr(self.cfg, 'decode_tokenize_dims', False) else 1
+                            duplicity=self.cov_dims if self.cfg.decode_tokenize_dims else 1
                         )
                 else:
-                    assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'non-cross attn not implemented with tokenized dims'
+                    assert not self.cfg.decode_tokenize_dims, 'non-cross attn not implemented with tokenized dims'
                     decoder_input = torch.cat([backbone_features, decode_tokens], dim=1)
                     times = torch.cat([src_time, decode_time], dim=1)
                     # Ok, this is subtle
@@ -1157,7 +1156,7 @@ class CovariateReadout(TaskPipeline):
                 trial_context=trial_context,
                 times=times,
                 positions=positions,
-                space_padding_mask=None, # (low pri, only needed if space queries are heterogeneous. Needed for NDT3 in general)
+                space_padding_mask=None, # (low pri, only needed if space queries are heterogeneous. # TODO Needed for tokenized bhvr in NDT3)
                 causal=self.causal,
                 **other_kwargs
             )
@@ -1168,7 +1167,6 @@ class CovariateReadout(TaskPipeline):
         else:
             # nonflat path
             _, backbone_features = unpack(backbone_features, ps, 'b t * h')
-            # backbone_features = backbone_features[...,-1, :]
         return self.out(backbone_features)
 
     def get_target(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -1269,10 +1267,21 @@ class BehaviorRegression(CovariateReadout):
         We will not make decoder fancy.
     """
     def initialize_readin(self):
-        if getattr(self.cfg, 'decode_tokenize_dims', False):
+        if self.cfg.decode_tokenize_dims: # NDT3 style
             self.inp = nn.Linear(1, self.cfg.hidden_size)
-        else:
+        else: # NDT2 style
             self.inp = nn.Linear(self.data_attrs.behavior_dim, self.cfg.hidden_size)
+
+    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
+        if self.cfg.covariate_mask_ratio == 1.0:
+            return None, None
+        time = batch[f'covariate_{DataKey.time}']
+        bhvr = self.inp(batch[self.cfg.behavior_target]) # B T Bhvr_Dims or B (T Bhvr_Dims) -> B T Bhvr_Dims H / B (T Bhvr_Dims) H
+        if self.cfg.decode_tokenize_dims:
+            if bhvr.ndim > 3:
+                bhvr = rearrange(bhvr, 'b t bhvr_dim h -> b (t bhvr_dim) h') # TODO phase out, we should serve tokenized behavior
+                time = repeat(time, 'b t -> b (t bhvr_dim)', bhvr_dim=self.cov_dims)
+        return bhvr, time
 
     def initialize_readout(self, backbone_size):
         if getattr(self.cfg, 'decode_tokenize_dims', False):
@@ -1313,7 +1322,7 @@ class BehaviorClassification(CovariateReadout):
     """
     QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
     def initialize_readin(self, backbone_size): # Assume quantized readin...
-        self.inp = nn.Embedding(self.QUANTIZE_CLASSES, self.cfg.hidden_size)
+        self.inp = nn.Embedding(self.QUANTIZE_CLASSES, backbone_size)
 
     def initialize_readout(self, backbone_size):
         if self.cfg.decode_tokenize_dims:
@@ -1324,6 +1333,21 @@ class BehaviorClassification(CovariateReadout):
         assert self.spacetime, "BehaviorClassification requires spacetime path"
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
+
+    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
+        # Note: behavior is _not_ quantized at this point, we quantize herein during embed.
+        if self.cfg.covariate_mask_ratio == 1.0:
+            return None, None
+        bhvr = self.inp(self.quantize(batch[self.cfg.behavior_target])) # B T Bhvr_Dims -> B T Bhvr_Dims H.
+        time = batch[f'covariate_{DataKey.time}']
+        if self.cfg.decode_tokenize_dims:
+            # JY isn't clear yet whether (T Bhvr_Dims) will be together or apart, so we try to support both
+            if bhvr.ndim > 3:
+                bhvr = rearrange(bhvr, 'b t bhvr_dim h -> b (t bhvr_dim) h')
+                time = repeat(time, 'b t -> b (t bhvr_dim)', bhvr_dim=self.cov_dims)
+        else: # How shall we encode?
+            bhvr  = bhvr.sum(-2) # B T Bhvr_Dims H -> B T H
+        return bhvr, time
 
     def quantize(self, x: torch.Tensor):
         x = torch.where(x != self.pad_value, x, 0)
