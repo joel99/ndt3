@@ -525,7 +525,6 @@ class BrainBertInterface(pl.LightningModule):
             Returns:
                 state_in: B x T x A x H (A should be flattened in backbone)
                 static_context: List(T') [B x H]
-                # temporal_context: List(?) [B x T x H] - moved outside
         """
         assert self.cfg.array_embed_strategy == EmbedStrat.none, "Array embed strategy deprecated"
 
@@ -618,14 +617,16 @@ class BrainBertInterface(pl.LightningModule):
     def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         # returns backbone features B T S H
         state_in, trial_context = self._prepare_inputs(batch)
-        temporal_context = {}
-        temporal_times = {}
+        pipeline_context = {} # really, these should be other dataloaders/data modules, pipeline is a bad abstraction
+        pipeline_times = {}
+        pipeline_space = {}
 
         for tk, tp in self.task_pipelines.items():
-            temporal_context[tk], temporal_times[tk] = tp.get_temporal_context(batch)
-        temporal_context = [tc for tc in temporal_context.values() if tc is not None]
-        temporal_times = [tt for tt in temporal_times.values() if tt is not None]
-        # tks = [tk for tk in temporal_context.keys() if temporal_context[tk] is not None]
+            pipeline_context[tk], pipeline_times[tk], pipeline_space = tp.get_context(batch)
+        pipeline_context = [tc for tc in pipeline_context.values() if tc is not None]
+        pipeline_times = [tt for tt in pipeline_times.values() if tt is not None]
+        pipeline_space = [ts for ts in pipeline_space.values() if ts is not None]
+        # tks = [tk for tk in pipeline_context.keys() if pipeline_context[tk] is not None]
 
 
         breakpoint() # Deal with padding from additional temporal context input?
@@ -638,11 +639,13 @@ class BrainBertInterface(pl.LightningModule):
                 temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
 
         # Merge temporal context into mainline seq (in NDT3, data/neuro is not revealed to backbone)
-        state_in, ps = pack([state_in, temporal_context], 'b * h')
-        times = pack([batch[DataKey.time], temporal_times], 'b *')
-        # todo I have no spatial dimension specified, have task_io serve it
-        space = pack([batch[DataKey.position], temporal_space], 'b *')
-        # TODO make sure the padding is right
+        state_in, ps = pack([state_in, pipeline_context], 'b * h')
+        times = pack([batch[DataKey.time], pipeline_times], 'b *')
+        space = pack([batch[DataKey.position], pipeline_space], 'b *')
+
+        # TODO make sure the padding is right, accounting for shuffled in data.
+        breakpoint()
+        print(temporal_padding_mask) # what is this even...
 
         if self.cfg.transformer.n_layers == 0:
             outputs = state_in
@@ -650,8 +653,6 @@ class BrainBertInterface(pl.LightningModule):
             outputs: torch.Tensor = self.backbone(
                 state_in,
                 trial_context=trial_context,
-                temporal_context=temporal_context,
-                temporal_times=temporal_times,
                 temporal_padding_mask=temporal_padding_mask,
                 space_padding_mask=None,
                 causal=self.cfg.causal,

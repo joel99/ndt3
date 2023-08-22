@@ -193,16 +193,17 @@ class TaskPipeline(nn.Module):
             channel_mask = None
         return loss_mask, length_mask, channel_mask
 
-    def get_temporal_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | None, torch.Tensor | None]:
+    def get_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
         r"""
-            Temporal context for covariates that should be embedded.
+            Context for covariates that should be embedded.
             (e.g. behavior, stimuli, ICMS)
             JY co-opting to also just track separate covariates that should possibly be reoncstructed (but main model doesn't know to do this atm, may need to signal.)
             returns:
             - a sequence of embedded tokens (B T H)
             - their associated timesteps. (B T)
+            - their associated space steps (B T)
         """
-        return None, None
+        return None, None, None
 
     def get_trial_context(self, batch: Dict[str, torch.Tensor]):
         r"""
@@ -213,7 +214,7 @@ class TaskPipeline(nn.Module):
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         r"""
-            Currently redundant with get_temporal_context - need to refactor.
+            Currently redundant with get_context - need to refactor.
             It could be that this forces a one-time modification.
             Update batch in place for modifying/injecting batch info.
         """
@@ -1081,6 +1082,24 @@ class CovariateReadout(TaskPipeline):
         })
         return batch
 
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        if self.cfg.covariate_mask_ratio == 1.0:
+            return None, None
+        cov = self.encode_cov(batch[self.cfg.behavior_target])
+        time = batch[f'covariate_{DataKey.time}']
+        space = batch[f'covariate_{DataKey.position}']
+        if self.cfg.decode_tokenize_dims:
+            # JY isn't clear yet whether (T Bhvr_Dims) will be together or apart, so we try to support both
+            if cov.ndim > 3:
+                cov = rearrange(cov, 'b t bhvr_dim h -> b (t bhvr_dim) h')
+                time = repeat(time, 'b t -> b (t bhvr_dim)', bhvr_dim=self.cov_dims)
+                space = repeat(space, 'b t -> b (t bhvr_dim)', bhvr_dim=self.cov_dims)
+        return cov, time, space
+
+    @abc.abstractmethod
+    def encode_cov(self, covariate: torch.Tensor) -> torch.Tensor: # B T Bhvr_Dims or possibly B (T Bhvr_Dims)
+        raise NotImplementedError
+
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         if self.cfg.decode_separate:
             temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
@@ -1088,9 +1107,10 @@ class CovariateReadout(TaskPipeline):
                 backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
                 if Output.pooled_features in self.cfg.outputs:
                     batch_out[Output.pooled_features] = backbone_features.detach()
+            # * This "injection" step only really needs to happen if we've not already injected covariates as inputs; in that case, we need to retrieve previously injected info (see `crop_batch`)
             decode_tokens, decode_time, decode_space = self.injector.inject(
                 batch,
-                injected_time=batch[f'covariate_{DataKey.time}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
+                injected_time=batch[f'covariate_{DataKey.time}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None,
                 injected_space=batch[f'covariate_{DataKey.position}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
             )
             if not self.cfg.decode_tokenize_dims:
@@ -1280,16 +1300,8 @@ class BehaviorRegression(CovariateReadout):
         else: # NDT2 style
             self.inp = nn.Linear(self.data_attrs.behavior_dim, self.cfg.hidden_size)
 
-    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
-        if self.cfg.covariate_mask_ratio == 1.0:
-            return None, None
-        time = batch[f'covariate_{DataKey.time}']
-        bhvr = self.inp(batch[self.cfg.behavior_target]) # B T Bhvr_Dims or B (T Bhvr_Dims) -> B T Bhvr_Dims H / B (T Bhvr_Dims) H
-        if self.cfg.decode_tokenize_dims:
-            if bhvr.ndim > 3:
-                bhvr = rearrange(bhvr, 'b t bhvr_dim h -> b (t bhvr_dim) h') # TODO phase out, we should serve tokenized behavior
-                time = repeat(time, 'b t -> b (t bhvr_dim)', bhvr_dim=self.cov_dims)
-        return bhvr, time
+    def encode_cov(self, covariate: torch.Tensor):
+        return self.inp(covariate)
 
     def initialize_readout(self, backbone_size):
         if getattr(self.cfg, 'decode_tokenize_dims', False):
@@ -1342,20 +1354,12 @@ class BehaviorClassification(CovariateReadout):
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
 
-    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
-        # Note: behavior is _not_ quantized at this point, we quantize herein during embed.
-        if self.cfg.covariate_mask_ratio == 1.0:
-            return None, None
-        bhvr = self.inp(self.quantize(batch[self.cfg.behavior_target])) # B T Bhvr_Dims -> B T Bhvr_Dims H.
-        time = batch[f'covariate_{DataKey.time}']
-        if self.cfg.decode_tokenize_dims:
-            # JY isn't clear yet whether (T Bhvr_Dims) will be together or apart, so we try to support both
-            if bhvr.ndim > 3:
-                bhvr = rearrange(bhvr, 'b t bhvr_dim h -> b (t bhvr_dim) h')
-                time = repeat(time, 'b t -> b (t bhvr_dim)', bhvr_dim=self.cov_dims)
-        else: # How shall we encode?
-            bhvr  = bhvr.sum(-2) # B T Bhvr_Dims H -> B T H
-        return bhvr, time
+    def encode_cov(self, covariate: torch.Tensor):
+        # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
+        covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
+        if not self.cfg.decode_tokenize_dims:
+            covariate = covariate.sum(-2) # B T Bhvr_Dims H -> B T H
+        return covariate
 
     def quantize(self, x: torch.Tensor):
         x = torch.where(x != self.pad_value, x, 0)
