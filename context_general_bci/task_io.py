@@ -191,11 +191,16 @@ class TaskPipeline(nn.Module):
             channel_mask = None
         return loss_mask, length_mask, channel_mask
 
-    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
+    def get_temporal_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | None, torch.Tensor | None]:
         r"""
-            For task specific temporal _input_. (B T H)
+            Temporal context for covariates that should be embedded.
+            (e.g. behavior, stimuli, ICMS)
+            JY co-opting to also just track separate covariates that should possibly be reoncstructed (but main model doesn't know to do this atm, may need to signal.)
+            returns:
+            - a sequence of embedded tokens (B T H)
+            - their associated timesteps. (B T)
         """
-        return []
+        return None, None
 
     def get_trial_context(self, batch: Dict[str, torch.Tensor]):
         r"""
@@ -736,21 +741,6 @@ class NextStepPrediction(RatePrediction):
 
         return batch_out
 
-class ICMSNextStepPrediction(NextStepPrediction):
-    does_update_root = True
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
-        raise NotImplementedError # ! really unclear whether we want to update spikes like this...
-        # Remove final timestep, prepend "initial" quiet recording (for causal)
-        spikes = batch[DataKey.spikes]
-        spikes = torch.cat([torch.zeros_like(spikes[:,:1]), spikes[:,:-1]], 1)
-        batch.update({
-            DataKey.spikes: spikes
-        })
-        return batch
-
-    def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
-        parent = super().get_temporal_context(batch)
-        return [*parent, batch[DataKey.stim]]
 
 class TemporalTokenInjector(nn.Module):
     r"""
@@ -1001,7 +991,7 @@ class CovariateReadout(TaskPipeline):
                 context_integration=getattr(cfg, 'decoder_context_integration', 'in_context'),
                 embed_space=not self.decode_cross_attn
             )
-        self.out_dims = data_attrs.behavior_dim
+        self.cov_dims = data_attrs.behavior_dim
 
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space
@@ -1033,9 +1023,12 @@ class CovariateReadout(TaskPipeline):
         else:
             self.bhvr_mean = None
             self.bhvr_std = None
-
+        self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
 
+    @abc.abstractmethod
+    def initialize_readin(self):
+        raise NotImplementedError
 
     @abc.abstractmethod
     def initialize_readout(self):
@@ -1050,7 +1043,7 @@ class CovariateReadout(TaskPipeline):
         return batch
 
     def get_temporal_context(self, batch: Dict[str, torch.Tensor]):
-        return {}
+        return batch[self.cfg.behavior_target], batch[f'covariate_{DataKey.time}']
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
         covariates = batch[self.cfg.behavior_target] # Assume B x T x H
@@ -1058,12 +1051,15 @@ class CovariateReadout(TaskPipeline):
         if eval_mode:
             batch.update({
                 f'covariate_{SHUFFLE_KEY}': torch.arange(covariates.size(1), device=covariates.device),
+                f'covariate_{DataKey.time}': torch.arange(covariates.size(1), device=covariates.device),
                 'covariate_target': target,
                 'covariate_encoder_frac': covariates.size(1)
             })
         # TODO this will be tricky if we are tokenizing the covariate H dimension (then flatten T x H to TH x 1)
         shuffle = torch.randperm(covariates.size(1), device=covariates.device)
         encoder_frac = int((1 - mask_ratio) * covariates.size(1))
+        if f'covariate_{DataKey.time}' not in batch:
+            batch[f'covariate_{DataKey.time}'] = torch.arange(covariates.size(1), device=covariates.device) # Assume
         for key in [f'covariate_{DataKey.time}']: # TODO if tokenizing, add another position key
             if key in batch:
                 shuffled = apply_shuffle(batch[key], shuffle)
@@ -1124,7 +1120,7 @@ class CovariateReadout(TaskPipeline):
                             decode_tokens,
                             batch,
                             length_key=COVARIATE_LENGTH_KEY,
-                            duplicity=self.out_dims if getattr(self.cfg, 'decode_tokenize_dims', False) else 1
+                            duplicity=self.cov_dims if getattr(self.cfg, 'decode_tokenize_dims', False) else 1
                         )
                 else:
                     assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'non-cross attn not implemented with tokenized dims'
@@ -1272,11 +1268,17 @@ class BehaviorRegression(CovariateReadout):
         Because this is not intended to be a joint task, and backbone is expected to be tuned
         We will not make decoder fancy.
     """
+    def initialize_readin(self):
+        if getattr(self.cfg, 'decode_tokenize_dims', False):
+            self.inp = nn.Linear(1, self.cfg.hidden_size)
+        else:
+            self.inp = nn.Linear(self.data_attrs.behavior_dim, self.cfg.hidden_size)
+
     def initialize_readout(self, backbone_size):
         if getattr(self.cfg, 'decode_tokenize_dims', False):
             self.out = nn.Linear(backbone_size, 1)
         else:
-            self.out = nn.Linear(backbone_size, self.out_dims)
+            self.out = nn.Linear(backbone_size, self.cov_dims)
 
     def compute_loss(self, bhvr, bhvr_tgt):
         comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
@@ -1294,7 +1296,7 @@ class BehaviorRegression(CovariateReadout):
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         bhvr = super().get_cov_pred(batch, backbone_features, eval_mode, batch_out)
         if getattr(self.cfg, 'decode_tokenize_dims', False):
-            bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.out_dims)
+            bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.cov_dims)
         return bhvr
 
 def symlog(x: torch.Tensor):
@@ -1310,12 +1312,14 @@ class BehaviorClassification(CovariateReadout):
         Cross-attention, autoregressive classification.
     """
     QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
+    def initialize_readin(self, backbone_size): # Assume quantized readin...
+        self.inp = nn.Embedding(self.QUANTIZE_CLASSES, self.cfg.hidden_size)
 
     def initialize_readout(self, backbone_size):
         if self.cfg.decode_tokenize_dims:
             self.out = nn.Linear(backbone_size, self.QUANTIZE_CLASSES)
         else:
-            self.out = nn.Linear(backbone_size, self.QUANTIZE_CLASSES * self.out_dims)
+            self.out = nn.Linear(backbone_size, self.QUANTIZE_CLASSES * self.cov_dims)
         self.register_buffer('zscore_quantize_buckets', torch.linspace(-2., 2., self.QUANTIZE_CLASSES + 1)) # quite safe for expected z-score range. +1 as these are boundaries, not centers
         assert self.spacetime, "BehaviorClassification requires spacetime path"
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
@@ -1333,7 +1337,7 @@ class BehaviorClassification(CovariateReadout):
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         bhvr = super().get_cov_pred(batch, backbone_features, eval_mode, batch_out)
         if self.cfg.decode_tokenize_dims:
-            bhvr = rearrange(bhvr, 'b (t d) c -> b c t d', d=self.out_dims)
+            bhvr = rearrange(bhvr, 'b (t d) c -> b c t d', d=self.cov_dims)
         else:
             bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
         return bhvr

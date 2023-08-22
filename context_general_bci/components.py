@@ -284,7 +284,7 @@ class SpaceTimeTransformer(nn.Module):
         layer_cls = nn.TransformerEncoderLayer if context_integration == 'in_context' else FlippedDecoderLayer
         enc_cls = nn.TransformerEncoder if context_integration == 'in_context' else nn.TransformerDecoder
         self.cross_attn_enabled = context_integration == 'cross_attn'
-
+        assert self.cfg.flat_encoder, "Nonflat (array-based) encoder deprecated"
         enc_layer = layer_cls(
             self.cfg.n_state,
             self.cfg.n_heads,
@@ -380,17 +380,7 @@ class SpaceTimeTransformer(nn.Module):
             Use t=1 to produce a space only mask, s=1 to produce a time only mask
         """
         if causal:
-            if self.cfg.flat_encoder:
-                src_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(times)
-            else:
-                assert not self.cross_attn_enabled, "Causal non-flat not supported with cross attention"
-                src_mask = nn.Transformer.generate_square_subsequent_mask(t, device=src.device)
-                # Add array dimension
-                # this tiles such that the flat (t x a) tokens should be t1a1, t1a2, t2a1, t2a2, etc.
-                src_mask = rearrange(
-                    repeat(src_mask, 't1 t2 -> t1 t2 a1 a2', a1=s, a2=s),
-                    't1 t2 a1 a2 -> (t1 a1) (t2 a2)'
-                )
+            src_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(times)
         else:
             src_mask = None
         # Update src mask for context. Note that row is attender, col is attended.
@@ -426,7 +416,6 @@ class SpaceTimeTransformer(nn.Module):
 
     def make_padding_mask(
         self, b, t, s, src: torch.Tensor, temporal_context: Optional[torch.Tensor], space_padding_mask: Optional[torch.Tensor], temporal_padding_mask: Optional[torch.Tensor],
-        has_array_dim: bool = False, s_a: int = 0
     ):
         r"""
             return (b t s) src_key_pad_mask - prevents attending _to_, but not _from_. That should be fine.
@@ -437,8 +426,6 @@ class SpaceTimeTransformer(nn.Module):
 
             # Deal with known src padding tokens
             if space_padding_mask is not None:
-                if self.cfg.transform_space and has_array_dim:
-                    space_padding_mask = repeat(space_padding_mask, 'b a -> b (a s_a)', s_a=s_a)
                 padding_mask |= rearrange(space_padding_mask, 'b s -> b () s')
 
             # Concat padding mask with temporal context (which augments spatial)
@@ -459,9 +446,10 @@ class SpaceTimeTransformer(nn.Module):
 
     def forward(
         self,
-        src: torch.Tensor, # B T A H - embedded already (or possibly B T A S_A H), or B Token H
+        src: torch.Tensor, # B T A H - embedded already (or possibly B T A S_A H), or B Token H. NDT3 assuems last.
         trial_context: List[torch.Tensor] = [], # T' [B H]
-        temporal_context: List[torch.Tensor] = [], # TC' [B T H]
+        temporal_context: List[torch.Tensor | None] = [], # cov_types [B TC H]
+        temporal_times: List[torch.Tensor | None] = [], # cov_types [B TC]
         temporal_padding_mask: Optional[torch.Tensor] = None, # B T
         space_padding_mask: Optional[torch.Tensor] = None, # B A/S
         causal: bool=True,
@@ -482,50 +470,19 @@ class SpaceTimeTransformer(nn.Module):
         # import pdb;pdb.set_trace()
         src = self.dropout_in(src)
         # === Embeddings ===
-        if self.cfg.flat_encoder:
-            src = src + self.time_encoder(times)
-            if self.embed_space:
-                src = src + self.space_encoder(positions)
-            b, t, s = src.size(0), src.size(1), 1 # it's implied that codepaths get that "space" is not really 1, but it's not used
-            has_array_dim = False
-            s_a = 0
-        else:
-            # Note that space can essentially use array dim, only logic that needs to account is array_padding_mask
-            has_array_dim = src.ndim == 5
-            if self.cfg.transform_space and has_array_dim:
-                b, t, a, s_a, h = src.size() # s_a for space in array
-                src = rearrange(src, 'b t a s_a h -> b t (a s_a) h')
-                s = a * s_a
-            else:
-                b, t, s, h = src.size() # s for space/array
-                s_a = 0
-
-            # TODO make rotary
-            if isinstance(self.time_encoder, nn.Embedding):
-                if times is not None:
-                    time_embed = rearrange(self.time_encoder(times), 'b t h -> b t 1 h')
-                else:
-                    time_embed = rearrange(self.time_encoder(torch.arange(t, device=src.device)), 't h -> 1 t 1 h')
-            else:
-                time_embed = rearrange(self.time_encoder(src), 'b t h -> b t 1 h')
-            src = src + time_embed
-            if self.cfg.transform_space and self.embed_space:
-                # likely space will soon be given as input or pre-embedded, for now assume range
-                if self.space_encoder is not None:
-                    if positions is not None:
-                        space_embed = rearrange(self.space_encoder(positions), 'b s h -> b 1 s h')
-                    else:
-                        space_embed = rearrange(self.space_encoder(
-                            torch.arange(src.size(2), device=src.device)
-                        ), 's h -> 1 1 s h')
-                    src = src + space_embed
-
+        src = src + self.time_encoder(times)
+        if self.embed_space:
+            src = src + self.space_encoder(positions)
+        b, t, s = src.size(0), src.size(1), 1 # it's implied that codepaths get that "space" is not really 1, but it's not used
 
         if len(temporal_context) > 0:
-            assert not self.flat_encoder, "Temporal context not supported with flat encoder"
-            temporal_context = rearrange(temporal_context, 'tc b t h -> b t tc h')
+            assert False, "codepath abandoned, requisite covariate embed implemented in `model.py`"
+            # TODO fix this...
+            temporal_context_stack, temporal_context_pieces = pack(temporal_context, 'b * h')
+            temporal_times_stack, temporal_times_pieces = pack(temporal_times, 'b *')
         else:
-            temporal_context = None
+            temporal_context_stack = None
+
         if len(trial_context) > 0:
             trial_context, _ = pack(trial_context, 'b * h')
             # trial_context = rearrange(trial_context, 'tc b h -> b tc h') # trial context doesn't really belong in either space or time, can expand along each
@@ -533,7 +490,8 @@ class SpaceTimeTransformer(nn.Module):
             trial_context = None
         # === Transform ===
         if self.cfg.factorized_space_time:
-            padding_mask = self.make_padding_mask(b, t, s, src, temporal_context, space_padding_mask, temporal_padding_mask, has_array_dim=has_array_dim, s_a=s_a)
+            assert temporal_context_stack == None, "Temporal context not supported with factorized space time"
+            padding_mask = self.make_padding_mask(b, t, s, src, temporal_context, space_padding_mask, temporal_padding_mask)
             # space first
             space_src = [src]
             if temporal_context is not None:
@@ -596,28 +554,26 @@ class SpaceTimeTransformer(nn.Module):
             output = rearrange(time_src, '(b s) t h -> b t s h', b=b)
         else:
             contextualized_src = [src]
-            if not self.cross_attn_enabled:
+            if not self.cross_attn_enabled: # If cross attn is enabled, context goes into memory. Otherwise, it's in src.
                 if temporal_context is not None:
                     contextualized_src.append(temporal_context)
                 if trial_context is not None:
                     contextualized_src.append(trial_context)
             contextualized_src, ps = pack(contextualized_src, 'b * h') # b [(t a) + (t n) + t'] h
 
-            src_mask = self.make_src_mask(src, temporal_context, trial_context, times, t, s, causal=causal)
+            src_mask = self.make_src_mask(src, temporal_context, trial_context, times, t, s, causal=causal) # TODO
 
-            if self.cfg.flat_encoder:
-                if temporal_padding_mask is not None:
-                    padding_mask = temporal_padding_mask
-                else:
-                    padding_mask = torch.zeros((b, t), dtype=torch.bool, device=src.device)
+            if temporal_padding_mask is not None:
+                padding_mask = temporal_padding_mask
             else:
-                padding_mask = self.make_padding_mask(b, t, s, src, temporal_context, space_padding_mask, temporal_padding_mask, has_array_dim=has_array_dim)
-                if padding_mask is None:
-                    padding_mask = torch.zeros((b, t, s), dtype=torch.bool, device=src.device)
-                padding_mask = rearrange(padding_mask, 'b t s -> b (t s)')
+                padding_mask = torch.zeros((b, t), dtype=torch.bool, device=src.device)
+
             # Trial context is never padded
             if trial_context is not None and not self.cross_attn_enabled:
                 padding_mask = F.pad(padding_mask, (0, trial_context.size(-2)), value=False)
+
+            # TODO temporal context padding
+
             # import pdb;pdb.set_trace()
             # print(t, s, contextualized_src.size(), src_mask.size(), padding_mask.size())
             # ! Bug patch note
@@ -637,7 +593,7 @@ class SpaceTimeTransformer(nn.Module):
                 if trial_context is not None:
                     cross_ctx.append(trial_context)
                 memory = torch.cat(cross_ctx, dim=1)
-                if memory_times is None: # No mask needed for context only
+                if memory_times is None: # No mask needed for trial-context only, unless specified
                     memory_mask = None
                 else: # This is the covariate decode path
                     memory_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(
@@ -648,12 +604,16 @@ class SpaceTimeTransformer(nn.Module):
                             (memory_mask.size(0), contextualized_src.size(1), trial_context.size(1)),
                             dtype=torch.float, device=memory_mask.device
                         )], dim=-1)
+                    if temporal_context is not None: # P sure last dim is the attended to dim
+                        breakpoint()
+                        memory_mask = F.pad(memory_mask, (0, temporal_context.size(-2)), value=float('-inf')) # ! No! We want to be able to attend to this, precisely using temporal_times
                     memory_mask = repeat(memory_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
-                    if memory_padding_mask is not None and trial_context is not None:
-                        memory_padding_mask = torch.cat([
-                            memory_padding_mask,
-                            torch.zeros((memory_padding_mask.size(0), trial_context.size(1)), dtype=torch.bool, device=memory_padding_mask.device)
-                        ], 1)
+                    if memory_padding_mask is not None:
+                        if trial_context is not None:
+                            memory_padding_mask = F.pad(memory_padding_mask, (0, trial_context.size(1)), value=False)
+                        if temporal_context is not None:
+                            memory_padding_mask = F.pad(memory_padding_mask, (0, temporal_context.size(1)), value=False)
+
                 # convert padding masks to float to suppress torch 2 warnings
                 if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
                     if padding_mask is not None:
@@ -677,14 +637,11 @@ class SpaceTimeTransformer(nn.Module):
                     src_mask,
                     src_key_padding_mask=padding_mask
                 )
-            output = output[:, : t * s]
-            if not self.cfg.flat_encoder:
-                output = rearrange(output, 'b (t s) h -> b t s h', t=t, s=s)
+            output, *_ = unpack(output, ps, 'b * h')
+
         output = self.dropout_out(output)
         if self.cfg.pre_norm and self.cfg.final_norm:
             output = self.final_norm(output)
-        if self.cfg.transform_space and has_array_dim:
-            output = rearrange(output, 'b t (a s_a) h -> b t a s_a h', s_a=s_a)
         return output
 
 

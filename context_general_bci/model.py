@@ -79,7 +79,7 @@ class BrainBertInterface(pl.LightningModule):
             cfg = OmegaConf.merge(ModelConfig(), from_dict(data_class=ModelConfig, data=conf_container))
         self.cfg = cfg
         self.data_attrs = data_attrs
-
+        assert data_attrs.serve_tokens_flat, 'NDT3 assumes flat serving of tokens'
         r"""
             Make cfg use correct module refs for enums via a backport after migration
         """
@@ -516,7 +516,7 @@ class BrainBertInterface(pl.LightningModule):
             for p in m.parameters():
                 p.requires_grad = False
 
-    def _prepare_inputs(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _prepare_inputs(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
         r"""
             Format spikes and context into tokens for backbone.
             In:
@@ -525,13 +525,9 @@ class BrainBertInterface(pl.LightningModule):
             Returns:
                 state_in: B x T x A x H (A should be flattened in backbone)
                 static_context: List(T') [B x H]
-                temporal_context: List(?) [B x T x H]
+                # temporal_context: List(?) [B x T x H] - moved outside
         """
         assert self.cfg.array_embed_strategy == EmbedStrat.none, "Array embed strategy deprecated"
-        temporal_context = []
-        for task in self.cfg.task.tasks:
-            temporal_context.extend(self.task_pipelines[task.value].get_temporal_context(batch)) # Should arrive embedded...
-
 
         if self.cfg.session_embed_strategy is not EmbedStrat.none:
             if self.cfg.session_embed_token_count > 1:
@@ -617,11 +613,22 @@ class BrainBertInterface(pl.LightningModule):
         _add_context(session, getattr(self, 'session_flag', None), self.cfg.session_embed_strategy)
         _add_context(subject, getattr(self, 'subject_flag', None), self.cfg.subject_embed_strategy)
         _add_context(task, getattr(self, 'task_flag', None), self.cfg.task_embed_strategy)
-        return state_in, static_context, temporal_context
+        return state_in, static_context
 
     def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
         # returns backbone features B T S H
-        state_in, trial_context, temporal_context = self._prepare_inputs(batch)
+        state_in, trial_context = self._prepare_inputs(batch)
+        temporal_context = {}
+        temporal_times = {}
+        for tk, tp in self.task_pipelines.items():
+            temporal_context[tk], temporal_times[tk] = tp.get_temporal_context(batch)
+        temporal_context = [tc for tc in temporal_context.values() if tc is not None]
+        temporal_times = [tt for tt in temporal_times.values() if tt is not None]
+        # tks = [tk for tk in temporal_context.keys() if temporal_context[tk] is not None]
+
+
+        breakpoint() # Deal with padding from additional temporal context input?
+
         temporal_padding_mask = create_temporal_padding_mask(state_in, batch)
         if DataKey.extra in batch and not self.data_attrs.serve_tokens_flat: # serve_tokens_flat is enc dec, don't integrate extra (query) tokens in enc
             state_in = torch.cat([state_in, batch[DataKey.extra]], dim=1)
@@ -629,18 +636,13 @@ class BrainBertInterface(pl.LightningModule):
                 extra_padding_mask = create_temporal_padding_mask(batch[DataKey.extra], batch, length_key=COVARIATE_LENGTH_KEY)
                 temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
 
-        # Note that fine-grained channel mask doesn't matter in forward (sub-token padding is handled in loss calculation externally)
-        # But we do want to exclude fully-padded arrays from computation
-        if self.data_attrs.serve_tokens_flat:
-            space_padding_mask = None
-        elif self.data_attrs.serve_tokens:
-            assert not DataKey.extra in batch, 'not implemented'
-            allocated_space_tokens = torch.ceil(batch[CHANNEL_KEY] / self.cfg.neurons_per_token).sum(1) # B
-            space_comparison = torch.arange(state_in.size(2), device=state_in.device)[None, :]
-            space_padding_mask = space_comparison >= allocated_space_tokens[:, None] # -> B A
-        else:
-            assert not DataKey.extra in batch, 'not implemented'
-            space_padding_mask = batch[CHANNEL_KEY] == 0  if CHANNEL_KEY in batch else None # b x a of ints < c
+        # Merge temporal context into mainline seq (in NDT3, data/neuro is not revealed to backbone)
+        state_in, ps = pack([state_in, temporal_context], 'b * h')
+        times = pack([batch[DataKey.time], temporal_times], 'b *')
+        # todo I have no spatial dimension specified, have task_io serve it
+        space = pack([batch[DataKey.position], temporal_space], 'b *')
+        # TODO make sure the padding is right
+
         if self.cfg.transformer.n_layers == 0:
             outputs = state_in
         else:
@@ -648,12 +650,16 @@ class BrainBertInterface(pl.LightningModule):
                 state_in,
                 trial_context=trial_context,
                 temporal_context=temporal_context,
+                temporal_times=temporal_times,
                 temporal_padding_mask=temporal_padding_mask,
-                space_padding_mask=space_padding_mask,
+                space_padding_mask=None,
                 causal=self.cfg.causal,
-                times=batch.get(DataKey.time, None),
-                positions=batch.get(DataKey.position, None),
-            ) # B x T x S x H or B x Token x H (flat)
+                times=times,
+                positions=space,
+            ) # B x Token x H (flat)
+        outputs, temporal_out = unpack(outputs, ps, 'b * h') # TODO surface extra temporal context if needed
+        # extract per-pipeline features using tks
+
         # if outputs.isnan().any():
             # import pdb;pdb.set_trace()
         return outputs
