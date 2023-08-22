@@ -114,9 +114,9 @@ class TaskConfig:
     blacklist_session_supervision: List[str] = field(default_factory=lambda: [])
 
     # Alignment can be done either with an adversarial loss (not really made working...) or KL on the multivariate KL.
-    adversarial_classify_lambda: float = 0.0
-    kl_lambda: float = 0.0
-    alignment_distribution_path: str = ""
+    # adversarial_classify_lambda: float = 0.0
+    # kl_lambda: float = 0.0
+    # alignment_distribution_path: str = ""
 
     # infill
     mask_ratio: float = 0.25 # we don't have any schedule right now - the smaller this is, the higher the ceiling (probably), the slower the training
@@ -141,6 +141,7 @@ class TaskConfig:
 
     # kinematic decode
     covariate_mask_ratio: float = 1.0 # If < 1.0, unmask some covariates and send them to encoder. Assumes asymmetric path
+    # * Major flag for NDT3
 
     behavior_lag: int = 0 # in ms
     behavior_target: DataKey = DataKey.bhvr_vel
@@ -212,9 +213,6 @@ class ModelConfig:
     decoder_layers: int = 2
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     # 1. makes masking shuffle-based
-
-    encode_covariate: bool = False # Should we encode the relevant covariates? (Assumes that `shuffle_covariate` has already excluded target covariates)
-    shuffle_covariate: bool = False
 
     half_precision: bool = True
     lr_init: float = 0.0005 # be careful of interxn with bsz

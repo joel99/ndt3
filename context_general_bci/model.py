@@ -622,7 +622,7 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_space = {}
 
         for tk, tp in self.task_pipelines.items():
-            pipeline_context[tk], pipeline_times[tk], pipeline_space = tp.get_context(batch)
+            pipeline_context[tk], pipeline_times[tk], pipeline_space[tk] = tp.get_context(batch)
         pipeline_context = [tc for tc in pipeline_context.values() if tc is not None]
         pipeline_times = [tt for tt in pipeline_times.values() if tt is not None]
         pipeline_space = [ts for ts in pipeline_space.values() if ts is not None]

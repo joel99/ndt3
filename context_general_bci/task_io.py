@@ -896,7 +896,7 @@ class CovariateReadout(TaskPipeline):
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
-            return None, None
+            return super().get_context(batch)
         cov = self.encode_cov(batch[self.cfg.behavior_target])
         time = batch[f'covariate_{DataKey.time}']
         space = batch[f'covariate_{DataKey.position}']
@@ -1101,17 +1101,17 @@ class BehaviorRegression(CovariateReadout):
         Because this is not intended to be a joint task, and backbone is expected to be tuned
         We will not make decoder fancy.
     """
-    def initialize_readin(self):
+    def initialize_readin(self, backbone_size):
         if self.cfg.decode_tokenize_dims: # NDT3 style
-            self.inp = nn.Linear(1, self.cfg.hidden_size)
+            self.inp = nn.Linear(1, backbone_size)
         else: # NDT2 style
-            self.inp = nn.Linear(self.data_attrs.behavior_dim, self.cfg.hidden_size)
+            self.inp = nn.Linear(self.cov_dims, backbone_size)
 
     def encode_cov(self, covariate: torch.Tensor):
         return self.inp(covariate)
 
     def initialize_readout(self, backbone_size):
-        if getattr(self.cfg, 'decode_tokenize_dims', False):
+        if self.cfg.decode_tokenize_dims:
             self.out = nn.Linear(backbone_size, 1)
         else:
             self.out = nn.Linear(backbone_size, self.cov_dims)
@@ -1225,7 +1225,6 @@ task_modules = {
     ModelTask.next_step_prediction: NextStepPrediction,
     ModelTask.shuffle_next_step_prediction: ShuffleInfill, # yeahhhhh it's the SAME TASK WTH
     # ModelTask.shuffle_next_step_prediction: ShuffleNextStepPrediction,
-    ModelTask.heldout_decoding: HeldoutPrediction,
     ModelTask.kinematic_decoding: BehaviorRegression,
     ModelTask.kinematic_classification: BehaviorClassification,
 }
