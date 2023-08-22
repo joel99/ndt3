@@ -549,44 +549,31 @@ class BrainBertInterface(pl.LightningModule):
                 task: torch.Tensor = self.task_embed(batch[MetaKey.task])
         else:
             task = None
-        if self.cfg.transform_space:
-            # collapse space/array, channel/feature --> # b t s h
-            state_in = torch.as_tensor(batch[DataKey.spikes], dtype=int)
-            if self.data_attrs.serve_tokens_flat:
-                reshape = 'b t c h -> b t (c h)'
-            elif self.data_attrs.serve_tokens:
-                reshape = 'b t s c h -> b t s (c h)'
+        # collapse space/array, channel/feature --> # b t s h
+        state_in = torch.as_tensor(batch[DataKey.spikes], dtype=int)
+        if self.data_attrs.serve_tokens_flat:
+            reshape = 'b t c h -> b t (c h)'
+        elif self.data_attrs.serve_tokens:
+            reshape = 'b t s c h -> b t s (c h)'
+        else:
+            # do _not_ collapse array here, mostly for code compatibility with existing pathways
+            reshape = 'b t a (chunk c) h -> b t a chunk (c h)'
+        state_in = rearrange(state_in, reshape, c=self.cfg.neurons_per_token)
+        if self.cfg.spike_embed_style == EmbedStrat.token:
+            state_in = self.readin(state_in)
+        elif self.cfg.spike_embed_style == EmbedStrat.project:
+            if getattr(self.cfg, 'debug_project_space', False):
+                state_in = self.readin(state_in.float())
             else:
-                # do _not_ collapse array here, mostly for code compatibility with existing pathways
-                reshape = 'b t a (chunk c) h -> b t a chunk (c h)'
-            state_in = rearrange(state_in, reshape, c=self.cfg.neurons_per_token)
-            if self.cfg.spike_embed_style == EmbedStrat.token:
-                state_in = self.readin(state_in)
-            elif self.cfg.spike_embed_style == EmbedStrat.project:
-                if getattr(self.cfg, 'debug_project_space', False):
-                    state_in = self.readin(state_in.float())
-                else:
-                    state_in = self.readin(state_in.float().unsqueeze(-1))
-            else:
-                raise NotImplementedError
-            if not getattr(self.cfg, 'debug_project_space', False):
-                state_in = state_in.flatten(-2, -1) # b t s h
-            # state_in = rearrange(state_in,
-            #     'b t s chunk h -> b t s (chunk h)' if self.data_attrs.serve_tokens else \
-            #     'b t a s_a chunk h -> b t a s_a (chunk h)'
-            # ) # yes, we rearrange twice... better for alternative control flows..
-        else: # --> b t a h
-            state_in = torch.as_tensor(rearrange(
-                batch[DataKey.spikes], 'b t a c h -> b t a (c h)'
-            ), dtype=torch.float)
-            if self.cfg.readin_strategy == EmbedStrat.contextual_mlp or self.cfg.readout_strategy == EmbedStrat.contextual_mlp:
-                batch['session'] = session # hacky
-            if self.cfg.readin_strategy in [EmbedStrat.contextual_mlp, EmbedStrat.unique_project]:
-                state_in = self.readin(state_in, batch) # b t a h
-            elif self.cfg.readin_strategy == EmbedStrat.readin_cross_attn: # deprecated
-                state_in = self.readin(state_in, session, subject, array)
-            else: # standard project
-                state_in = self.readin(state_in)
+                state_in = self.readin(state_in.float().unsqueeze(-1))
+        else:
+            raise NotImplementedError
+        if not getattr(self.cfg, 'debug_project_space', False):
+            state_in = state_in.flatten(-2, -1) # b t s h
+        # state_in = rearrange(state_in,
+        #     'b t s chunk h -> b t s (chunk h)' if self.data_attrs.serve_tokens else \
+        #     'b t a s_a chunk h -> b t a s_a (chunk h)'
+        # ) # yes, we rearrange twice... better for alternative control flows..
         if self.cfg.encode_decode or self.cfg.task.decode_separate: # TODO decouple - or at least move after flag injection below
             # cache context
             batch['session'] = session
@@ -620,28 +607,31 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_context = {} # really, these should be other dataloaders/data modules, pipeline is a bad abstraction
         pipeline_times = {}
         pipeline_space = {}
-
+        tks = []
         for tk, tp in self.task_pipelines.items():
             pipeline_context[tk], pipeline_times[tk], pipeline_space[tk] = tp.get_context(batch)
+            if pipeline_context[tk] is not None:
+                tks.append(tk)
         pipeline_context = [tc for tc in pipeline_context.values() if tc is not None]
         pipeline_times = [tt for tt in pipeline_times.values() if tt is not None]
         pipeline_space = [ts for ts in pipeline_space.values() if ts is not None]
-        # tks = [tk for tk in pipeline_context.keys() if pipeline_context[tk] is not None]
-
-
-        breakpoint() # Deal with padding from additional temporal context input?
 
         token_padding_mask = create_token_padding_mask(state_in, batch)
         # truncate to length of actual tokens (function will return full padding mask, disregarding crop done in shuffling)
-        token_padding_mask = token_padding_mask[:, :state_in.shape[1]] # TODO: technically should match encoder_frac
+        assert state_in.shape[1] == batch['encoder_frac'], f"encoder_frac {batch['encoder_frac']} unexpectedly != state_in shape {state_in.shape[1]}"
+        token_padding_mask = token_padding_mask[:, :state_in.shape[1]]
+        pipeline_padding = [create_token_padding_mask(
+            tc, batch,
+            length_key=f'{self.task_pipelines[tk].handle}_{LENGTH_KEY}',
+            shuffle_key=f'{self.task_pipelines[tk].handle}_{SHUFFLE_KEY}' # create_token_padding_mask will extract the positions if shuffle exists, so we crop to the encoded length
+        )[:,:tc.shape[1]] for tk, tc in zip(tks, pipeline_context)]
+
 
         # Merge temporal context into mainline seq (in NDT3, data/neuro is not revealed to backbone)
-        state_in, ps = pack([state_in, pipeline_context], 'b * h')
-        times = pack([batch[DataKey.time], pipeline_times], 'b *')
-        space = pack([batch[DataKey.position], pipeline_space], 'b *')
-
-        # TODO make sure the padding is right, accounting for shuffled in data.
-        breakpoint()
+        state_in, ps = pack([state_in, *pipeline_context], 'b * h')
+        times, _ = pack([batch[DataKey.time], *pipeline_times], 'b *')
+        space, _ = pack([batch[DataKey.position], *pipeline_space], 'b *')
+        token_padding_mask, _ = pack([token_padding_mask, *pipeline_padding], 'b *')
 
         if self.cfg.transformer.n_layers == 0:
             outputs = state_in
@@ -654,7 +644,7 @@ class BrainBertInterface(pl.LightningModule):
                 times=times,
                 positions=space,
             ) # B x Token x H (flat)
-        outputs, temporal_out = unpack(outputs, ps, 'b * h') # TODO surface extra temporal context if needed
+        outputs, *temporal_out = unpack(outputs, ps, 'b * h') # TODO surface extra temporal context if needed
         # extract per-pipeline features using tks
 
         # if outputs.isnan().any():
@@ -705,11 +695,6 @@ class BrainBertInterface(pl.LightningModule):
         # Create outputs for configured task
         running_loss = 0
         task_order = self.cfg.task.tasks
-        if self.cfg.task.kl_lambda > 0 and ModelTask.kinematic_decoding in self.cfg.task.tasks:
-            task_order = [ModelTask.kinematic_decoding]
-            for t in self.cfg.task.tasks:
-                if t != ModelTask.kinematic_decoding:
-                    task_order.append(t)
         if getattr(self.cfg.task, 'decode_use_shuffle_backbone', False):
             task_order = [ModelTask.shuffle_infill]
             for t in self.cfg.task.tasks:
@@ -794,11 +779,6 @@ class BrainBertInterface(pl.LightningModule):
         elif self.cfg.readout_strategy in [EmbedStrat.unique_project, EmbedStrat.contextual_mlp]:
             unique_space_features = self.readout(features, batch)
         task_order = self.cfg.task.tasks
-        if self.cfg.task.kl_lambda > 0 and ModelTask.kinematic_decoding in self.cfg.task.tasks:
-            task_order = [ModelTask.kinematic_decoding]
-            for t in self.cfg.task.tasks:
-                if t != ModelTask.kinematic_decoding:
-                    task_order.append(t)
         if getattr(self.cfg.task, 'decode_use_shuffle_backbone', False):
             task_order = [ModelTask.shuffle_infill]
             for t in self.cfg.task.tasks:

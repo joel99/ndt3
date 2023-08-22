@@ -154,7 +154,7 @@ class TaskPipeline(nn.Module):
             padding_mask = padding_mask[..., encoder_frac:]
         length_mask = ~(padding_mask & torch.isnan(ref).any(-1))
 
-        loss_mask = loss_mask & length_mask
+        loss_mask = loss_mask & length_mask.unsqueeze(-1)
 
         if channel_key in batch and compute_channel: # only some of b x a x c are valid
             assert ref.ndim >= 3 # Channel dimension assumed as dim 2
@@ -171,6 +171,13 @@ class TaskPipeline(nn.Module):
             loss_mask = loss_mask[..., 0] # don't specify channel dim if not used, saves HELDOUT case
             channel_mask = None
         return loss_mask, length_mask, channel_mask
+
+    @abc.abstractproperty
+    def handle(self) -> str:
+        r"""
+            Handle for identifying task
+        """
+        raise NotImplementedError
 
     def get_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
         r"""
@@ -728,34 +735,28 @@ class TemporalTokenInjector(nn.Module):
         self.max_space = data_attrs.max_spatial_tokens
 
     def inject(self, batch: Dict[str, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None, injected_space: torch.Tensor | None = None):
-        # Implement injection
+        # create tokens for decoding with (inject them into seq or return them)
         # Assumption is that behavior time == spike time (i.e. if spike is packed, so is behavior), and there's no packing
-        b, t = batch[self.reference].size()[:2]
+        b, t, *_ = batch[self.reference].size()
         if injected_time is None:
             injected_time = torch.arange(t, device=batch[self.reference].device)
-        if injected_space is None:
-            injected_space = torch.arange(self.decode_dims, device=batch[self.reference].device)
+            injected_time = repeat(injected_time, 't -> b t', b=b)
         if self.cfg.decode_tokenize_dims:
             injected_tokens = repeat(self.cls_token, 'd h -> b (t d) h',
                 b=b,
                 t=t, # Time (not _token_, i.e. in spite of flat serving)
                 d=self.decode_dims,
             )
-            injected_time = repeat(injected_time, 't -> b (t d)', b=b, d=self.decode_dims)
+            injected_time = repeat(injected_time, 'b t -> b (t d)', d=self.decode_dims)
+            injected_space = torch.arange(self.decode_dims, device=batch[self.reference].device)
             injected_space = repeat(injected_space, 'd -> b (t d)', b=b, t=t)
         else:
             injected_tokens = repeat(self.cls_token, 'h -> b t h',
                 b=b,
                 t=t, # Time (not _token_, i.e. in spite of flat serving)
             )
-            injected_time = repeat(injected_time, 't -> b t', b=b)
-            # TODO I no longer understand the below flow, really
-            injected_space = torch.full(
-                (b, t),
-                self.max_space - 1, # ! For heldout prediction path, we want to inject a clearly distinguished space token from regular neural data space tokens
-                # ! This means - 1. make sure `max_channels` is configured high enough that this heldout token is unique (since we will _not_ always add a mask token)
-                # self.pad_value, # There is never more than one injected space token
-                device=batch[self.reference].device
+            injected_space = torch.zeros(
+                (b, t), device=batch[self.reference].device, dtype=torch.long
             )
         # I want to inject padding tokens for space so nothing actually gets added on that dimension
         if in_place:
@@ -791,7 +792,7 @@ class CovariateReadout(TaskPipeline):
         self.injector = TemporalTokenInjector(
             cfg,
             data_attrs,
-            self.cfg.behavior_target if self.cfg.covariate_mask_ratio == 1.0 else 'covariate_target',
+            self.cfg.behavior_target if self.cfg.covariate_mask_ratio == 1.0 else f'{self.handle}_target',
             force_zero_mask=self.decode_cross_attn and not getattr(self.cfg, 'decode_tokenize_dims', False)
         )
         self.time_pad = cfg.transformer.max_trial_length
@@ -811,6 +812,7 @@ class CovariateReadout(TaskPipeline):
         assert self.spacetime, "Only spacetime transformer is supported for token decoding"
         self.bhvr_lag_bins = round(self.cfg.behavior_lag / data_attrs.bin_size_ms)
         assert self.bhvr_lag_bins >= 0, "behavior lag must be >= 0, code not thought through otherwise"
+        assert not (self.bhvr_lag_bins and self.cfg.covariate_mask_ratio < 1.0), "behavior lag not supported with encoded covariates as encoding uses shuffle mask which breaks simple lag shift"
 
         self.session_blacklist = []
         if self.cfg.blacklist_session_supervision:
@@ -848,6 +850,10 @@ class CovariateReadout(TaskPipeline):
     def initialize_readout(self):
         raise NotImplementedError
 
+    @property
+    def handle(self):
+        return 'covariate'
+
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
         if self.cfg.covariate_mask_ratio < 1.0:
             batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
@@ -864,22 +870,28 @@ class CovariateReadout(TaskPipeline):
         target = covariates
         if eval_mode:
             batch.update({
-                f'covariate_{SHUFFLE_KEY}': torch.arange(covariates.size(1), device=covariates.device),
-                f'covariate_{DataKey.time}': torch.arange(covariates.size(1), device=covariates.device),
-                'covariate_target': target,
-                'covariate_encoder_frac': covariates.size(1)
+                f'{self.handle}_{SHUFFLE_KEY}': torch.arange(covariates.size(1), device=covariates.device),
+                f'{self.handle}_{DataKey.time}': torch.arange(covariates.size(1), device=covariates.device),
+                f'{self.handle}_target': target,
+                f'{self.handle}_encoder_frac': covariates.size(1)
             })
         # TODO this will be tricky if we are tokenizing the covariate H dimension (then flatten T x H to TH x 1)
         shuffle = torch.randperm(covariates.size(1), device=covariates.device)
         encoder_frac = int((1 - mask_ratio) * covariates.size(1))
-        if f'covariate_{DataKey.time}' not in batch:
-            batch[f'covariate_{DataKey.time}'] = torch.arange(covariates.size(1), device=covariates.device)
-        if f'covariate_{DataKey.position}' not in batch:
+        if f'{self.handle}_{DataKey.time}' not in batch:
+            cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
-                batch[f'covariate_{DataKey.position}'] = torch.arange(self.cov_dims, device=covariates.device)
+                cov_time = repeat(cov_time, 't -> b t d', b=covariates.size(0), d=self.cov_dims)
             else:
-                batch[f'covariate_{DataKey.position}'] = torch.zeros_like(batch[f'covariate_{DataKey.time}'])
-        for key in [f'covariate_{DataKey.time}', f'covariate_{DataKey.position}']:
+                cov_time = repeat(cov_time, 't -> b t', b=covariates.size(0))
+            batch[f'{self.handle}_{DataKey.time}'] = cov_time
+        if f'{self.handle}_{DataKey.position}' not in batch:
+            if self.cfg.decode_tokenize_dims:
+                batch[f'{self.handle}_{DataKey.position}'] = repeat(torch.arange(covariates.size(-1), device=covariates.device), 'd -> b t d', b=covariates.size(0), t=covariates.size(1))
+            else:
+                # Technically if data arrives as b t* 1, we can still use above if-case circuit
+                batch[f'{self.handle}_{DataKey.position}'] = torch.zeros_like(batch[f'{self.handle}_{DataKey.time}'])
+        for key in [f'{self.handle}_{DataKey.time}', f'{self.handle}_{DataKey.position}']:
             if key in batch:
                 shuffled = apply_shuffle(batch[key], shuffle)
                 batch.update({
@@ -888,9 +900,9 @@ class CovariateReadout(TaskPipeline):
                 })
         batch.update({
             self.cfg.behavior_target: apply_shuffle(covariates, shuffle)[:, :encoder_frac],
-            'covariate_target': apply_shuffle(target, shuffle)[:, encoder_frac:],
-            'covariate_encoder_frac': encoder_frac,
-            f'covariate_{SHUFFLE_KEY}': shuffle,
+            f'{self.handle}_target': apply_shuffle(target, shuffle)[:, encoder_frac:],
+            f'{self.handle}_encoder_frac': encoder_frac,
+            f'{self.handle}_{SHUFFLE_KEY}': shuffle,
         })
         return batch
 
@@ -898,8 +910,8 @@ class CovariateReadout(TaskPipeline):
         if self.cfg.covariate_mask_ratio == 1.0:
             return super().get_context(batch)
         cov = self.encode_cov(batch[self.cfg.behavior_target])
-        time = batch[f'covariate_{DataKey.time}']
-        space = batch[f'covariate_{DataKey.position}']
+        time = batch[f'{self.handle}_{DataKey.time}']
+        space = batch[f'{self.handle}_{DataKey.position}']
         if self.cfg.decode_tokenize_dims:
             # JY isn't clear yet whether (T Bhvr_Dims) will be together or apart, so we try to support both
             if cov.ndim > 3:
@@ -924,8 +936,8 @@ class CovariateReadout(TaskPipeline):
             # * This "injection" step only really needs to happen if we've not already injected covariates as inputs; in that case, we need to retrieve previously injected info (see `crop_batch`)
             decode_tokens, decode_time, decode_space = self.injector.inject(
                 batch,
-                injected_time=batch[f'covariate_{DataKey.time}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None,
-                injected_space=batch[f'covariate_{DataKey.position}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
+                injected_time=batch[f'{self.handle}_{DataKey.time}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None,
+                injected_space=batch[f'{self.handle}_{DataKey.position}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
             )
             if not self.cfg.decode_tokenize_dims:
                 # Clip decode space to 0, space isn't used for this decoder
@@ -961,20 +973,20 @@ class CovariateReadout(TaskPipeline):
                 token_padding_mask = create_token_padding_mask(
                     decode_tokens,
                     batch,
-                    length_key=COVARIATE_LENGTH_KEY,
-                    shuffle_key=f'covariate_{SHUFFLE_KEY}',
+                    length_key=f'{self.handle}_{LENGTH_KEY}',
+                    shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
                     duplicity=self.cov_dims if self.cfg.decode_tokenize_dims else 1 # TODO check duplicity implementation - this really depends on whether the data occupies separate token positions at time that batch[covariate_shuffle_key] is declared
                 )
                 # Since we are decoding, extract decoding portion of mask.
-                if 'covariate_encoder_frac' in batch:
-                    token_padding_mask = token_padding_mask[:, batch['covariate_encoder_frac']:]
+                if f'{self.handle}_encoder_frac' in batch:
+                    token_padding_mask = token_padding_mask[:, batch[f'{self.handle}_encoder_frac']:]
             else:
                 assert not self.cfg.decode_tokenize_dims, 'non-cross attn not implemented with tokenized dims'
                 if backbone_padding is not None:
-                    extra_padding_mask = create_token_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY, shuffle_key=f'covariate_{SHUFFLE_KEY}')
+                    extra_padding_mask = create_token_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY, shuffle_key=f'{self.handle}_{SHUFFLE_KEY}')
                     # Since we are decoding, extract decoding portion of mask.
-                    if 'covariate_encoder_frac' in batch:
-                        extra_padding_mask = extra_padding_mask[:, batch['covariate_encoder_frac']:]
+                    if f'{self.handle}_encoder_frac' in batch:
+                        extra_padding_mask = extra_padding_mask[:, batch[f'{self.handle}_encoder_frac']:]
                     token_padding_mask = torch.cat([backbone_padding, extra_padding_mask], dim=1)
                 logger.warning('This is untested code where we flipped order of padding declarations. Previously extra padding was declared after we concatenated backbone, but this did not make sense')
                 decode_tokens = torch.cat([backbone_features, decode_tokens], dim=1)
@@ -1004,7 +1016,7 @@ class CovariateReadout(TaskPipeline):
         if self.cfg.covariate_mask_ratio == 1.0:
             tgt = batch[self.cfg.behavior_target]
         else:
-            tgt = batch['covariate_target']
+            tgt = batch[f'{self.handle}_target']
         if self.bhvr_mean is not None:
             tgt = tgt - self.bhvr_mean
             tgt = tgt / self.bhvr_std
@@ -1042,10 +1054,10 @@ class CovariateReadout(TaskPipeline):
 
         _, length_mask, _ = self.get_masks(
             batch, ref=bhvr_tgt,
-            length_key=COVARIATE_LENGTH_KEY,
-            shuffle_key=f'covariate_{SHUFFLE_KEY}',
+            length_key=f'{self.handle}_{LENGTH_KEY}',
+            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
             compute_channel=False,
-            encoder_frac=batch.get('covariate_encoder_frac', 0),
+            encoder_frac=batch.get(f'{self.handle}_encoder_frac', 0),
         )
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
 
@@ -1106,6 +1118,7 @@ class BehaviorRegression(CovariateReadout):
             self.inp = nn.Linear(1, backbone_size)
         else: # NDT2 style
             self.inp = nn.Linear(self.cov_dims, backbone_size)
+        # No norm, that would wash out the linear
 
     def encode_cov(self, covariate: torch.Tensor):
         return self.inp(covariate)
@@ -1150,6 +1163,7 @@ class BehaviorClassification(CovariateReadout):
     QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
     def initialize_readin(self, backbone_size): # Assume quantized readin...
         self.inp = nn.Embedding(self.QUANTIZE_CLASSES, backbone_size)
+        self.inp_norm = nn.LayerNorm(backbone_size)
 
     def initialize_readout(self, backbone_size):
         if self.cfg.decode_tokenize_dims:
@@ -1166,6 +1180,7 @@ class BehaviorClassification(CovariateReadout):
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         if not self.cfg.decode_tokenize_dims:
             covariate = covariate.sum(-2) # B T Bhvr_Dims H -> B T H
+        covariate = self.inp_norm(covariate)
         return covariate
 
     def quantize(self, x: torch.Tensor):

@@ -417,10 +417,10 @@ class SpaceTimeTransformer(nn.Module):
     def forward(
         self,
         src: torch.Tensor, # B T H, already embedded. (Flat spacetime path now asserted, can't deal with heterogeneity otherwise (need to implement hierarchy carefully again if so).)
-        trial_context: List[torch.Tensor] = [], # T' [B H]
+        trial_context: torch.Tensor | List[torch.Tensor] = [], # T' [B H]
         padding_mask: Optional[torch.Tensor] = None, # B T
-        temporal_context: List[torch.Tensor | None] = [], # cov_types [B TC H]
-        temporal_times: List[torch.Tensor | None] = [], # cov_types [B TC]
+        temporal_context: List[torch.Tensor] = [], # cov_types [B TC H]
+        temporal_times: List[torch.Tensor] = [], # cov_types [B TC]
         causal: bool=True,
         times: Optional[torch.Tensor] = None, # for flat spacetime path, B x Token
         positions: Optional[torch.Tensor] = None, # for flat spacetime path
@@ -449,22 +449,20 @@ class SpaceTimeTransformer(nn.Module):
             temporal_context_stack, temporal_context_pieces = pack(temporal_context, 'b * h')
             temporal_times_stack, temporal_times_pieces = pack(temporal_times, 'b *')
         else:
-            temporal_context_stack = None
+            temporal_context = None
 
         if len(trial_context) > 0:
             trial_context, _ = pack(trial_context, 'b * h')
-            # trial_context = rearrange(trial_context, 'tc b h -> b tc h') # trial context doesn't really belong in either space or time, can expand along each
         else:
             trial_context = None
         # === Transform ===
         contextualized_src = [src]
         if not self.cross_attn_enabled: # If cross attn is enabled, context goes into memory. Otherwise, it's in src.
-            if temporal_context is not None:
+            if temporal_context:
                 contextualized_src.append(temporal_context)
             if trial_context is not None:
                 contextualized_src.append(trial_context)
         contextualized_src, ps = pack(contextualized_src, 'b * h') # b [(t a) + (t n) + t'] h
-
         src_mask = self.make_src_mask(src, temporal_context, trial_context, times, t, s, causal=causal) # TODO
 
         if padding_mask is None:

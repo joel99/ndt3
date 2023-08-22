@@ -42,6 +42,7 @@ r"""
 # Padding tokens
 LENGTH_KEY = 'length'
 CHANNEL_KEY = 'channel_counts'
+# TODO deprecate when remodularizing data loaders...
 COVARIATE_LENGTH_KEY = 'covariate_length' # we need another length tracker for padded sequences of covariates in the flat case
 COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout channels only
 HELDOUT_CHANNEL_KEY = 'heldout_channel_counts'
