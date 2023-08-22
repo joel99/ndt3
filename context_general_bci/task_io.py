@@ -129,63 +129,31 @@ class TaskPipeline(nn.Module):
         self.serve_tokens = data_attrs.serve_tokens
         self.serve_tokens_flat = data_attrs.serve_tokens_flat
 
-    def get_masks(self, batch, channel_key=CHANNEL_KEY, length_key=LENGTH_KEY, ref=None, compute_channel=True):
+    def get_masks(self, batch, channel_key=CHANNEL_KEY, length_key=LENGTH_KEY, ref: torch.Tensor | None = None, compute_channel=True):
+        r"""
+            length_key: token-level padding info
+            channel_key: intra-token padding info
+        """
         # loss_mask: b t *
         if ref is None:
-            ref = batch[DataKey.spikes][..., 0]
-        if compute_channel:
-            if self.serve_tokens_flat:
-                c = ref.size(2)
-                s = 1
-            else:
-                s, c = ref.size(2), ref.size(3)
+            ref: torch.Tensor = batch[DataKey.spikes][..., 0]
         loss_mask = torch.ones(ref.size(), dtype=torch.bool, device=ref.device)
 
         length_mask = create_temporal_padding_mask(ref, batch, length_key=length_key)
         length_mask = ~(length_mask & torch.isnan(ref).any(-1))
 
-        if self.serve_tokens_flat:
-            loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1')
-        else:
-            loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1 1')
-
+        loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1')
 
         if channel_key in batch and compute_channel: # only some of b x a x c are valid
             channels = batch[channel_key] # b x a of ints < c (or b x t)
             if channels.ndim == 1:
                 channels = channels.unsqueeze(1)
+            assert ref.ndim >= 3 # Channel dimension assumed as dim 2
             # Note no shuffling occurs here because 1. channel_key shuffle is done when needed earlier
             # 2. no spatial shuffling occurs so we do need to apply_shuffle(torch.arange(c))
-            if self.serve_tokens and not self.serve_tokens_flat: # if there's multiple arrays, this will show up as b x a (separate from spatial dim in tokens)
-                # we have B S C, goal is to determine which are real vs padding
-                # at our disposal we have the channel count, separated into b x a
-                # each a is a number, that was divided by neurons per token to create the spatial distribution
-                # to reverse engineer, first compute the relevant spatial tokens for each array
-                # neurons_per_token = c
-                allocated_space_tokens = torch.ceil(channels / c) # B A
-                # I need to somehow distribute the spatial dimension among the arrays
-                # there are number of ways to do this; we'll do what seems simplest at this time
-                # find any leftover padding, declare zero channels
-                comparison = repeat(torch.arange(s, device=ref.device), 's -> 1 s c', c=c)
-                pure_padding_tokens = allocated_space_tokens.sum(-1)
-                channel_mask = comparison < rearrange(pure_padding_tokens, 'b -> b 1 1')
-                # for those fractional tokens, declare the % of channels
-                allocated_fractional = channels % c # B A
-                comparison = repeat(torch.arange(c, device=ref.device), 'c -> 1 a c', a=channels.size(-1))
-                # gather the relevant entries from `chanenl_mask` using `allocated_space_tokens` as an index
-                # If we happen to allocate the perfect number, the ceiling will do nothing and our index won't be appropriately "one above" where we want to index
-                fractional_index = torch.where(allocated_fractional > 0, allocated_space_tokens - 1, allocated_space_tokens).long()
-                channel_mask.scatter_(1,
-                    repeat(fractional_index, 'b a -> b a c', c=c),
-                    comparison < allocated_fractional.unsqueeze(-1)
-                )
-            else:
-                comparison = repeat(torch.arange(c, device=ref.device), 'c -> 1 s c', s=s)
-                channel_mask = comparison < rearrange(channels, 'b t -> b t 1') # dim 2 is either arrays (base case) or tokens (flat)
-            if not self.serve_tokens_flat:
-                loss_mask = loss_mask & rearrange(channel_mask, 'b a c -> b 1 a c')
-            else:
-                loss_mask = loss_mask & channel_mask
+            comparison = repeat(torch.arange(ref.size(2), device=ref.device), 'c -> 1 1 c')
+            channel_mask = comparison < rearrange(channels, 'b t -> b t 1') # dim 2 is either arrays (base case) or tokens (flat)
+            loss_mask = loss_mask & channel_mask
         else:
             loss_mask = loss_mask[..., 0] # don't specify channel dim if not used, saves HELDOUT case
             channel_mask = None
@@ -548,7 +516,7 @@ class ShuffleInfill(RatePrediction):
         })
         return batch
 
-    def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor):
+    def get_masks(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor):
         # get_masks
         loss_mask = torch.ones(loss.size(), device=loss.device, dtype=torch.bool)
         # note LENGTH_KEY and CHANNEL_KEY are for padding tracking
