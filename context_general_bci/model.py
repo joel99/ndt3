@@ -620,6 +620,7 @@ class BrainBertInterface(pl.LightningModule):
         state_in, trial_context = self._prepare_inputs(batch)
         temporal_context = {}
         temporal_times = {}
+
         for tk, tp in self.task_pipelines.items():
             temporal_context[tk], temporal_times[tk] = tp.get_temporal_context(batch)
         temporal_context = [tc for tc in temporal_context.values() if tc is not None]

@@ -769,31 +769,32 @@ class TemporalTokenInjector(nn.Module):
         self.pad_value = data_attrs.pad_token
         self.max_space = data_attrs.max_spatial_tokens
 
-    def inject(self, batch: Dict[str, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None):
+    def inject(self, batch: Dict[str, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None, injected_space: torch.Tensor | None = None):
         # Implement injection
         # Assumption is that behavior time == spike time (i.e. if spike is packed, so is behavior), and there's no packing
         b, t = batch[self.reference].size()[:2]
         if injected_time is None:
             injected_time = torch.arange(t, device=batch[self.reference].device)
-        if getattr(self.cfg, 'decode_tokenize_dims', False):
+        if injected_space is None:
+            injected_space = torch.arange(self.decode_dims, device=batch[self.reference].device)
+        if self.cfg.decode_tokenize_dims:
             injected_tokens = repeat(self.cls_token, 'd h -> b (t d) h',
                 b=b,
                 t=t, # Time (not _token_, i.e. in spite of flat serving)
                 d=self.decode_dims,
             )
             injected_time = repeat(injected_time, 't -> b (t d)', b=b, d=self.decode_dims)
-            injected_space = repeat(torch.arange(
-                self.decode_dims, device=batch[self.reference].device
-            ), 'd -> b (t d)', b=b, t=t)
+            injected_space = repeat(injected_space, 'd -> b (t d)', b=b, t=t)
         else:
             injected_tokens = repeat(self.cls_token, 'h -> b t h',
                 b=b,
                 t=t, # Time (not _token_, i.e. in spite of flat serving)
             )
             injected_time = repeat(injected_time, 't -> b t', b=b)
+            # TODO I no longer understand the below flow, really
             injected_space = torch.full(
                 (b, t),
-                self.max_space - 1, # ! For heldout prediction path, we want to inject a clearly distinguished space token
+                self.max_space - 1, # ! For heldout prediction path, we want to inject a clearly distinguished space token from regular neural data space tokens
                 # ! This means - 1. make sure `max_channels` is configured high enough that this heldout token is unique (since we will _not_ always add a mask token)
                 # self.pad_value, # There is never more than one injected space token
                 device=batch[self.reference].device
@@ -1045,7 +1046,8 @@ class CovariateReadout(TaskPipeline):
         return batch
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
-        covariates = batch[self.cfg.behavior_target] # Assume B x T x H
+        covariates = batch[self.cfg.behavior_target] # Assume B x T x Cov_Dims
+        # i.e. this codeflow assumes that dataloader doesn't tokenize bhvr, and does some tokenizing logic in here
         target = covariates
         if eval_mode:
             batch.update({
@@ -1058,8 +1060,13 @@ class CovariateReadout(TaskPipeline):
         shuffle = torch.randperm(covariates.size(1), device=covariates.device)
         encoder_frac = int((1 - mask_ratio) * covariates.size(1))
         if f'covariate_{DataKey.time}' not in batch:
-            batch[f'covariate_{DataKey.time}'] = torch.arange(covariates.size(1), device=covariates.device) # Assume
-        for key in [f'covariate_{DataKey.time}']: # TODO if tokenizing, add another position key
+            batch[f'covariate_{DataKey.time}'] = torch.arange(covariates.size(1), device=covariates.device)
+        if f'covariate_{DataKey.position}' not in batch:
+            if self.cfg.decode_tokenize_dims:
+                batch[f'covariate_{DataKey.position}'] = torch.arange(self.cov_dims, device=covariates.device)
+            else:
+                batch[f'covariate_{DataKey.position}'] = torch.zeros_like(batch[f'covariate_{DataKey.time}'])
+        for key in [f'covariate_{DataKey.time}', f'covariate_{DataKey.position}']:
             if key in batch:
                 shuffled = apply_shuffle(batch[key], shuffle)
                 batch.update({
@@ -1083,7 +1090,8 @@ class CovariateReadout(TaskPipeline):
                     batch_out[Output.pooled_features] = backbone_features.detach()
             decode_tokens, decode_time, decode_space = self.injector.inject(
                 batch,
-                injected_time=batch['covariate_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
+                injected_time=batch[f'covariate_{DataKey.time}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
+                injected_space=batch[f'covariate_{DataKey.position}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
             )
             if not self.cfg.decode_tokenize_dims:
                 # Clip decode space to 0, space isn't used for this decoder
@@ -1186,7 +1194,7 @@ class CovariateReadout(TaskPipeline):
 
     def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
         batch_out = {}
-        bhvr = self.get_cov_pred(batch, backbone_features, eval_mode=eval_mode, batch_out=batch_out)
+        bhvr = self.get_cov_pred(batch, backbone_features, eval_mode=eval_mode, batch_out=batch_out) # Comes out non-flat (B T D) or (B C T D)
         # At this point (computation and beyond) it is easiest to just restack tokenized targets, merge into regular API
         # The whole point of all this intervention is to test whether separate tokens affects perf (we hope not)
 
@@ -1304,7 +1312,7 @@ class BehaviorRegression(CovariateReadout):
 
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         bhvr = super().get_cov_pred(batch, backbone_features, eval_mode, batch_out)
-        if getattr(self.cfg, 'decode_tokenize_dims', False):
+        if self.cfg.decode_tokenize_dims:
             bhvr = rearrange(bhvr, 'b (t d) 1 -> b t d', d=self.cov_dims)
         return bhvr
 
@@ -1382,7 +1390,10 @@ def create_temporal_padding_mask(
     truncate_shuffle: bool = True,
     duplicity=1,
 ) -> torch.Tensor:
-    # temporal_padding refers to general length padding in `serve_tokens_flat` case
+    r"""
+        Identify which features are padding or not. TODO needs update if we support encoder output of behavior
+        # temporal_padding refers to general length padding in `serve_tokens_flat` case
+    """
 
     if length_key not in batch:
         return None
