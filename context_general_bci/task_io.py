@@ -133,7 +133,6 @@ class TaskPipeline(nn.Module):
         # loss_mask: b t *
         if ref is None:
             ref = batch[DataKey.spikes][..., 0]
-        b, t = ref.size()[:2]
         if compute_channel:
             if self.serve_tokens_flat:
                 c = ref.size(2)
@@ -141,17 +140,16 @@ class TaskPipeline(nn.Module):
             else:
                 s, c = ref.size(2), ref.size(3)
         loss_mask = torch.ones(ref.size(), dtype=torch.bool, device=ref.device)
+
         length_mask = create_temporal_padding_mask(ref, batch, length_key=length_key)
-        if length_mask is not None:
-            length_mask = ~length_mask
-            if self.serve_tokens_flat:
-                loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1')
-            else:
-                loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1 1')
+        length_mask = ~(length_mask & torch.isnan(ref).any(-1))
+
+        if self.serve_tokens_flat:
+            loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1')
         else:
-            length_mask = torch.ones(b, t, device=ref.device, dtype=torch.bool)
-        nan_mask = torch.isnan(ref).any(-1)
-        length_mask = length_mask & ~nan_mask
+            loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1 1')
+
+
         if channel_key in batch and compute_channel: # only some of b x a x c are valid
             channels = batch[channel_key] # b x a of ints < c (or b x t)
             if channels.ndim == 1:
@@ -997,6 +995,7 @@ class CovariateReadout(TaskPipeline):
 
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space
+        assert self.spacetime, "Only spacetime transformer is supported for token decoding"
         self.bhvr_lag_bins = round(self.cfg.behavior_lag / data_attrs.bin_size_ms)
         assert self.bhvr_lag_bins >= 0, "behavior lag must be >= 0, code not thought through otherwise"
 
@@ -1116,6 +1115,8 @@ class CovariateReadout(TaskPipeline):
             if not self.cfg.decode_tokenize_dims:
                 # Clip decode space to 0, space isn't used for this decoder
                 decode_space = torch.zeros_like(decode_space)
+
+            # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.
             if self.cfg.decode_time_pool:
                 assert not self.cfg.covariate_mask_ratio < 1.0, "not implemented"
                 assert not self.cfg.decode_tokenize_dims, 'time pool not implemented with tokenized dims'
@@ -1129,49 +1130,34 @@ class CovariateReadout(TaskPipeline):
                 src_time = batch.get(DataKey.time, None)
                 # Space only used in non-cross attn path. JY doesn't remember why I zero-ed this out, but skipping over for tokenize dim decode
                 src_space = torch.zeros_like(batch[DataKey.position]) if DataKey.position in batch else None
+
+            # allow looking N-bins of neural data into the "future"; we back-shift during the actual loss comparison.
             if self.causal and self.cfg.behavior_lag_lookahead:
-                # allow looking N-bins of neural data into the "future"; we back-shift during the actual loss comparison.
                 decode_time = decode_time + self.bhvr_lag_bins
-            if self.spacetime:
-                if self.decode_cross_attn:
-                    decoder_input = decode_tokens
-                    times = decode_time
-                    positions = decode_space
-                    other_kwargs = {
-                        'memory': backbone_features,
-                        'memory_times': src_time,
-                        'memory_padding_mask': temporal_padding_mask,
-                    }
-                    if temporal_padding_mask is not None:
-                        temporal_padding_mask = create_temporal_padding_mask(
-                            decode_tokens,
-                            batch,
-                            length_key=COVARIATE_LENGTH_KEY,
-                            duplicity=self.cov_dims if self.cfg.decode_tokenize_dims else 1
-                        )
-                else:
-                    assert not self.cfg.decode_tokenize_dims, 'non-cross attn not implemented with tokenized dims'
-                    decoder_input = torch.cat([backbone_features, decode_tokens], dim=1)
-                    times = torch.cat([src_time, decode_time], dim=1)
-                    # Ok, this is subtle
-                    # We need to pass in actual times to dictate the attention mask
-                    # But we don't want to trigger position embedding (per se)
-                    # This is ANNOYING!!!
-                    # Simple solution is to just re-allow position embedding.
-                    # times = torch.cat([torch.full_like(batch[DataKey.time], self.time_pad), decode_time], dim=1)
-                    positions = torch.cat([src_space, decode_space], dim=1)
-                    if temporal_padding_mask is not None:
-                        extra_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
-                        temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
-                    other_kwargs = {}
+
+            if self.decode_cross_attn:
+                times = decode_time
+                positions = decode_space
+                other_kwargs = {
+                    'memory': backbone_features,
+                    'memory_times': batch.get(DataKey.time, None),
+                    'memory_padding_mask': temporal_padding_mask,
+                }
+                if temporal_padding_mask is not None:
+                    temporal_padding_mask = create_temporal_padding_mask(
+                        decode_tokens,
+                        batch,
+                        length_key=COVARIATE_LENGTH_KEY,
+                        duplicity=self.cov_dims if self.cfg.decode_tokenize_dims else 1
+                    )
             else:
-                # non-flat path
-                assert not getattr(self.cfg, 'decode_tokenize_dims', False), 'non-spacetime not implemented with tokenized dims'
-                decoder_input, ps = pack([backbone_features, decode_tokens], 'b t * h') # add as another space dimension
-                # The assumptions for this path - designed for decode of non-flat models -- are brittle, only for square batches e.g. in cropped RTT.
-                times = None
-                positions = None
-                temporal_padding_mask = None
+                assert not self.cfg.decode_tokenize_dims, 'non-cross attn not implemented with tokenized dims'
+                decode_tokens = torch.cat([backbone_features, decode_tokens], dim=1)
+                times = torch.cat([src_time, decode_time], dim=1)
+                positions = torch.cat([src_space, decode_space], dim=1)
+                if temporal_padding_mask is not None:
+                    extra_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
+                    temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
                 other_kwargs = {}
             trial_context = []
             for key in ['session', 'subject', 'task']:
@@ -1179,7 +1165,7 @@ class CovariateReadout(TaskPipeline):
                     trial_context.append(batch[key].detach()) # Provide context, but hey, let's not make it easier for the decoder to steer the unsupervised-calibrated context
 
             backbone_features: torch.Tensor = self.decoder(
-                decoder_input,
+                decode_tokens,
                 temporal_padding_mask=temporal_padding_mask,
                 trial_context=trial_context,
                 times=times,
@@ -1189,16 +1175,15 @@ class CovariateReadout(TaskPipeline):
                 **other_kwargs
             )
         # crop out injected tokens, -> B T H
-        if self.spacetime:
-            if not self.decode_cross_attn:
-                backbone_features = self.injector.extract(batch, backbone_features)
-        else:
-            # nonflat path
-            _, backbone_features = unpack(backbone_features, ps, 'b t * h')
+        if not self.decode_cross_attn:
+            backbone_features = self.injector.extract(batch, backbone_features)
         return self.out(backbone_features)
 
     def get_target(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        tgt = batch[self.cfg.behavior_target]
+        if self.cfg.covariate_mask_ratio == 1.0:
+            tgt = batch[self.cfg.behavior_target]
+        else:
+            tgt = batch['covariate_target']
         if self.bhvr_mean is not None:
             tgt = tgt - self.bhvr_mean
             tgt = tgt / self.bhvr_std
@@ -1222,7 +1207,7 @@ class CovariateReadout(TaskPipeline):
             bhvr = bhvr[..., :-self.bhvr_lag_bins, :]
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
 
-        if Output.behavior_pred in self.cfg.outputs:
+        if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
             batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr)
             if self.bhvr_mean is not None:
                 batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
@@ -1234,13 +1219,14 @@ class CovariateReadout(TaskPipeline):
         # Compute loss
         bhvr_tgt = self.get_target(batch)
 
+        # TODO I'm highly certain that masks no longer work with cropped flow
+        # Hm, how can I know whether a given length is illegitimate/just padding? Need this from shuffle...
         _, length_mask, _ = self.get_masks(
             batch, ref=bhvr_tgt,
-            length_key=COVARIATE_LENGTH_KEY if self.cfg.decode_strategy == EmbedStrat.token else LENGTH_KEY,
+            length_key=COVARIATE_LENGTH_KEY,
             compute_channel=False
         )
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
-        length_mask = length_mask & (~torch.isnan(bhvr_tgt).any(-1))
 
         loss = self.compute_loss(bhvr, bhvr_tgt)
         if self.cfg.behavior_fit_thresh:
@@ -1397,10 +1383,11 @@ def create_temporal_padding_mask(
     r"""
         Identify which features are padding or not. TODO needs update if we support encoder output of behavior
         # temporal_padding refers to general length padding in `serve_tokens_flat` case
+        True if padding
     """
 
     if length_key not in batch:
-        return None
+        return torch.zeros(reference.size()[:2], device=reference.device, dtype=torch.bool)
     if length_key == LENGTH_KEY and SHUFFLE_KEY in batch:
         token_position = batch[SHUFFLE_KEY]
         # If we had extra injected, the padd
