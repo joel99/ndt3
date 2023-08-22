@@ -129,7 +129,7 @@ class TaskPipeline(nn.Module):
         self.serve_tokens = data_attrs.serve_tokens
         self.serve_tokens_flat = data_attrs.serve_tokens_flat
 
-    def get_masks(self, batch, channel_key=CHANNEL_KEY, length_key=LENGTH_KEY, ref: torch.Tensor | None = None, compute_channel=True):
+    def get_masks(self, batch: Dict[str, torch.Tensor], channel_key=CHANNEL_KEY, length_key=LENGTH_KEY, ref: torch.Tensor | None = None, compute_channel=True):
         r"""
             length_key: token-level padding info
             channel_key: intra-token padding info
@@ -139,25 +139,36 @@ class TaskPipeline(nn.Module):
             ref: torch.Tensor = batch[DataKey.spikes][..., 0]
         loss_mask = torch.ones(ref.size(), dtype=torch.bool, device=ref.device)
 
-        length_mask = create_temporal_padding_mask(ref, batch, length_key=length_key)
+        length_mask = create_token_padding_mask(ref, batch, length_key=length_key)
         length_mask = ~(length_mask & torch.isnan(ref).any(-1))
 
         loss_mask = loss_mask & rearrange(length_mask, 'b t -> b t 1')
 
         if channel_key in batch and compute_channel: # only some of b x a x c are valid
+            assert ref.ndim >= 3 # Channel dimension assumed as dim 2
+            comparison = repeat(torch.arange(ref.size(2), device=ref.device), 'c -> 1 1 c')
+
+            # Note no shuffling occurs here because 1. channel_key shuffle is done when needed earlier
+            # 2. no spatial shuffling occurs so we do need to apply_shuffle(torch.arange(c))
             channels = batch[channel_key] # b x a of ints < c (or b x t)
             if channels.ndim == 1:
                 channels = channels.unsqueeze(1)
-            assert ref.ndim >= 3 # Channel dimension assumed as dim 2
-            # Note no shuffling occurs here because 1. channel_key shuffle is done when needed earlier
-            # 2. no spatial shuffling occurs so we do need to apply_shuffle(torch.arange(c))
-            comparison = repeat(torch.arange(ref.size(2), device=ref.device), 'c -> 1 1 c')
             channel_mask = comparison < rearrange(channels, 'b t -> b t 1') # dim 2 is either arrays (base case) or tokens (flat)
             loss_mask = loss_mask & channel_mask
         else:
             loss_mask = loss_mask[..., 0] # don't specify channel dim if not used, saves HELDOUT case
             channel_mask = None
         return loss_mask, length_mask, channel_mask
+
+    def get_token_length_mask(self, batch, length_key, shuffle_key: str = "", is_shuffle: bool = False):
+        # if SHUFFLE_KEY is relevant, trigger another thing...
+        if length_key in batch:
+            if is_shuffle:
+                token_position = rearrange(batch[shuffle_key][batch['encoder_frac']:], 't -> () t')
+                padding_mask = token_position >= rearrange(batch[length_key], 'b -> b ()')
+            else:
+                padding_mask = create_token_padding_mask(ref, batch, length_key=length_key)
+        return ~rearrange(padding_mask, 'b t -> b t 1') # All uses of length mask will require comparison along a spatial dim as well.
 
     def get_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
         r"""
@@ -516,7 +527,7 @@ class ShuffleInfill(RatePrediction):
         })
         return batch
 
-    def get_masks(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor):
+    def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor):
         # get_masks
         loss_mask = torch.ones(loss.size(), device=loss.device, dtype=torch.bool)
         # note LENGTH_KEY and CHANNEL_KEY are for padding tracking
@@ -569,7 +580,7 @@ class ShuffleInfill(RatePrediction):
                     ctx = batch[key] # unsup always gets fastpath
                     # ctx = batch[key].detach() if getattr(self.cfg, 'detach_decode_context') else batch[key]
                     trial_context.append(ctx)
-            temporal_padding_mask = create_temporal_padding_mask(None, batch, truncate_shuffle=False)
+            temporal_padding_mask = create_token_padding_mask(None, batch, truncate_shuffle=False)
             if self.joint_heldout:
                 temporal_padding_mask = torch.cat([
                     temporal_padding_mask,
@@ -591,7 +602,7 @@ class ShuffleInfill(RatePrediction):
                 ], 1)
                 temporal_padding_mask = torch.cat([
                     temporal_padding_mask,
-                    create_temporal_padding_mask(batch[DataKey.extra], batch, length_key=COVARIATE_LENGTH_KEY)
+                    create_token_padding_mask(batch[DataKey.extra], batch, length_key=COVARIATE_LENGTH_KEY)
                 ], 1)
             reps: torch.Tensor = self.decoder(
                 decoder_input,
@@ -836,7 +847,7 @@ class HeldoutPrediction(RatePrediction):
             # crop out injected tokens, -> B T H
             if self.cfg.decode_separate:
                 # import pdb;pdb.set_trace()
-                temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
+                temporal_padding_mask = create_token_padding_mask(backbone_features, batch)
                 if self.cfg.decode_time_pool: # B T H -> B T H
                     backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
                     if Output.pooled_features in self.cfg.outputs:
@@ -859,7 +870,7 @@ class HeldoutPrediction(RatePrediction):
                 times = torch.cat([src_time, decode_time], dim=1)
                 positions = torch.cat([src_space, torch.zeros_like(decode_space)], dim=1) # Kill any accidental padding, space is no-op here
                 if temporal_padding_mask is not None:
-                    extra_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
+                    extra_padding_mask = create_token_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
                     temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
 
                 trial_context = []
@@ -878,7 +889,7 @@ class HeldoutPrediction(RatePrediction):
             backbone_features = self.injector.extract(batch, backbone_features)
         elif self.cfg.decode_strategy == EmbedStrat.project and not self.concatenating:
             if self.spacetime:
-                temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch, truncate_shuffle=not self.cfg.decode_use_shuffle_backbone)
+                temporal_padding_mask = create_token_padding_mask(backbone_features, batch, truncate_shuffle=not self.cfg.decode_use_shuffle_backbone)
                 if self.cfg.decode_time_pool and DataKey.time in batch:
                     backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
             else:
@@ -1069,7 +1080,7 @@ class CovariateReadout(TaskPipeline):
 
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         if self.cfg.decode_separate:
-            temporal_padding_mask = create_temporal_padding_mask(backbone_features, batch)
+            temporal_padding_mask = create_token_padding_mask(backbone_features, batch)
             if self.cfg.decode_time_pool: # B T H -> B T H
                 backbone_features, temporal_padding_mask = temporal_pool(batch, backbone_features, temporal_padding_mask, pool=self.cfg.decode_time_pool)
                 if Output.pooled_features in self.cfg.outputs:
@@ -1112,7 +1123,7 @@ class CovariateReadout(TaskPipeline):
                     'memory_padding_mask': temporal_padding_mask,
                 }
                 if temporal_padding_mask is not None:
-                    temporal_padding_mask = create_temporal_padding_mask(
+                    temporal_padding_mask = create_token_padding_mask(
                         decode_tokens,
                         batch,
                         length_key=COVARIATE_LENGTH_KEY,
@@ -1124,7 +1135,7 @@ class CovariateReadout(TaskPipeline):
                 times = torch.cat([src_time, decode_time], dim=1)
                 positions = torch.cat([src_space, decode_space], dim=1)
                 if temporal_padding_mask is not None:
-                    extra_padding_mask = create_temporal_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
+                    extra_padding_mask = create_token_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY)
                     temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
                 other_kwargs = {}
             trial_context = []
@@ -1341,24 +1352,25 @@ class BehaviorClassification(CovariateReadout):
 
 # === Utils ===
 
-def create_temporal_padding_mask(
+def create_token_padding_mask(
     reference: torch.Tensor,
     batch: Dict[str, torch.Tensor],
     length_key: str = LENGTH_KEY,
+    shuffle_key: str = SHUFFLE_KEY,
     truncate_shuffle: bool = True,
     duplicity=1,
 ) -> torch.Tensor:
     r"""
         Identify which features are padding or not. TODO needs update if we support encoder output of behavior
-        # temporal_padding refers to general length padding in `serve_tokens_flat` case
         True if padding
+        reference: tokens that are enumerated and must be determined whether is padding or not.
     """
 
     if length_key not in batch:
         return torch.zeros(reference.size()[:2], device=reference.device, dtype=torch.bool)
-    if length_key == LENGTH_KEY and SHUFFLE_KEY in batch:
-        token_position = batch[SHUFFLE_KEY]
-        # If we had extra injected, the padd
+    if length_key == LENGTH_KEY and shuffle_key in batch:
+        # shuffle_key presence indicates reference tokens have been shuffled, and batch[shuffle_key] indicates true position. Truncation is done _outside_ of this function.
+        token_position = batch[shuffle_key]
         if truncate_shuffle:
             token_position = token_position[:batch['encoder_frac']]
     else:

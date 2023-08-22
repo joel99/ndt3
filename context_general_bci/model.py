@@ -631,11 +631,11 @@ class BrainBertInterface(pl.LightningModule):
 
         breakpoint() # Deal with padding from additional temporal context input?
 
-        temporal_padding_mask = create_temporal_padding_mask(state_in, batch)
+        temporal_padding_mask = create_token_padding_mask(state_in, batch)
         if DataKey.extra in batch and not self.data_attrs.serve_tokens_flat: # serve_tokens_flat is enc dec, don't integrate extra (query) tokens in enc
             state_in = torch.cat([state_in, batch[DataKey.extra]], dim=1)
             if temporal_padding_mask is not None: # Implicit - if we have extra that warrants padding, base certainly warrants padding
-                extra_padding_mask = create_temporal_padding_mask(batch[DataKey.extra], batch, length_key=COVARIATE_LENGTH_KEY)
+                extra_padding_mask = create_token_padding_mask(batch[DataKey.extra], batch, length_key=COVARIATE_LENGTH_KEY)
                 temporal_padding_mask = torch.cat([temporal_padding_mask, extra_padding_mask], dim=1)
 
         # Merge temporal context into mainline seq (in NDT3, data/neuro is not revealed to backbone)
