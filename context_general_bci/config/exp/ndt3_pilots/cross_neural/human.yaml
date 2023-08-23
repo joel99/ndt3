@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  spike_context_integration: "in_context"
+train:
+  autoscale_batch_size: false
+  accumulate_batches: 4

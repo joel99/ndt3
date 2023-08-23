@@ -106,7 +106,9 @@ class BrainBertInterface(pl.LightningModule):
             )
         self.bind_io()
         self.novel_params: List[str] = [] # for fine-tuning
-        modifies = [tp.modifies for tp in self.task_pipelines.values()]
+        modifies = []
+        for tp in self.task_pipelines.values():
+            modifies.extend(tp.modifies)
         assert len(set(modifies)) == len(modifies), f"Task pipelines ({len(modifies)}) oversubscribed must modify different keys, found ({modifies})"
 
         if self.cfg.layer_norm_input:

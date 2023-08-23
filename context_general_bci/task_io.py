@@ -492,11 +492,14 @@ class ShuffleInfill(RatePrediction):
             reference='spike_target',
         )
 
+    @property
+    def handle(self):
+        return 'spike'
+
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         return self.shuffle_crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode)
 
-    @staticmethod
-    def shuffle_crop_batch(mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def shuffle_crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
         r"""
             Shuffle inputs, keep only what we need for evaluation
         """
@@ -506,7 +509,7 @@ class ShuffleInfill(RatePrediction):
             # manipulate keys so that we predict for all steps regardless of masking status (definitely hacky)
             batch.update({
                 SHUFFLE_KEY: torch.arange(spikes.size(1), device=spikes.device),
-                'spike_target': target,
+                f'{self.handle}_target': target,
                 'encoder_frac': spikes.size(1),
                 # f'{DataKey.time}_target': batch[DataKey.time],
                 # f'{DataKey.position}_target': batch[DataKey.position],
@@ -527,7 +530,7 @@ class ShuffleInfill(RatePrediction):
         # import pdb;pdb.set_trace()
         batch.update({
             DataKey.spikes: apply_shuffle(spikes, shuffle)[:,:encoder_frac],
-            'spike_target': apply_shuffle(target, shuffle)[:,encoder_frac:],
+            f'{self.handle}_target': apply_shuffle(target, shuffle)[:,encoder_frac:],
             'encoder_frac': encoder_frac,
             SHUFFLE_KEY: shuffle, # seems good to keep around...
         })
@@ -559,10 +562,9 @@ class ShuffleInfill(RatePrediction):
                 injected_time=batch[f'{DataKey.time}_target'],
                 injected_space=batch[f'{DataKey.position}_target'],
             ) # there are definitely space tokens, so we don't clamp.. # decode tokens should be b t h like spike_target
-            breakpoint()
         else:
             breakpoint() # JY is not sure of the flow here, TODO
-            decoder_input = backbone_features
+            decode_tokens = backbone_features
             decode_time = batch[DataKey.time]
             decode_space = batch[DataKey.position]
 
@@ -579,7 +581,7 @@ class ShuffleInfill(RatePrediction):
                 'memory_padding_mask': backbone_padding_mask
             }
         else:
-            decoder_input = torch.cat([backbone_features, decode_tokens], dim=1)
+            decode_tokens = torch.cat([backbone_features, decode_tokens], dim=1)
             decode_time = torch.cat([batch[DataKey.time], decode_time], 1)
             decode_space = torch.cat([batch[DataKey.position], decode_space], 1)
             other_kwargs = {}
@@ -590,7 +592,7 @@ class ShuffleInfill(RatePrediction):
                 trial_context.append(batch[key])
 
         backbone_features: torch.Tensor = self.decoder(
-            decoder_input,
+            decode_tokens,
             padding_mask=token_padding_mask,
             trial_context=trial_context,
             times=decode_time,

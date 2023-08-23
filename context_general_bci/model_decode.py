@@ -46,7 +46,6 @@ from context_general_bci.components import (
     ReadinCrossAttention,
     ContextualMLP,
 )
-from context_general_bci.task_io import task_modules, SHUFFLE_KEY, TaskPipeline
 from context_general_bci.tasks.pitt_co import CLAMP_MAX
 logger = logging.getLogger(__name__)
 
