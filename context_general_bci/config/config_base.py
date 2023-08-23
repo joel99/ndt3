@@ -148,6 +148,7 @@ class TaskConfig:
     behavior_lag_lookahead: bool = True # if true, allow lookahead up to `lag`. Only applied in causal path
     behavior_fit_thresh: float = 0.0 # exclude from loss, timesteps with values (velocities) less than this
     behavior_metric_thresh: float = 0.0001 # exclude from r2, timesteps with values (velocities) less than this
+    covariate_blacklist_dims: List[int] = field(default_factory=lambda: []) # list of dims to exclude from covariate decoding (for regression testing)
 
     # Trying to deal with incredibly noisy behavioral labels from human observation
     # By making supervision less prescriptive - expecting to reduce overfit
