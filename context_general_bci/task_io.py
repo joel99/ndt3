@@ -113,7 +113,7 @@ class TaskPipeline(nn.Module):
         Task IO - manages decoder layers, loss functions
         i.e. is responsible for returning loss, decoder outputs, and metrics
     """
-    does_update_root = False
+    modifies: List[DataKey] = [] # Which DataKeys are altered in use of this Pipeline? (We check to prevent multiple subscriptions)
     unique_space = False # accept unique space as input?
 
     def __init__(
@@ -352,7 +352,7 @@ class RatePrediction(TaskPipeline):
         return nn.Sequential(*out_layers)
 
 class SelfSupervisedInfill(RatePrediction):
-    does_update_root = True
+    modifies = [DataKey.spikes]
     unique_space = True
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         spikes = batch[DataKey.spikes]
@@ -449,7 +449,7 @@ class ShuffleInfill(RatePrediction):
         - However the code is pretty dirty and this may eventually change
 
     """
-    does_update_root = True
+    modifies = [DataKey.spikes]
 
     def __init__(
         self,
@@ -630,7 +630,8 @@ class NextStepPrediction(RatePrediction):
         Note while pretraining necesarily should be causal (no way of preventing ctx bleed across layers)
         We can still use a semi-causal decoder (however much context we can afford).
     """
-    does_update_root = True
+    modifies = [DataKey.spikes]
+
     def __init__(self, backbone_out_size: int, channel_count: int, cfg: ModelConfig, data_attrs: DataAttrs, **kwargs):
         super().__init__(backbone_out_size, channel_count, cfg, data_attrs, **kwargs)
         self.start_token = nn.Parameter(torch.randn(cfg.hidden_size))
@@ -740,6 +741,8 @@ class CovariateReadout(TaskPipeline):
     r"""
         Base class for decoding (regression/classification) of covariates.
     """
+    modifies = [DataKey.bhvr_vel]
+
     def __init__(
         self,
         backbone_out_size: int,

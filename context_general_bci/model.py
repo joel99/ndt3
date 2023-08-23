@@ -106,8 +106,8 @@ class BrainBertInterface(pl.LightningModule):
             )
         self.bind_io()
         self.novel_params: List[str] = [] # for fine-tuning
-        num_updates = sum(tp.does_update_root for tp in self.task_pipelines.values())
-        assert num_updates <= 1, "Only one task pipeline should update the root"
+        modifies = [tp.modifies for tp in self.task_pipelines.values()]
+        assert len(set(modifies)) == len(modifies), f"Task pipelines ({len(modifies)}) oversubscribed must modify different keys, found ({modifies})"
 
         if self.cfg.layer_norm_input:
             self.layer_norm_input = nn.LayerNorm(data_attrs.max_channel_count)
