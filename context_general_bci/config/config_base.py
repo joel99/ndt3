@@ -550,7 +550,7 @@ class RootConfig:
 
     default_root_dir: Path = Path("./data/runs").resolve()
     wandb_user: str = "joelye9"
-    wandb_project: str = "context_general_bci"
+    wandb_project: str = "ndt3"
     wandb_api_key_path: Path = Path("/home/joelye/.wandb_api").resolve()
     model: ModelConfig = field(default_factory=ModelConfig)
     dataset: DatasetConfig = field(default_factory=DatasetConfig)

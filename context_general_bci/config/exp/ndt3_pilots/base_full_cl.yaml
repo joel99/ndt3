@@ -8,7 +8,7 @@ defaults:
 dataset:
   datasets:
   - observation_.*
-  # - fbc_.*
+  - fbc_.*
 # model:
   # task:
     # covariate_blacklist_dims: [0,3,4,5]
