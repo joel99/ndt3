@@ -1,0 +1,55 @@
+# @package _global_
+
+# Mirror `scale_decode` - pretrain a stable decoder, while varying the unsup source
+# Tag refers to unsup source
+
+defaults:
+  - /model: flat_enc_dec
+  - /model/task:
+    - joint_bhvr_decode_flat
+  - /dataset: flat
+dataset:
+  eval_ratio: 0.5
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+
+  datasets:
+  - observation_.*
+  # - ortho_.*
+  - fbc_.*
+  exclude_datasets: []
+  pitt_co:
+    respect_trial_boundaries: false
+  observation:
+    respect_trial_boundaries: false
+  odoherty_rtt:
+    chop_size_ms: 2500
+    include_sorted: False
+    arrays: ['Indy-M1', 'Loco-M1']
+  behavior_dim: 8
+model:
+  causal: true
+  neurons_per_token: 32
+  decoder_context_integration: 'cross_attn'
+  task:
+    decode_time_pool: ""
+    task_weights: [1.0, 0.1]
+    behavior_lag: 0 # No lag for human data. For parity with ongoing exps.
+    tasks:
+    - ModelTask.shuffle_infill
+    - ModelTask.kinematic_decoding
+    mask_ratio: 0.1
+    decode_normalizer: ''
+    covariate_blacklist_dims: [0,3,4,5,6,7]
+    covariate_mask_ratio: 0.5
+  val_iters: 10
+  lr_ramp_steps: 50
+train:
+  patience: 50
+  autoscale_batch_size: false
+  batch_size: 32
+  accumulate_batches: 4 # Mind, 10G
+  # batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
+inherit_exp: pitt_v3
+inherit_tag: human_10l

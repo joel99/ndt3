@@ -17,7 +17,7 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, wandb_query_latest, load_wandb_run
 
 mode = 'rtt'
-mode = 'pitt'
+# mode = 'pitt'
 if mode == 'rtt':
     ctxs = context_registry.query(task=ExperimentalTask.odoherty_rtt)
 else:

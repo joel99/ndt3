@@ -47,6 +47,12 @@ COVARIATE_LENGTH_KEY = 'covariate_length' # we need another length tracker for p
 COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout channels only
 HELDOUT_CHANNEL_KEY = 'heldout_channel_counts'
 
+r"""
+    I really can't figure a good normalization scheme in light of the fact that we're supposed to be able to adapt to arbitrary magnitudes for ICL phase.
+    For now, we will force a kind of registration with the understanding that data should be brought into a dynamic range of 0.1-10.
+    Future covariates should have a normalization scheme that roughly respects this.
+"""
+
 logger = logging.getLogger(__name__)
 @dataclass
 class ContextAttrs:
@@ -408,11 +414,13 @@ class SpikingDataset(Dataset):
             else:
                 if k == DataKey.heldout_spikes and getattr(self.cfg, 'heldout_key_spoof_shape', []):
                     data_items[k] = torch.full(list(self.cfg.heldout_key_spoof_shape), fill_value=self.pad_value)
-                elif k == DataKey.bhvr_vel and (
-                    self.z_score and trial[MetaKey.session] in self.z_score
-                ):
-                    per_zscore = self.z_score[trial[MetaKey.session]]
-                    data_items[k] = (payload[k] - per_zscore['mean']) / per_zscore['std']
+                elif k == DataKey.bhvr_vel:
+                    mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
+                    if self.z_score and trial[MetaKey.session] in self.z_score:
+                        per_zscore = self.z_score[trial[MetaKey.session]]
+                        mean = per_zscore['mean']
+                        std = per_zscore['std']
+                    data_items[k] = (payload[k] - mean) / std
                 else:
                     data_items[k] = payload[k]
 

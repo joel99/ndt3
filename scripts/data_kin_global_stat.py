@@ -64,7 +64,7 @@ sns.histplot(mins)
 # sns.histplot(stds)
 # sns.histplot(means)
 # sns.histplot(lengths)
-
+print(session_stats[sessions[0]].max(0))
 #%%
 # Create blacklist based on statistic cutoffs
 blacklist = []
@@ -98,10 +98,12 @@ zscore = {
     'mean': vels.mean(0),
     'std': vels.std(0),
 }
-for alias in sessions:
-    kin_payload[alias] = zscore
-torch.save(kin_payload, kin_pt)
+print(zscore)
+# for alias in sessions:
+#     kin_payload[alias] = zscore
+# torch.save(kin_payload, kin_pt)
 #%%
+# Non-specific mechanism
 torch.save({
     'mean': vels.mean(0),
     'std': vels.std(0),

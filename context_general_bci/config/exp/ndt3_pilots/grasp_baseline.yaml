@@ -39,7 +39,7 @@ model:
     - ModelTask.kinematic_decoding
     mask_ratio: 0.1
     decode_normalizer: ''
-    covariate_blacklist_dims: [0, 3,4,5,6,7]
+    covariate_blacklist_dims: [0,3,4,5,7]
   val_iters: 10
   lr_ramp_steps: 50
 train:
