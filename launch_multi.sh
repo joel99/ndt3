@@ -8,6 +8,7 @@
 #SBATCH -t 36:00:00
 #SBATCH --mem 90G
 #SBATCH --output=slurm_logs/%j.out
+#SBATCH -x mind-1-13
 
 # Multinode notes
 # From https://pytorch-lightning.readthedocs.io/en/stable/clouds/cluster.html
@@ -34,6 +35,9 @@ echo $SLURM_NTASKS_PER_NODE
 
 hostname
 source ~/.bashrc # Note bashrc has been modified to allow slurm jobs
+# echo "loaded bashrc"
+# echo $TEST_PROFILE # did profile run?
 source ~/load_env.sh
+# echo "done loading env"
 srun python -u run.py $1
 
