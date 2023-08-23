@@ -1085,10 +1085,9 @@ class CovariateReadout(TaskPipeline):
                 if loss[loss_mask].mean().isnan().any():
                     breakpoint()
                 if len(self.covariate_blacklist_dims) > 0:
-                    loss_mask = loss_mask.unsqueeze(-1)
+                    loss_mask = loss_mask.unsqueeze(-1).repeat(1, 1, loss.size(-1))
                     loss_mask[..., self.covariate_blacklist_dims] = False
                 loss = loss[loss_mask].mean()
-
         r2_mask = length_mask
 
         batch_out['loss'] = loss
