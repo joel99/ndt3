@@ -479,21 +479,18 @@ class ShuffleInfill(RatePrediction):
         self.max_spatial = data_attrs.max_spatial_tokens
         self.causal = cfg.causal
         # import pdb;pdb.set_trace()
-        # ! TODO re-enable
-        # self.out = RatePrediction.create_linear_head(cfg, cfg.hidden_size, cfg.neurons_per_token, layers=1 if self.cfg.linear_head else 2)
         self.out = RatePrediction.create_linear_head(cfg, cfg.hidden_size, cfg.neurons_per_token)
         if getattr(cfg, 'force_zero_mask', False):
             self.register_buffer('mask_token', torch.zeros(cfg.hidden_size))
         else:
             self.mask_token = nn.Parameter(torch.randn(cfg.hidden_size))
 
-        # TODO JY delete?
-        # * Redundant implementation with decode_separate: False path in HeldoutPrediction... scrap at some point
-        self.joint_heldout = self.cfg.query_heldout and not ModelTask.heldout_decoding in self.cfg.tasks
-        if self.joint_heldout:
-            self.heldout_mask_token = nn.Parameter(torch.randn(cfg.hidden_size))
-            self.query_readout = RatePrediction.create_linear_head(cfg, cfg.hidden_size, self.cfg.query_heldout)
-        # import pdb;pdb.set_trace()
+        self.decode_cross_attn = getattr(cfg, 'spike_context_integration', 'in_context') == 'cross_attn'
+        self.injector = TemporalTokenInjector(
+            cfg,
+            data_attrs,
+            reference='spike_target',
+        )
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         return self.shuffle_crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode)
@@ -554,63 +551,58 @@ class ShuffleInfill(RatePrediction):
         return loss_mask
 
     def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
-        # B T
         batch_out = {}
-        target = batch['spike_target']
-        if target.ndim == 5:
-            raise NotImplementedError("cannot even remember what this should look like")
-            # decoder_mask_tokens = repeat(self.mask_token, 'h -> b t s h', b=target.size(0), t=target.size(1), s=target.size(2))
+        target = batch['spike_target'] # B T H
+        if not eval_mode:
+            decode_tokens, decode_time, decode_space = self.injector.inject(
+                batch,
+                injected_time=batch[f'{DataKey.time}_target'],
+                injected_space=batch[f'{DataKey.position}_target'],
+            ) # there are definitely space tokens, so we don't clamp.. # decode tokens should be b t h like spike_target
+            breakpoint()
         else:
-            if not eval_mode:
-                decoder_mask_tokens = repeat(self.mask_token, 'h -> b t h', b=target.size(0), t=target.size(1))
-                decoder_input = torch.cat([backbone_features, decoder_mask_tokens], dim=1)
-                times = torch.cat([batch[DataKey.time], batch[f'{DataKey.time}_target']], 1)
-                positions = torch.cat([batch[DataKey.position], batch[f'{DataKey.position}_target']], 1)
-            else:
-                decoder_input = backbone_features
-                times = batch[DataKey.time]
-                positions = batch[DataKey.position]
-            if self.joint_heldout:
-                time_seg = torch.arange(0, times.max()+1, device=times.device, dtype=times.dtype)
-                decoder_input = torch.cat([
-                    decoder_input,
-                    repeat(self.heldout_mask_token, 'h -> b t h', b=target.size(0), t=time_seg.size(0)) # Assumes square
-                ], 1)
-                times = torch.cat([
-                    times, repeat(time_seg, 't -> b t', b=times.size(0))
-                ], 1)
-                positions = torch.cat([
-                    positions,
-                    torch.full((positions.size(0), time_seg.size(0)), self.max_spatial - 1, device=positions.device, dtype=positions.dtype),
-                ], 1)
-            trial_context = []
-            for key in ['session', 'subject', 'task']:
-                if key in batch and batch[key] is not None:
-                    ctx = batch[key] # unsup always gets fastpath
-                    # ctx = batch[key].detach() if getattr(self.cfg, 'detach_decode_context') else batch[key]
-                    trial_context.append(ctx)
-            token_padding_mask = create_token_padding_mask(None, batch) # No truncation currently needed because this is not cross attention. TODO, make it cross attention...
-            if self.joint_heldout:
-                token_padding_mask = torch.cat([
-                    token_padding_mask,
-                    torch.full((token_padding_mask.size(0), time_seg.size(0)), False, device=token_padding_mask.device, dtype=token_padding_mask.dtype),
-                ], 1)
-            reps: torch.Tensor = self.decoder(
-                decoder_input,
-                trial_context=trial_context,
-                padding_mask=token_padding_mask,
-                causal=self.causal,
-                times=times,
-                positions=positions
+            breakpoint() # JY is not sure of the flow here, TODO
+            decoder_input = backbone_features
+            decode_time = batch[DataKey.time]
+            decode_space = batch[DataKey.position]
+
+        token_padding_mask = create_token_padding_mask(None, batch) # Padding mask for full seq
+        if self.decode_cross_attn:
+            backbone_padding_mask, token_padding_mask = torch.split(
+                token_padding_mask,
+                [backbone_features.size(1), token_padding_mask.size(1)-backbone_features.size(1)],
+                dim=1
             )
-            if self.joint_heldout:
-                heldout_reps, reps = torch.split(reps, [time_seg.size(0), reps.size(1)-time_seg.size(0)], dim=1)
-                heldout_rates = self.query_readout(heldout_reps)
-            if getattr(self.cfg, 'decode_use_shuffle_backbone', False):
-                batch_out['update_features'] = reps
-                batch_out['update_time'] = times
-            reps = reps[:, -target.size(1):]
-            rates = self.out(reps)
+            other_kwargs = {
+                'memory': backbone_features,
+                'memory_times': batch[DataKey.time],
+                'memory_padding_mask': backbone_padding_mask
+            }
+        else:
+            decoder_input = torch.cat([backbone_features, decode_tokens], dim=1)
+            decode_time = torch.cat([batch[DataKey.time], decode_time], 1)
+            decode_space = torch.cat([batch[DataKey.position], decode_space], 1)
+            other_kwargs = {}
+
+        trial_context = []
+        for key in ['session', 'subject', 'task']:
+            if key in batch and batch[key] is not None:
+                trial_context.append(batch[key])
+
+        backbone_features: torch.Tensor = self.decoder(
+            decoder_input,
+            padding_mask=token_padding_mask,
+            trial_context=trial_context,
+            times=decode_time,
+            positions=decode_space,
+            causal=self.causal,
+            **other_kwargs,
+        )
+
+        if not self.decode_cross_attn:
+            backbone_features = self.injector.extract(batch, backbone_features)
+        rates = self.out(backbone_features)
+
         if Output.logrates in self.cfg.outputs:
             # out is B T C, we want B T' C, and then to unshuffle
             if eval_mode:
@@ -623,38 +615,12 @@ class ShuffleInfill(RatePrediction):
                 ], dim=1)
                 unshuffled = apply_shuffle(all_tokens, batch[SHUFFLE_KEY].argsort())
             batch_out[Output.logrates] = unshuffled  # unflattening occurs outside
-        if Output.heldout_logrates in self.cfg.outputs and self.joint_heldout:
-            batch_out[Output.heldout_logrates] = heldout_rates
         if not compute_metrics:
             return batch_out
         loss: torch.Tensor = self.loss(rates, target) # b t' c
         loss_mask = self.get_loss_mask(batch, loss) # shuffle specific
         loss = loss[loss_mask]
         batch_out['loss'] = loss.mean()
-        if self.joint_heldout:
-            heldout_target = batch[DataKey.heldout_spikes][...,0]
-            heldout_rates = heldout_rates[..., :heldout_target.size(-1)] # Crop to relevant max length
-            heldout_loss = self.loss(heldout_rates, heldout_target)
-            heldout_loss_mask, heldout_length_mask, heldout_channel_mask = self.get_masks(
-                batch, ref=heldout_target,
-                length_key=COVARIATE_LENGTH_KEY,
-                channel_key=COVARIATE_CHANNEL_KEY
-            )
-            heldout_loss = heldout_loss[heldout_loss_mask]
-            batch_out['loss'] = batch_out['loss'] + heldout_loss.mean()
-            if Metric.co_bps in self.cfg.metrics:
-                batch_out[Metric.co_bps] = self.bps(
-                    heldout_rates.unsqueeze(-2), heldout_target.unsqueeze(-2),
-                    length_mask=heldout_length_mask,
-                    channel_mask=heldout_channel_mask
-                )
-            if Metric.block_co_bps in self.cfg.metrics:
-                batch_out[Metric.block_co_bps] = self.bps(
-                    heldout_rates.unsqueeze(-2), heldout_target.unsqueeze(-2),
-                    length_mask=heldout_length_mask,
-                    channel_mask=heldout_channel_mask,
-                    block=True
-                )
         return batch_out
 
 
@@ -796,17 +762,17 @@ class CovariateReadout(TaskPipeline):
             force_zero_mask=self.decode_cross_attn and not getattr(self.cfg, 'decode_tokenize_dims', False)
         )
         self.time_pad = cfg.transformer.max_trial_length
+        self.cov_dims = data_attrs.behavior_dim
+        self.covariate_blacklist_dims = torch.tensor(self.cfg.covariate_blacklist_dims)
         if self.cfg.decode_separate: # If we need additional cross-attention to decode. Not needed if mask tokens are procssed earlier.
             self.decoder = SpaceTimeTransformer(
                 cfg.transformer,
-                max_spatial_tokens=0,
+                max_spatial_tokens=self.cov_dims if self.cfg.decode_tokenize_dims else 0,
                 n_layers=cfg.decoder_layers,
                 allow_embed_padding=True,
                 context_integration=getattr(cfg, 'decoder_context_integration', 'in_context'),
                 embed_space=not self.decode_cross_attn
             )
-        self.cov_dims = data_attrs.behavior_dim
-        self.covariate_blacklist_dims = torch.tensor(self.cfg.covariate_blacklist_dims)
 
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space

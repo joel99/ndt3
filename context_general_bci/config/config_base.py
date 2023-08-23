@@ -213,6 +213,7 @@ class ModelConfig:
     # This is a master flag, and changes a few pathways
     decoder_layers: int = 2
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
+    spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
     # 1. makes masking shuffle-based
 
     half_precision: bool = True
