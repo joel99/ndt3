@@ -806,6 +806,7 @@ class CovariateReadout(TaskPipeline):
                 embed_space=not self.decode_cross_attn
             )
         self.cov_dims = data_attrs.behavior_dim
+        self.covariate_blacklist_dims = torch.tensor(self.cfg.covariate_blacklist_dims)
 
         self.causal = cfg.causal
         self.spacetime = cfg.transform_space
@@ -1083,6 +1084,9 @@ class CovariateReadout(TaskPipeline):
             else:
                 if loss[loss_mask].mean().isnan().any():
                     breakpoint()
+                if len(self.covariate_blacklist_dims) > 0:
+                    loss_mask = loss_mask.unsqueeze(-1)
+                    loss_mask[..., self.covariate_blacklist_dims] = False
                 loss = loss[loss_mask].mean()
 
         r2_mask = length_mask
