@@ -11,7 +11,7 @@ dataset:
   # - fbc_.*
 model:
   task:
-    covariate_blacklist_dims: [0,3,4,5,6,7]
+    covariate_blacklist_dims: [0,3,4,5]
     covariate_mask_ratio: 0.5
 train:
   autoscale_batch_size: false
@@ -19,3 +19,4 @@ train:
   # accumulate_batches: 4 # Mind, 10G
   batch_size: 128
   # batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
+notes: "Add click/grasp dims"
