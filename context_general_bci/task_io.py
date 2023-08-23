@@ -213,6 +213,13 @@ class TaskPipeline(nn.Module):
         raise NotImplementedError # nothing in main model to use this
         return []
 
+    def extract_trial_context(self, batch, detach=False):
+        trial_context = []
+        for key in ['session', 'subject', 'task']:
+            if key in batch and batch[key] is not None:
+                trial_context.append(batch[key] if not detach else batch[key].detach())
+        return trial_context
+
     def forward(self, batch, backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
         r"""
             By default only return outputs. (Typically used in inference)
@@ -351,6 +358,61 @@ class RatePrediction(TaskPipeline):
             )
         return nn.Sequential(*out_layers)
 
+class SpikeBase(RatePrediction):
+    modifies = [DataKey.spikes]
+
+    def __init__(
+        self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        self.spike_embed_style = cfg.spike_embed_style
+
+        if cfg.spike_embed_dim:
+            spike_embed_dim = cfg.spike_embed_dim
+        else:
+            assert cfg.hidden_size % cfg.neurons_per_token == 0, "hidden size must be divisible by neurons per token"
+            spike_embed_dim = round(cfg.hidden_size / cfg.neurons_per_token)
+        if self.spike_embed_style == EmbedStrat.project:
+            self.readin = nn.Linear(1, spike_embed_dim)
+        elif self.spike_embed_style == EmbedStrat.token:
+            assert cfg.max_neuron_count > data_attrs.pad_token, "max neuron count must be greater than pad token"
+            self.readin = nn.Embedding(cfg.max_neuron_count, spike_embed_dim, padding_idx=data_attrs.pad_token if data_attrs.pad_token else None)
+            # I'm pretty confident we won't see more than 20 spikes in 20ms but we can always bump up
+            # Ignore pad token if set to 0 (we're doing 0 pad, not entirely legitimate but may be regularizing)
+
+    @property
+    def handle(self):
+        return 'spike'
+
+    def encode(self, batch):
+        state_in = torch.as_tensor(batch[DataKey.spikes], dtype=int)
+        state_in = rearrange(state_in, 'b t c h -> b t (c h)')
+        if self.spike_embed_style == EmbedStrat.token:
+            state_in = self.readin(state_in)
+        elif self.spike_embed_style == EmbedStrat.project:
+            state_in = self.readin(state_in.float().unsqueeze(-1))
+        else:
+            raise NotImplementedError
+        state_in = state_in.flatten(-2, -1)
+        return state_in
+
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        spikes = self.encode(batch)
+        time = batch[DataKey.time]
+        space = batch[DataKey.position]
+        return spikes, time, space
+
+    # TODO implement... needed to make sure spikes are encoded now that we've delegated internally
+
 class SelfSupervisedInfill(RatePrediction):
     modifies = [DataKey.spikes]
     unique_space = True
@@ -441,7 +503,7 @@ class SelfSupervisedInfill(RatePrediction):
 
         return batch_out
 
-class ShuffleInfill(RatePrediction):
+class ShuffleInfill(SpikeBase):
     r"""
         Technical design decision note:
         - JY instinctively decided to split up inputs and just carry around split tensors rather than the splitting metadata.
@@ -449,7 +511,6 @@ class ShuffleInfill(RatePrediction):
         - However the code is pretty dirty and this may eventually change
 
     """
-    modifies = [DataKey.spikes]
 
     def __init__(
         self,
@@ -473,14 +534,14 @@ class ShuffleInfill(RatePrediction):
             max_spatial_tokens=data_attrs.max_spatial_tokens,
             n_layers=cfg.decoder_layers,
             debug_override_dropout_in=getattr(cfg.transformer, 'debug_override_dropout_io', False),
-            context_integration=getattr(cfg.transformer, 'context_integration', 'in_context'),
+            context_integration=cfg.transformer.context_integration,
             embed_space=cfg.transformer.embed_space,
         )
         self.max_spatial = data_attrs.max_spatial_tokens
         self.causal = cfg.causal
         # import pdb;pdb.set_trace()
         self.out = RatePrediction.create_linear_head(cfg, cfg.hidden_size, cfg.neurons_per_token)
-        if getattr(cfg, 'force_zero_mask', False):
+        if cfg.force_zero_mask:
             self.register_buffer('mask_token', torch.zeros(cfg.hidden_size))
         else:
             self.mask_token = nn.Parameter(torch.randn(cfg.hidden_size))
@@ -491,10 +552,6 @@ class ShuffleInfill(RatePrediction):
             data_attrs,
             reference='spike_target',
         )
-
-    @property
-    def handle(self):
-        return 'spike'
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         return self.shuffle_crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode)
@@ -508,9 +565,9 @@ class ShuffleInfill(RatePrediction):
         if eval_mode:
             # manipulate keys so that we predict for all steps regardless of masking status (definitely hacky)
             batch.update({
-                SHUFFLE_KEY: torch.arange(spikes.size(1), device=spikes.device),
+                f'{self.handle}_{SHUFFLE_KEY}': torch.arange(spikes.size(1), device=spikes.device),
                 f'{self.handle}_target': target,
-                'encoder_frac': spikes.size(1),
+                f'{self.handle}_encoder_frac': spikes.size(1),
                 # f'{DataKey.time}_target': batch[DataKey.time],
                 # f'{DataKey.position}_target': batch[DataKey.position],
             })
@@ -531,8 +588,8 @@ class ShuffleInfill(RatePrediction):
         batch.update({
             DataKey.spikes: apply_shuffle(spikes, shuffle)[:,:encoder_frac],
             f'{self.handle}_target': apply_shuffle(target, shuffle)[:,encoder_frac:],
-            'encoder_frac': encoder_frac,
-            SHUFFLE_KEY: shuffle, # seems good to keep around...
+            f'{self.handle}_encoder_frac': encoder_frac,
+            f'{self.handle}_{SHUFFLE_KEY}': shuffle, # seems good to keep around...
         })
         return batch
 
@@ -541,9 +598,9 @@ class ShuffleInfill(RatePrediction):
         loss_mask = torch.ones(loss.size(), device=loss.device, dtype=torch.bool)
         # note LENGTH_KEY and CHANNEL_KEY are for padding tracking
         # while DataKey.time and DataKey.position are for content
-        length_mask = ~create_token_padding_mask(None, batch)
+        length_mask = ~create_token_padding_mask(None, batch, length_key=LENGTH_KEY, shuffle_key=f'{self.handle}_{SHUFFLE_KEY}')
         if LENGTH_KEY in batch:
-            length_mask = length_mask[..., batch['encoder_frac']:]
+            length_mask = length_mask[..., batch[f'{self.handle}_encoder_frac']:]
             loss_mask = loss_mask & length_mask.unsqueeze(-1)
         if CHANNEL_KEY in batch:
             # CHANNEL_KEY padding tracking has already been shuffled
@@ -555,7 +612,7 @@ class ShuffleInfill(RatePrediction):
 
     def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
         batch_out = {}
-        target = batch['spike_target'] # B T H
+        target = batch[f'{self.handle}_target'] # B T H
         if not eval_mode:
             decode_tokens, decode_time, decode_space = self.injector.inject(
                 batch,
@@ -567,8 +624,11 @@ class ShuffleInfill(RatePrediction):
             decode_tokens = backbone_features
             decode_time = batch[DataKey.time]
             decode_space = batch[DataKey.position]
-
-        token_padding_mask = create_token_padding_mask(None, batch) # Padding mask for full seq
+        token_padding_mask = create_token_padding_mask(
+            None, batch,
+            length_key=f'{LENGTH_KEY}', # Use the default length key that comes with dataloader # TODO fix dataloader to be more modular
+            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
+        ) # Padding mask for full seq
         if self.decode_cross_attn:
             backbone_padding_mask, token_padding_mask = torch.split(
                 token_padding_mask,
@@ -586,15 +646,10 @@ class ShuffleInfill(RatePrediction):
             decode_space = torch.cat([batch[DataKey.position], decode_space], 1)
             other_kwargs = {}
 
-        trial_context = []
-        for key in ['session', 'subject', 'task']:
-            if key in batch and batch[key] is not None:
-                trial_context.append(batch[key])
-
         backbone_features: torch.Tensor = self.decoder(
             decode_tokens,
             padding_mask=token_padding_mask,
-            trial_context=trial_context,
+            trial_context=self.extract_trial_context(batch=batch),
             times=decode_time,
             positions=decode_space,
             causal=self.causal,
@@ -615,7 +670,7 @@ class ShuffleInfill(RatePrediction):
                     torch.full(batch[DataKey.spikes].size()[:-1], float('-inf'), device=rates.device),
                     rates
                 ], dim=1)
-                unshuffled = apply_shuffle(all_tokens, batch[SHUFFLE_KEY].argsort())
+                unshuffled = apply_shuffle(all_tokens, batch[f'{self.handle}_{SHUFFLE_KEY}'].argsort())
             batch_out[Output.logrates] = unshuffled  # unflattening occurs outside
         if not compute_metrics:
             return batch_out
@@ -677,7 +732,6 @@ class NextStepPrediction(RatePrediction):
 
         return batch_out
 
-
 class TemporalTokenInjector(nn.Module):
     r"""
         The in-place "extra" pathway assumes will inject `extra` series for someone else to process.
@@ -693,7 +747,7 @@ class TemporalTokenInjector(nn.Module):
         self.cfg = cfg.task
         if force_zero_mask:
             self.register_buffer('cls_token', torch.zeros(cfg.hidden_size))
-        if getattr(self.cfg, 'decode_tokenize_dims', False):
+        if self.cfg.decode_tokenize_dims:
             # this logic is for covariate decode, not heldout neurons
             assert reference != DataKey.spikes, "Decode tokenization should not run for spikes, this is for covariate exps"
             self.decode_dims = data_attrs.behavior_dim
@@ -759,12 +813,12 @@ class CovariateReadout(TaskPipeline):
             data_attrs=data_attrs
         )
         assert self.cfg.decode_strategy == EmbedStrat.token, 'Non-token decoding deprecated'
-        self.decode_cross_attn = getattr(cfg, 'decoder_context_integration', 'in_context') == 'cross_attn'
+        self.decode_cross_attn = cfg.decoder_context_integration == 'cross_attn'
         self.injector = TemporalTokenInjector(
             cfg,
             data_attrs,
             self.cfg.behavior_target if self.cfg.covariate_mask_ratio == 1.0 else f'{self.handle}_target',
-            force_zero_mask=self.decode_cross_attn and not getattr(self.cfg, 'decode_tokenize_dims', False)
+            force_zero_mask=self.decode_cross_attn and not self.cfg.decode_tokenize_dims
         )
         self.time_pad = cfg.transformer.max_trial_length
         self.cov_dims = data_attrs.behavior_dim
@@ -775,7 +829,7 @@ class CovariateReadout(TaskPipeline):
                 max_spatial_tokens=self.cov_dims if self.cfg.decode_tokenize_dims else 0,
                 n_layers=cfg.decoder_layers,
                 allow_embed_padding=True,
-                context_integration=getattr(cfg, 'decoder_context_integration', 'in_context'),
+                context_integration=cfg.decoder_context_integration,
                 embed_space=not self.decode_cross_attn
             )
 
@@ -899,8 +953,8 @@ class CovariateReadout(TaskPipeline):
     def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
         if self.cfg.decode_separate:
             backbone_padding = create_token_padding_mask(backbone_features, batch)
-            if 'encoder_frac' in batch:
-                backbone_padding = backbone_padding[:, :batch['encoder_frac']]
+            if 'spike_encoder_frac' in batch:
+                backbone_padding = backbone_padding[:, :batch['spike_encoder_frac']]
             if self.cfg.decode_time_pool: # B T H -> B T H
                 backbone_features, backbone_padding = temporal_pool(batch, backbone_features, backbone_padding, pool=self.cfg.decode_time_pool)
                 if Output.pooled_features in self.cfg.outputs:
@@ -965,15 +1019,11 @@ class CovariateReadout(TaskPipeline):
                 times = torch.cat([src_time, decode_time], dim=1)
                 positions = torch.cat([src_space, decode_space], dim=1)
                 other_kwargs = {}
-            trial_context = []
-            for key in ['session', 'subject', 'task']:
-                if key in batch and batch[key] is not None:
-                    trial_context.append(batch[key].detach()) # Provide context, but hey, let's not make it easier for the decoder to steer the unsupervised-calibrated context
 
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=token_padding_mask,
-                trial_context=trial_context,
+                trial_context=self.extract_trial_context(batch, detach=True),
                 times=times,
                 positions=positions,
                 causal=self.causal,
