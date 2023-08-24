@@ -36,5 +36,6 @@ model:
   lr_ramp_steps: 50
 train:
   patience: 50
-inherit_exp: pitt_v3
-inherit_tag: human_10l
+inherit_exp: ndt3_pilots/cross_neural
+inherit_tag: human
+# wandb_project: context_general_bci

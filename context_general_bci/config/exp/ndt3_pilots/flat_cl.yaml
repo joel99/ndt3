@@ -1,0 +1,22 @@
+# @package _global_
+
+# Mirror `scale_decode` - pretrain a stable decoder, while varying the unsup source
+# Tag refers to unsup source
+
+defaults:
+  - _default
+dataset:
+  datasets:
+  - observation_.*
+  - fbc_.*
+model:
+  task:
+    decode_tokenize_dims: False
+    covariate_blacklist_dims: [0,3,4,5,6,7]
+    covariate_mask_ratio: 0.4
+train:
+  autoscale_batch_size: false
+  # batch_size: 32
+  # accumulate_batches: 4 # Mind, 10G
+  batch_size: 128
+  # batch_size: 256 # being run on A100 with 80G memory. No need for multinode.
