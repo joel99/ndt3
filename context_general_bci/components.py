@@ -436,6 +436,7 @@ class SpaceTimeTransformer(nn.Module):
             (So attention masks do not vary across batch)
         """
         # import pdb;pdb.set_trace()
+        # breakpoint()
         src = self.dropout_in(src)
         # === Embeddings ===
         src = src + self.time_encoder(times)

@@ -826,7 +826,7 @@ class CovariateReadout(TaskPipeline):
                 n_layers=cfg.decoder_layers,
                 allow_embed_padding=True,
                 context_integration=cfg.decoder_context_integration,
-                embed_space=not self.decode_cross_attn
+                embed_space=self.cfg.decode_tokenize_dims
             )
 
         self.causal = cfg.causal
