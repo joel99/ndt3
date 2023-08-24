@@ -769,13 +769,14 @@ class TemporalTokenInjector(nn.Module):
             b=b,
             t=t, # Time (not _token_, i.e. in spite of flat serving)
         )
-        if batch[self.reference].ndim > 3:
-            injected_space = torch.arange(self.max_space, device=batch[self.reference].device)
-            injected_space = repeat(injected_space, 's -> b t s', b=b, t=t)
-        else:
-            injected_space = torch.zeros(
-                (b, t), device=batch[self.reference].device, dtype=torch.long
-            )
+        if injected_space is None:
+            if batch[self.reference].ndim > 3:
+                injected_space = torch.arange(self.max_space, device=batch[self.reference].device)
+                injected_space = repeat(injected_space, 's -> b t s', b=b, t=t)
+            else:
+                injected_space = torch.zeros(
+                    (b, t), device=batch[self.reference].device, dtype=torch.long
+                )
         # I want to inject padding tokens for space so nothing actually gets added on that dimension
         if in_place:
             batch[DataKey.extra] = injected_tokens # B T H
@@ -962,8 +963,8 @@ class CovariateReadout(TaskPipeline):
             # * This "injection" step only really needs to happen if we've not already injected covariates as inputs; in that case, we need to retrieve previously injected info (see `crop_batch`)
             decode_tokens, decode_time, decode_space = self.injector.inject(
                 batch,
-                injected_time=batch[f'{self.handle}_{DataKey.time}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None,
-                injected_space=batch[f'{self.handle}_{DataKey.position}_target'] if self.cfg.covariate_mask_ratio < 1.0 else None
+                injected_time=batch.get(f'{self.handle}_{DataKey.time}_target', None),
+                injected_space=batch.get(f'{self.handle}_{DataKey.position}_target', None)
             )
 
             # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.
@@ -986,8 +987,6 @@ class CovariateReadout(TaskPipeline):
                 decode_time = decode_time + self.bhvr_lag_bins
 
             if self.decode_cross_attn:
-                times = decode_time
-                positions = decode_space
                 other_kwargs = {
                     'memory': backbone_features,
                     'memory_times': batch.get(DataKey.time, None),
@@ -1012,16 +1011,16 @@ class CovariateReadout(TaskPipeline):
                     token_padding_mask = torch.cat([backbone_padding, extra_padding_mask], dim=1)
                 logger.warning('This is untested code where we flipped order of padding declarations. Previously extra padding was declared after we concatenated backbone, but this did not make sense')
                 decode_tokens = torch.cat([backbone_features, decode_tokens], dim=1)
-                times = torch.cat([src_time, decode_time], dim=1)
-                positions = torch.cat([src_space, decode_space], dim=1)
+                decode_time = torch.cat([src_time, decode_time], dim=1)
+                decode_space = torch.cat([src_space, decode_space], dim=1)
                 other_kwargs = {}
 
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=token_padding_mask,
                 trial_context=self.extract_trial_context(batch, detach=True),
-                times=times,
-                positions=positions,
+                times=decode_time,
+                positions=decode_space,
                 causal=self.causal,
                 **other_kwargs
             )
