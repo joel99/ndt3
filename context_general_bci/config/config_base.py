@@ -61,7 +61,7 @@ class DataKey(Enum):
     stim = 'stim' # icms
     heldout_spikes = 'heldout_spikes' # for co-bps
 
-    bhvr_vel = 'bhvr_vel'
+    bhvr_vel = 'bhvr_vel' # general continuous covariate key
     bhvr_acc = 'bhvr_acc'
     bhvr_force = 'bhvr_force'
 
@@ -80,6 +80,12 @@ class MetaKey(Enum):
     subject = 'subject'
     array = 'array'
     task = 'task'
+
+    # Assist (for BCI exps)
+    active_assist = 'active_assist' # Autopilot (e.g. observation). Should be 1 at test.
+    passive_assist = 'passive_assist' # Constraint based (e.g. ortho). Should be 0 at test.
+    brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
+
     unique = 'unique' # default unique identifier
 
     # Note these two are trial-wise metadata, and are stored in meta.csv. Currently easier to just store string 'split' and 'path' rather than parse out the enums from the csv.
@@ -263,6 +269,12 @@ class ModelConfig:
     # This needs a separate API from the rest, likely, tied to readin.
     array_embed_strategy: EmbedStrat = EmbedStrat.none # ? maybe subsumed by subject
     array_embed_size: int = 256 # Bound in `propagate_config`
+
+    active_assist_embed_strategy: EmbedStrat = EmbedStrat.none
+    active_assist_embed_size: int = 256 # Bound in `propagate_config``
+
+    passive_assist_embed_strategy: EmbedStrat = EmbedStrat.none
+    passive_assist_embed_size: int = 256 # Bound in `propagate_config``
 
     # Closely related to, but not quite, array embed strategy.
     # Array embed strategy describes how we should provide information about array
@@ -523,7 +535,8 @@ class TrainConfig:
     epochs: int = 10000
     steps: int = 0 # Prefer to specify steps over epochs for FLOP consistency (pretty loose), but most other training settings are on epochs
     log_every_n_steps: int = 10
-    batch_size: int = 64
+    batch_size: int = 0
+    effective_batch_size: int = 512
     patience: int = 50 # these are in units of val checks (epochs)
     log_grad: bool = False
     gradient_clip_val: float = 1.0
@@ -585,7 +598,6 @@ class RootConfig:
 
     exp: Any = MISSING # delta config, provide via yaml and on CLI as `+exp=<test>.yaml`
     slurm_id: int = 0 # for experiment tracking...
-    effective_bsz: int = 0 # for experiment tracking...
     nodes: int = 1
 
 
@@ -604,5 +616,8 @@ def propagate_config(config: RootConfig):
     config.model.subject_embed_size = config.model.hidden_size
     config.model.array_embed_size = config.model.hidden_size
     config.model.task_embed_size = config.model.hidden_size
+    config.model.active_assist_embed_size = config.model.hidden_size
+    config.model.passive_assist_embed_size = config.model.hidden_size
+
     config.model.readin_dim = config.model.hidden_size
     config.model.readout_dim = config.model.hidden_size

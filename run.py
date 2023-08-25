@@ -17,6 +17,8 @@ import dataclasses
 
 import torch
 import pytorch_lightning as pl
+from lightning.pytorch.tuner import Tuner
+
 from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     EarlyStopping,
@@ -347,7 +349,7 @@ def run_exp(cfg : RootConfig) -> None:
         callbacks=callbacks,
         default_root_dir=cfg.default_root_dir,
         # track_grad_norm=2 if cfg.train.log_grad else -1, # this is quite cluttered, but probably better that way. See https://github.com/Lightning-AI/lightning/issues/1462#issuecomment-1190253742 for patch if needed, though.
-        precision=16 if cfg.model.half_precision else 32,
+        precision='bf16-mixed' if cfg.model.half_precision else 32,
         strategy=DDPStrategy(find_unused_parameters=len(cfg.model.task.covariate_blacklist_dims) > 0) if is_distributed else default_strat,
         gradient_clip_val=cfg.train.gradient_clip_val,
         accumulate_grad_batches=cfg.train.accumulate_batches,
@@ -355,6 +357,53 @@ def run_exp(cfg : RootConfig) -> None:
         overfit_batches=1 if cfg.train.overfit_batches else 0
     )
 
+    # assumes Tensor cores
+    torch.set_float32_matmul_precision('medium') # we don't care about precision really..
+
+    # === Train ===
+    num_workers = len(os.sched_getaffinity(0)) # If this is set too high, the dataloader may crash.
+    # num_workers = 0 # for testing
+    if num_workers == 0:
+        logger.warning("Num workers is 0, DEBUGGING.")
+    logger.info("Preparing to fit...")
+
+    val_datasets = [val]
+    if cfg.dataset.eval_datasets:
+        val_datasets.append(eval_dataset)
+
+    if cfg.train.effective_batch_size > 0:
+        if not is_distributed:
+            if not cfg.train.autoscale_batch_size:
+                logger.warning("You should probably take advantage of autoscale_batch_size if setting effective batch size")
+            else:
+                cfg.train.batch_size = 1
+
+    data_module = SpikingDataModule(
+        cfg.train.batch_size,
+        num_workers,
+        train, val_datasets
+    )
+
+    if not is_distributed and cfg.train.autoscale_batch_size: # autoscale doesn't work for DDP
+        tuner = Tuner(trainer)
+        tuner.scale_batch_size(model, datamodule=data_module, mode="power", steps_per_trial=15, max_trials=20)
+        if cfg.train.max_batch_size:
+            new_bsz = min(new_bsz, cfg.train.max_batch_size)
+
+    # Compute necessary accumulation, if prescribed.
+    if cfg.train.effective_batch_size > 0:
+        assert cfg.train.accumulate_batches == 1, "Cannot specify both effective_batch_size and accumulate_batches"
+        if is_distributed:
+            replicas = cfg.nodes * torch.cuda.device_count()
+            cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / (cfg.train.batch_size * replicas))
+        else:
+            cfg.train.batch_size = data_module.batch_size
+            # Autotune, then determine
+            cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / cfg.train.batch_size)
+        trainer.accumulate_grad_batches = cfg.train.accumulate_batches
+        logger.info(f"Accumulating {trainer.accumulate_grad_batches} batches to achieve effective batch size of {cfg.train.effective_batch_size}")
+        # ! note this post-hoc update... reliant on the Trainer api using this prop
+        # https://lightning.ai/docs/pytorch/stable/_modules/lightning/pytorch/callbacks/gradient_accumulation_scheduler.html#GradientAccumulationScheduler
 
     # Note, wandb.run can also be accessed as logger.experiment but there's no benefit
     # torch.cuda.device_count() > 1 or cfg.nodes > 1
@@ -368,7 +417,7 @@ def run_exp(cfg : RootConfig) -> None:
             wandb.run.notes = f"{notes}. SLURM_JOB_ID={os.environ['SLURM_JOB_ID']}"
             cfg.slurm_id = int(os.environ['SLURM_JOB_ID'])
             if not cfg.train.autoscale_batch_size:
-                cfg.effective_bsz = cfg.train.batch_size * cfg.train.accumulate_batches * cfg.nodes * torch.cuda.device_count()
+                cfg.train.effective_batch_size = cfg.train.batch_size * cfg.train.accumulate_batches * cfg.nodes * torch.cuda.device_count()
         wandb.config.update(OmegaConf.to_container(cfg, resolve=True))
         wandb.config.update({'data_attrs': dataclasses.asdict(data_attrs)})
         # Of course now I find these
@@ -378,28 +427,6 @@ def run_exp(cfg : RootConfig) -> None:
         wandb.define_metric(f"eval_{Metric.bps.value}", summary="max")
         wandb.define_metric(f"val_{Metric.kinematic_r2.value}", summary="max")
         wandb.define_metric(f"eval_{Metric.kinematic_r2.value}", summary="max")
-
-    # === Train ===
-    num_workers = len(os.sched_getaffinity(0)) # If this is set too high, the dataloader may crash.
-    # num_workers = 0 # for testing
-    if num_workers == 0:
-        logger.warning("Num workers is 0, DEBUGGING.")
-    logger.info("Preparing to fit...")
-
-    val_datasets = [val]
-    if cfg.dataset.eval_datasets:
-        val_datasets.append(eval_dataset)
-    data_module = SpikingDataModule(
-        cfg.train.batch_size,
-        num_workers,
-        train, val_datasets
-    )
-
-    if not is_distributed and cfg.train.autoscale_batch_size: # autoscale doesn't work for DDP
-        new_bsz = trainer.tuner.scale_batch_size(model, datamodule=data_module, mode="power", steps_per_trial=15, max_trials=20)
-        if cfg.train.max_batch_size:
-            new_bsz = min(new_bsz, cfg.train.max_batch_size)
-        data_module.batch_size = new_bsz
 
     trainer.fit(
         model, datamodule=data_module,

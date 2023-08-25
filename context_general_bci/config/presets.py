@@ -353,6 +353,33 @@ class RTTDataConfig(DatasetConfig):
 
 cs.store(group="dataset", name="rtt", node=RTTDataConfig)
 
+@dataclass
+class ScaleHistoryDatasetConfig(FlatDataConfig):
+    bin_size_ms: int = 20
+    max_trial_length: int = 500 # 10s
+    max_length_ms: int = 10000
+    max_tokens: int = 8192
+    pitt_co: PittConfig = field(default_factory=lambda: PittConfig(
+        arrays=["CRS02b-lateral_m1", "CRS02b-medial_m1", "CRS07-lateral_m1", "CRS07-medial_m1", "CRS08-lateral_m1", "CRS08-medial_m1"],
+        chop_size_ms=10000,
+    ))
+    odoherty_rtt: RTTConfig = field(default_factory=lambda: RTTConfig(
+        arrays=['Indy-M1_all', 'Loco-M1_all'],
+        include_sorted=False,
+        chop_size_ms=10000,
+    ))
+
+cs.store(group="dataset", name="scale_history", node=ScaleHistoryDatasetConfig)
+
+@dataclass
+class ScaleHistoryModelConfig(FlatEncDecModelConfig):
+    transformer: TransformerConfig = field(default_factory=lambda: FlatEncDecTransformerConfig(
+        max_trial_length=500,
+    ))
+
+cs.store(group="model", name="scale_history", node=ScaleHistoryModelConfig)
+
+
 r"""
     Some experiment specific presets
 """

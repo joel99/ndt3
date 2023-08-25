@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - _default
+  - /model:
+    - scale_history
+  - /dataset:
+    - scale_history
+dataset:
+  datasets:
+  - observation_.*
+  - fbc_.*
+train:
+  effective_batch_size: 512

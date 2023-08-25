@@ -107,12 +107,6 @@ class SpikingDataset(Dataset):
 
         Some notes on metadata:
         - MetaKey.Subject column stores SubjectName (OrderedEnum), so that we can vet subjects exist before starting training. May work with SubjectInfo classes
-
-        TODO implement. Should span several task settings.
-        - ICMS
-        - Motor cortex data
-
-        Other notes:
         - Can we "mixin" time-varying data, or maybe simpler to just be a separate codepath in this class.
     """
     def __init__(self, cfg: DatasetConfig, use_augment: bool = True, override_preprocess_path=False):
