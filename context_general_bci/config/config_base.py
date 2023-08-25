@@ -156,6 +156,7 @@ class TaskConfig:
     behavior_fit_thresh: float = 0.0 # exclude from loss, timesteps with values (velocities) less than this
     behavior_metric_thresh: float = 0.0001 # exclude from r2, timesteps with values (velocities) less than this
     covariate_blacklist_dims: List[int] = field(default_factory=lambda: []) # list of dims to exclude from covariate decoding (for regression testing)
+    encode_constraints: bool = False # Add constraints if available, currently implemented in covariate path
 
     # Trying to deal with incredibly noisy behavioral labels from human observation
     # By making supervision less prescriptive - expecting to reduce overfit
@@ -221,6 +222,7 @@ class ModelConfig:
     decoder_layers: int = 2
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
+
     # 1. makes masking shuffle-based
 
     half_precision: bool = True

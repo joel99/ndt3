@@ -85,6 +85,8 @@ class DataAttrs:
     serve_tokens_flat: bool = False
     neurons_per_token: int = 8
 
+    sparse_constraints: bool = False
+
     @property
     def max_spatial_tokens(self):
         per_array = ceil(self.max_channel_count / self.neurons_per_token)
@@ -655,6 +657,7 @@ class SpikingDataset(Dataset):
             serve_tokens=self.cfg.serve_tokenized,
             serve_tokens_flat=self.cfg.serve_tokenized_flat,
             neurons_per_token=self.cfg.neurons_per_token,
+            sparse_constraints=self.cfg.sparse_constraints,
         )
 
     # ==================== Data splitters ====================

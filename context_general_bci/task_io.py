@@ -864,6 +864,16 @@ class CovariateReadout(TaskPipeline):
         self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
 
+        self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
+        if self.cfg.encode_constraints:
+            if self.inject_constraint_tokens:
+                # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford no zero token if no constraints are active...?
+                # TODO ablate this
+                self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
+            self.active_cls = nn.Parameter(torch.randn(cfg.hidden_size))
+            self.passive_cls = nn.Parameter(torch.randn(cfg.hidden_size))
+            self.brain_control_cls = nn.Parameter(torch.randn(cfg.hidden_size))
+
     @abc.abstractmethod
     def initialize_readin(self):
         raise NotImplementedError
@@ -895,6 +905,7 @@ class CovariateReadout(TaskPipeline):
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
                 cov_time = repeat(cov_time, 't -> b (t d)', b=covariates.size(0), d=self.cov_dims)
+                # TODO constraints
             else:
                 cov_time = repeat(cov_time, 't -> b t', b=covariates.size(0))
             batch[f'{self.handle}_{DataKey.time}'] = cov_time
@@ -904,12 +915,14 @@ class CovariateReadout(TaskPipeline):
                     torch.arange(covariates.size(2), device=covariates.device),
                     'd -> b (t d)', b=covariates.size(0), t=covariates.size(1)
                 )
+                # TODO constraints
             else:
                 # Technically if data arrives as b t* 1, we can still use above if-case circuit
                 cov_space = torch.zeros_like(batch[f'{self.handle}_{DataKey.time}'])
             batch[f'{self.handle}_{DataKey.position}'] = cov_space
         if self.cfg.decode_tokenize_dims:
             covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
+            # TODO constraints
             batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
         if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
             breakpoint()
@@ -919,13 +932,26 @@ class CovariateReadout(TaskPipeline):
             })
         shuffle = torch.randperm(covariates.size(1), device=covariates.device)
         encoder_frac = int((1 - mask_ratio) * covariates.size(1))
-        for key in [f'{self.handle}_{DataKey.time}', f'{self.handle}_{DataKey.position}']:
+        def shuffle_key(key):
             if key in batch:
                 shuffled = apply_shuffle(batch[key], shuffle)
                 batch.update({
                     key: shuffled[:, :encoder_frac],
                     f'{key}_target': shuffled[:, encoder_frac:],
                 })
+        for key in [
+            f'{self.handle}_{DataKey.time}',
+            f'{self.handle}_{DataKey.position}',
+        ]:
+            shuffle_key(key)
+        if self.cfg.encode_constraints and not self.inject_constraint_tokens:
+            for key in [
+                DataKey.brain_control,
+                DataKey.active_assist,
+                DataKey.passive_assist,
+            ]:
+                shuffle_key(key)
+
         batch.update({
             self.cfg.behavior_target: apply_shuffle(covariates, shuffle)[:, :encoder_frac],
             f'{self.handle}_target': apply_shuffle(covariates, shuffle)[:, encoder_frac:],
@@ -937,8 +963,19 @@ class CovariateReadout(TaskPipeline):
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
             return super().get_context(batch)
+
+        if self.cfg.encode_constraints:
+            constraint_embed = (
+                self.active_cls * batch[DataKey.active_assist].unsqueeze(-1) + # H * B T 1
+                self.passive_cls * batch[DataKey.passive_assist].unsqueeze(-1) +
+                self.brain_control_cls * (1 - batch[DataKey.brain_control]).unsqueeze(-1)
+            ) # designed in such a way that native control (full brain) should embed to 0
+            if self.inject_constraint_tokens:
+                constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
+        else:
+            constraint_embed = 0
         return (
-            self.encode_cov(batch[self.cfg.behavior_target]),
+            self.encode_cov(batch[self.cfg.behavior_target]) + constraint_embed,
             batch[f'{self.handle}_{DataKey.time}'],
             batch[f'{self.handle}_{DataKey.position}']
         )
