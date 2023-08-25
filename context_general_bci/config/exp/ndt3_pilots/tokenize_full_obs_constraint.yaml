@@ -25,9 +25,9 @@ model:
     encode_constraints: True
 
 train:
-  autoscale_batch_size: false
-  batch_size: 64
-  # effective_batch_size: 256
+  autoscale_batch_size: true
+  # batch_size: 64
+  effective_batch_size: 256
   # 40G.
 
   # batch_size: 256 # being run on A100 with 80G memory. No need for multinode.

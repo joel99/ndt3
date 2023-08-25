@@ -386,7 +386,16 @@ def run_exp(cfg : RootConfig) -> None:
 
     if not is_distributed and cfg.train.autoscale_batch_size: # autoscale doesn't work for DDP
         tuner = Tuner(trainer)
-        tuner.scale_batch_size(model, datamodule=data_module, mode="power", init_val=4, steps_per_trial=3, max_trials=10)
+        print(f'Autoscaling...')
+        tuner.scale_batch_size(
+            model,
+            datamodule=data_module,
+            mode="power",
+            # init_val=4,
+            # steps_per_trial=3,
+            # max_trials=10
+        )
+        # trainer.tuner.scale_batch_size(model, datamodule=data_module, mode="power", steps_per_trial=15, max_trials=20)
         if cfg.train.max_batch_size:
             data_module.batch_size = min(data_module.batch_size, cfg.train.max_batch_size)
         print(f'Done autoscaling - choosing {data_module.batch_size} as batch size')
