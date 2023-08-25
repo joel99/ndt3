@@ -793,7 +793,7 @@ class CovariateReadout(TaskPipeline):
     r"""
         Base class for decoding (regression/classification) of covariates.
     """
-    modifies = [DataKey.bhvr_vel]
+    modifies = [DataKey.bhvr_vel, DataKey.active_assist, DataKey.passive_assist, DataKey.brain_control]
 
     def __init__(
         self,
@@ -905,7 +905,6 @@ class CovariateReadout(TaskPipeline):
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
                 cov_time = repeat(cov_time, 't -> b (t d)', b=covariates.size(0), d=self.cov_dims)
-                # TODO constraints
             else:
                 cov_time = repeat(cov_time, 't -> b t', b=covariates.size(0))
             batch[f'{self.handle}_{DataKey.time}'] = cov_time
@@ -915,14 +914,16 @@ class CovariateReadout(TaskPipeline):
                     torch.arange(covariates.size(2), device=covariates.device),
                     'd -> b (t d)', b=covariates.size(0), t=covariates.size(1)
                 )
-                # TODO constraints
             else:
                 # Technically if data arrives as b t* 1, we can still use above if-case circuit
                 cov_space = torch.zeros_like(batch[f'{self.handle}_{DataKey.time}'])
             batch[f'{self.handle}_{DataKey.position}'] = cov_space
         if self.cfg.decode_tokenize_dims:
             covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
-            # TODO constraints
+            if self.cfg.encode_constraints:
+                batch[DataKey.active_assist] = rearrange(batch[DataKey.active_assist], 'b t bhvr_dim -> b (t bhvr_dim) 1')
+                batch[DataKey.passive_assist] = rearrange(batch[DataKey.passive_assist], 'b t bhvr_dim -> b (t bhvr_dim) 1')
+                batch[DataKey.brain_control] = rearrange(batch[DataKey.brain_control], 'b t bhvr_dim -> b (t bhvr_dim) 1')
             batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
         if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
             breakpoint()
@@ -966,17 +967,17 @@ class CovariateReadout(TaskPipeline):
         if self.inject_constraint_tokens:
             raise NotImplementedError # sparse shape not considered
         constraint_embed = (
-            self.active_cls * active.unsqueeze(-1) + # H * B T 1
-            self.passive_cls * passive.unsqueeze(-1) +
-            self.brain_control_cls * (1 - brain).unsqueeze(-1)
+            self.active_cls * active + # H * B T 1
+            self.passive_cls * passive +
+            self.brain_control_cls * (1 - brain)
         ) # designed in such a way that native control (full brain) should embed to 0
         if self.inject_constraint_tokens:
             constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
+        return constraint_embed
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
             return super().get_context(batch)
-        breakpoint()
         return (
             self.encode_cov(batch[self.cfg.behavior_target]) +
             self.encode_constraint(batch[DataKey.active_assist], batch[DataKey.passive_assist], batch[DataKey.brain_control]),
