@@ -150,6 +150,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'ortho': ExperimentalTask.ortho,
             'fbc': ExperimentalTask.fbc,
         }, alias_prefix='pitt_full_'),
+        *BCIContextInfo.build_from_dir(f'./data/pitt_broad', task_map={}, alias_prefix='pitt_broad_'),
         # *BCIContextInfo.build_from_dir(f'./data/pitt_misc/mat', task_map={
         #     'obs': ExperimentalTask.observation,
         #     'ortho': ExperimentalTask.ortho,

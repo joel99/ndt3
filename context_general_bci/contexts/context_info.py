@@ -506,22 +506,30 @@ class BCIContextInfo(ReachingContextInfo):
                 alias = datapath.stem
                 pieces = alias.split('_')
                 pieces = list(filter(lambda x: x != '', pieces))
-                subject, _, session, _, session_set, _, *session_type, control = pieces
-                session_type = '_'.join(session_type)
-                blacklist_check_key = f'{subject}_session_{session}_set_{session_set}'
-                if blacklist_check_key in pitt_metadata:
-                    session_type = pitt_metadata[blacklist_check_key]
-                    control = 'default'
-            subject = subject[:3].upper() + subject[3:]
-            if simple:
-                alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}'
-                task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
-            else:
-                alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
-                if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
-                    task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
+                if len(pieces) == 5:
+                    # broad pull
+                    subject, _, session, _, session_set = pieces
+                    alias = f'{alias_prefix}{ExperimentalTask.pitt_co.value}_{subject}_{session}_{session_set}'
+                    task = ExperimentalTask.pitt_co
+                    # Note we now include location in alias
                 else:
-                    task = task_map.get('default', ExperimentalTask.unstructured)
+                    subject, _, session, _, session_set, _, *session_type, control = pieces
+                    session_type = '_'.join(session_type)
+                    task = None
+                    blacklist_check_key = f'{subject}_session_{session}_set_{session_set}'
+                    if blacklist_check_key in pitt_metadata:
+                        session_type = pitt_metadata[blacklist_check_key]
+                        control = 'default'
+                    subject = subject[:3].upper() + subject[3:]
+                    if simple:
+                        alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}'
+                        task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
+                    else:
+                        alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
+                        if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
+                            task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
+                        else:
+                            task = task_map.get('default', ExperimentalTask.unstructured)
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
                 task=task,
@@ -531,8 +539,8 @@ class BCIContextInfo(ReachingContextInfo):
                 ],
                 alias=alias,
                 session=int(session),
+                session_set=int(session_set),
                 datapath=datapath,
-                session_set=session_set
             )
         infos = map(make_info, Path(root).glob("*"))
         return filter(lambda x: x is not None, infos)

@@ -15,10 +15,6 @@ from einops import rearrange, reduce
 
 import logging
 logger = logging.getLogger(__name__)
-try:
-    from pynwb import NWBHDF5IO
-except:
-    logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
@@ -95,11 +91,18 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['position'] = torch.from_numpy(payload['Kinematics']['ActualPos'][:,:limit_dims]) # index 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
         elif 'pos' in payload:
             out['position'] = torch.from_numpy(payload['pos'][:,:limit_dims]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
-        # out['position'] = out['position'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
+
+        assert len(out['position']) == len(out['trial_num']), "Position and trial num should be same length"
         if 'target' in payload:
-            out['target'] = torch.from_numpy(payload['target'][:limit_dims]) # dimensions flipped here, originally C x T
-            # out['target'] = torch.from_numpy(payload['target'][1:3].T) # dimensions flipped here, originally C x T
-            # out['target'] = out['target'].roll(1, dims=1) # Pitt position logs in robot coords, i.e. y, dim 1 is up/down in cursor space, z, dim 2 is left/right in cursor space. Roll so we have x, y
+            out['target'] = torch.from_numpy(payload['target'][:limit_dims])
+        if 'force' in payload:
+            out['force'] = torch.from_numpy(payload['force'])
+            assert out['force'].size(-1) == 1, "Force feedback should be 1D"
+        if 'brain_control' in payload:
+            out['brain_control'] = torch.from_numpy(payload['brain_control'], dtype=torch.half) # half as these are very simple fractions
+            out['active_assist'] = torch.from_numpy(payload['active_assist'], dtype=torch.half)
+            out['passive_assist'] = torch.from_numpy(payload['passive_assist'], dtype=torch.half)
+            assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -113,6 +116,9 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
 
 @ExperimentalTaskRegistry.register
 class PittCOLoader(ExperimentalTaskLoader):
+    r"""
+        Note: This is called "PittCO as in pitt center out due to dev legacy, but it's really just a general loader for the pitt data.
+    """
     name = ExperimentalTask.pitt_co
 
     @staticmethod
@@ -195,13 +201,18 @@ class PittCOLoader(ExperimentalTaskLoader):
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
-        def chop_vector(vec: torch.Tensor):
+        def chop_vector(vec: torch.Tensor | None): # T x C
+            if vec is None:
+                return None
             # vec - already at target resolution, just needs chopping
+            if vec.size(0) < cfg.pitt_co.chop_size_ms / cfg.bin_size_ms:
+                return vec.unsqueeze(0)
             chop_size = round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
             return rearrange(
                 vec.unfold(0, chop_size, chop_size),
                 'trial hidden time -> trial time hidden'
-             ) # Trial x C x chop_size (time)
+             ) # Trial x chop_size x hidden
+
         def save_trial_spikes(spikes, i, other_data={}):
             single_payload = {
                 DataKey.spikes: create_spike_payload(
@@ -232,35 +243,35 @@ class PittCOLoader(ExperimentalTaskLoader):
             # should_clip = False
             exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
+            # * Kinematics (labeled 'vel' as we take derivative of reported position)
             if (
-                'position' in payload and \
-                task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
+                'position' in payload # and \
+                # task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
             ): # We only "trust" in the labels provided by obs (for now)
-                if len(payload['position']) == len(payload['trial_num']):
-                    if exp_task_cfg.closed_loop_intention_estimation == "refit" and task in [ExperimentalTask.ortho, ExperimentalTask.fbc]:
-                        # breakpoint()
-                        session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
-                    else:
-                        session_vel = PittCOLoader.get_velocity(payload['position'])
-                    # if session_vel[-end_pad:].abs().max() < 0.001: # likely to be a small bump to reset for next trial.
-                    #     should_clip = True
+                if exp_task_cfg.closed_loop_intention_estimation == "refit" and task in [ExperimentalTask.ortho, ExperimentalTask.fbc]:
+                    # breakpoint()
+                    session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                 else:
-                    session_vel = None
+                    session_vel = PittCOLoader.get_velocity(payload['position'])
             else:
                 session_vel = None
+
+            # * Force
+            if 'force' in payload:
+                raise NotImplementedError("Force not implemented for Pitt CO")
+
+            # * Constraints
+            brain_control = payload.get('brain_control', None)
+            active_assist = payload.get('active_assist', None)
+            passive_assist = payload.get('passive_assist', None)
+
+            # TODO need to think about smoothing these latter things...
+
             if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
                 for i in payload['trial_num'].unique():
                     trial_spikes = payload['spikes'][payload['trial_num'] == i]
-                    # trim edges -- typically a trial starts with half a second of inter-trial and ends with a second of failure/inter-trial pad
-                    # we assume intent labels are not reliable in this timeframe
-                    # if trial_spikes.size(0) <= start_pad + end_pad: # something's odd about this trial
-                    #     continue
                     if session_vel is not None:
                         trial_vel = session_vel[payload['trial_num'] == i]
-                    # if should_clip:
-                    #     trial_spikes = trial_spikes[start_pad:-end_pad]
-                    #     if session_vel is not None:
-                    #         trial_vel = trial_vel[start_pad:-end_pad]
                     if trial_spikes.size(0) < 10:
                         continue
                     if trial_spikes.size(0) < round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms):
@@ -281,10 +292,15 @@ class PittCOLoader(ExperimentalTaskLoader):
             else:
                 # chop both
                 spikes = chop_vector(spikes)
-                if session_vel is not None:
-                    session_vel = chop_vector(session_vel)
+                other_args = {
+                    DataKey.bhvr_vel: chop_vector(session_vel),
+                    DataKey.brain_control: chop_vector(brain_control),
+                    DataKey.active_assist: chop_vector(active_assist),
+                    DataKey.passive_assist: chop_vector(passive_assist),
+                }
                 for i, trial_spikes in enumerate(spikes):
-                    save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: session_vel[i]} if session_vel is not None else {})
+                    other_args_trial = {k: v[i] for k, v in other_args.items() if v is not None}
+                    save_trial_spikes(trial_spikes, i, other_args_trial)
         else: # folder style, preproc-ed on mind
             for i, fname in enumerate(datapath.glob("*.mat")):
                 if fname.stem.startswith('QL.Task'):

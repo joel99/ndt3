@@ -19,10 +19,12 @@ model:
     n_layers: 8
 dataset:
   datasets:
-  - observation.*
-  - fbc.*
-  exclude_datasets:
   - pitt_broad.*
+  data_keys:
+  - DataKey.spikes
+  - DataKey.active_assist
+  - DataKey.passive_assist
+  - DataKey.brain_control
 train:
   autoscale_batch_size: true
   effective_batch_size: 512

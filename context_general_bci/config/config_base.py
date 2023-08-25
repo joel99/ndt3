@@ -65,6 +65,12 @@ class DataKey(Enum):
     bhvr_acc = 'bhvr_acc'
     bhvr_force = 'bhvr_force'
 
+    # Assist (for BCI exps)
+    # Note these are timevarying because control toggles on and off often in historical BCI data (e.g. in trialized exps).
+    active_assist = 'active_assist' # Autopilot (e.g. observation). Should be 1 at test.
+    passive_assist = 'passive_assist' # Constraint based (e.g. ortho). Should be 0 at test.
+    brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
+
     time = 'time'
     position = 'position' # space, however you want to think about it. Tracks channel cluster.
     extra = 'extra' # utility for decoding
@@ -80,11 +86,6 @@ class MetaKey(Enum):
     subject = 'subject'
     array = 'array'
     task = 'task'
-
-    # Assist (for BCI exps)
-    active_assist = 'active_assist' # Autopilot (e.g. observation). Should be 1 at test.
-    passive_assist = 'passive_assist' # Constraint based (e.g. ortho). Should be 0 at test.
-    brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
 
     unique = 'unique' # default unique identifier
 
@@ -467,6 +468,7 @@ class DatasetConfig:
     # Pad to this number of arrays (for meta and data alike). Must be >= 1
     max_arrays: int = 1
     behavior_dim: int = 2
+    sparse_constraints: bool = False
 
     serve_tokenized: bool = False # master flag for space time operator (in anticipation that space time will move to tokenized)
     # Tokenized == serve B T S H instead of B T A C H
