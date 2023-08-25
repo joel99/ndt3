@@ -620,7 +620,7 @@ class BrainBertInterface(pl.LightningModule):
                 stim: B T C H
                 channel_counts: B A (counts per array)
         """
-        print(f'Forward, {batch[DataKey.spikes].shape}')
+        # print(f'Forward, {batch[DataKey.spikes].shape}')
         batch_out: Dict[str, torch.Tensor] = {}
         if Output.spikes in self.cfg.task.outputs:
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]

@@ -19,5 +19,6 @@ dataset:
   - odoherty_rtt-Indy-20160627_01 # Original
   eval_datasets:
   - odoherty_rtt-Indy-20160627_01 # Original
-
+train:
+  autoscale_batch_size: true
 fragment_datasets: False
