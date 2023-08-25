@@ -960,22 +960,26 @@ class CovariateReadout(TaskPipeline):
         })
         return batch
 
+    def encode_constraint(self, active, passive, brain):
+        if not self.cfg.encode_constraints:
+            return 0
+        if self.inject_constraint_tokens:
+            raise NotImplementedError # sparse shape not considered
+        constraint_embed = (
+            self.active_cls * active.unsqueeze(-1) + # H * B T 1
+            self.passive_cls * passive.unsqueeze(-1) +
+            self.brain_control_cls * (1 - brain).unsqueeze(-1)
+        ) # designed in such a way that native control (full brain) should embed to 0
+        if self.inject_constraint_tokens:
+            constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
+
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
             return super().get_context(batch)
-
-        if self.cfg.encode_constraints:
-            constraint_embed = (
-                self.active_cls * batch[DataKey.active_assist].unsqueeze(-1) + # H * B T 1
-                self.passive_cls * batch[DataKey.passive_assist].unsqueeze(-1) +
-                self.brain_control_cls * (1 - batch[DataKey.brain_control]).unsqueeze(-1)
-            ) # designed in such a way that native control (full brain) should embed to 0
-            if self.inject_constraint_tokens:
-                constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
-        else:
-            constraint_embed = 0
+        breakpoint()
         return (
-            self.encode_cov(batch[self.cfg.behavior_target]) + constraint_embed,
+            self.encode_cov(batch[self.cfg.behavior_target]) +
+            self.encode_constraint(batch[DataKey.active_assist], batch[DataKey.passive_assist], batch[DataKey.brain_control]),
             batch[f'{self.handle}_{DataKey.time}'],
             batch[f'{self.handle}_{DataKey.position}']
         )
@@ -1002,6 +1006,11 @@ class CovariateReadout(TaskPipeline):
                 batch,
                 injected_time=batch.get(f'{self.handle}_{DataKey.time}_target', None),
                 injected_space=batch.get(f'{self.handle}_{DataKey.position}_target', None)
+            )
+            decode_tokens = decode_tokens + self.encode_constraint(
+                batch[f'{DataKey.active_assist}_target'],
+                batch[f'{DataKey.passive_assist}_target'],
+                batch[f'{DataKey.brain_control}_target'],
             )
 
             # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.

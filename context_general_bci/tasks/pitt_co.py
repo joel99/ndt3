@@ -99,9 +99,9 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['force'] = torch.from_numpy(payload['force'])
             assert out['force'].size(-1) == 1, "Force feedback should be 1D"
         if 'brain_control' in payload:
-            out['brain_control'] = torch.from_numpy(payload['brain_control'], dtype=torch.half) # half as these are very simple fractions
-            out['active_assist'] = torch.from_numpy(payload['active_assist'], dtype=torch.half)
-            out['passive_assist'] = torch.from_numpy(payload['passive_assist'], dtype=torch.half)
+            out['brain_control'] = torch.from_numpy(payload['brain_control']).half() # half as these are very simple fractions
+            out['active_assist'] = torch.from_numpy(payload['active_assist']).half()
+            out['passive_assist'] = torch.from_numpy(payload['passive_assist']).half()
             assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
     else:
         data = payload['iData']

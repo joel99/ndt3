@@ -388,7 +388,8 @@ def run_exp(cfg : RootConfig) -> None:
         tuner = Tuner(trainer)
         tuner.scale_batch_size(model, datamodule=data_module, mode="power", steps_per_trial=15, max_trials=20)
         if cfg.train.max_batch_size:
-            new_bsz = min(new_bsz, cfg.train.max_batch_size)
+            data_module.batch_size = min(data_module.batch_size, cfg.train.max_batch_size)
+        print(f'Done autoscaling - choosing {data_module.batch_size} as batch size')
 
     # Compute necessary accumulation, if prescribed.
     if cfg.train.effective_batch_size > 0:
