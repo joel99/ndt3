@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    encode_constraints: False
+    use_constraint_cls: False
+dataset:
+  sparse_constraints: True
+  data_keys:
+  - DataKey.spikes

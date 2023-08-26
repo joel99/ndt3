@@ -865,9 +865,8 @@ class CovariateReadout(TaskPipeline):
 
         self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
         if self.cfg.encode_constraints:
-            if self.inject_constraint_tokens:
+            if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
-                # TODO ablate this
                 self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
             self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
 

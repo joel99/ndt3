@@ -404,6 +404,8 @@ def run_exp(cfg : RootConfig) -> None:
     # Compute necessary accumulation, if prescribed.
     if cfg.train.effective_batch_size > 0:
         assert cfg.train.accumulate_batches == 1, "Cannot specify both effective_batch_size and accumulate_batches"
+        if cfg.train.effective_batch_size < cfg.train.batch_size:
+            raise ValueError(f"Effective batch size {cfg.train.effective_batch_size} must be larger than (probably autoscaled) batch size {cfg.train.batch_size}")
         if is_distributed:
             replicas = cfg.nodes * torch.cuda.device_count()
             cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / (cfg.train.batch_size * replicas))

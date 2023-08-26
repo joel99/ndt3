@@ -160,6 +160,7 @@ class TaskConfig:
     behavior_metric_thresh: float = 0.0001 # exclude from r2, timesteps with values (velocities) less than this
     covariate_blacklist_dims: List[int] = field(default_factory=lambda: []) # list of dims to exclude from covariate decoding (for regression testing)
     encode_constraints: bool = False # Add constraints if available, currently implemented in covariate path
+    use_constraint_cls: bool = True
 
     # Trying to deal with incredibly noisy behavioral labels from human observation
     # By making supervision less prescriptive - expecting to reduce overfit
@@ -473,6 +474,7 @@ class DatasetConfig:
     # Pad to this number of arrays (for meta and data alike). Must be >= 1
     max_arrays: int = 1
     behavior_dim: int = 2
+
     sparse_constraints: bool = False
 
     serve_tokenized: bool = False # master flag for space time operator (in anticipation that space time will move to tokenized)

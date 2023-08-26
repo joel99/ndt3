@@ -162,6 +162,16 @@ class JointBhvrDecodeFlatTaskConfig(FlatEncDecTaskConfig):
 cs.store(group='model/task', name='joint_bhvr_decode_flat', node=JointBhvrDecodeFlatTaskConfig)
 
 @dataclass
+class JointDecodeFlatTaskConfigV2(FlatEncDecTaskConfig):
+    tasks: List[ModelTask] = field(default_factory=lambda: [ModelTask.shuffle_infill, ModelTask.kinematic_decoding])
+    metrics: List[Metric] = field(default_factory=lambda: [Metric.kinematic_r2])
+    task_weights: List[float] = field(default_factory=lambda: [1.0, 0.1])
+    decode_strategy: EmbedStrat = EmbedStrat.token
+    decode_separate: True
+
+cs.store(group='model/task', name='joint_decode_flat_v2', node=JointDecodeFlatTaskConfigV2)
+
+@dataclass
 class JointHeldoutDecodeTaskConfig(FlatEncDecTaskConfig):
     tasks: List[ModelTask] = field(default_factory=lambda: [ModelTask.shuffle_infill, ModelTask.heldout_decoding])
     metrics: List[Metric] = field(default_factory=lambda: [Metric.co_bps, Metric.block_co_bps])
