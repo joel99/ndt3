@@ -418,14 +418,16 @@ class SpikingDataset(Dataset):
                         mean = per_zscore['mean']
                         std = per_zscore['std']
                     data_items[k] = (payload[k] - mean) / std
-                elif k in [DataKey.active_assist, DataKey.passive_assist, DataKey.brain_control]:
+                elif k == DataKey.constraint:
                     # Thoughts - this should be projected to match bhvr exactly.
                     # The behavior should have been masked down, and this loader needs that same masking logic to mirror bhvr, but compression is not implemented yet
                     # Thus we assume shape for now, and expand as desired.
                     if k not in payload: # e.g. monkey data - assume native control
-                        data_items[k] = torch.full_like(payload[DataKey.bhvr_vel], fill_value=1. if k == DataKey.brain_control else 0.)
+                        data_items[k] = torch.zeros_like(payload[DataKey.bhvr_vel])
                     else:
                         if self.cfg.sparse_constraints:
+                            # Need to denote a constraint change across tokens.
+                            data_items[k] = None
                             raise NotImplementedError
                         else:
                             # comes in as T x 3 -> expand to domain of 9, and then clip. Assumes Pitt data, and we're reporting first N dimensions in Pitt data. (i.e. this is very brittle preproc)

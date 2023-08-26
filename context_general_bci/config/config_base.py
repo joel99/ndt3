@@ -55,8 +55,6 @@ class Output(Enum):
 
 class DataKey(Enum):
     # DataKey are time-varying and typically served with spikes
-    # TODO need more thinking about this. Data is heterogenuous, can we maintain a single interface
-    # What is the right we to specify we want some type of array?
     spikes = 'spikes'
     stim = 'stim' # icms
     heldout_spikes = 'heldout_spikes' # for co-bps
@@ -67,9 +65,14 @@ class DataKey(Enum):
 
     # Assist (for BCI exps)
     # Note these are timevarying because control toggles on and off often in historical BCI data (e.g. in trialized exps).
-    active_assist = 'active_assist' # Autopilot (e.g. observation). Should be 1 at test.
-    passive_assist = 'passive_assist' # Constraint based (e.g. ortho). Should be 0 at test.
-    brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
+    constraint = 'constraints' # triplet of active, passive, brain control
+    # active_assist = 'active_assist' # Autopilot (e.g. observation). Should be 1 at test.
+    # passive_assist = 'passive_assist' # Constraint based (e.g. ortho). Should be 0 at test.
+    # brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
+    constraint_time = 'constraint_time' # for sparse constraints
+
+    task_return = 'task_return' # Reward conditioned behavior cloning
+    task_return_time = 'task_return_time'
 
     time = 'time'
     position = 'position' # space, however you want to think about it. Tracks channel cluster.

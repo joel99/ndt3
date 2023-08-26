@@ -264,10 +264,10 @@ class PittCOLoader(ExperimentalTaskLoader):
             brain_control = payload.get('brain_control', None)
             active_assist = payload.get('active_assist', None)
             passive_assist = payload.get('passive_assist', None)
-
-            # TODO need to think about smoothing these latter things...
+            # TODO need to think about smoothing these constraints?
 
             if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
+                # Constraints not implemented
                 for i in payload['trial_num'].unique():
                     trial_spikes = payload['spikes'][payload['trial_num'] == i]
                     if session_vel is not None:
@@ -292,11 +292,18 @@ class PittCOLoader(ExperimentalTaskLoader):
             else:
                 # chop both
                 spikes = chop_vector(spikes)
+                if brain_control is None:
+                    chopped_constraints = None
+                else:
+                    chopped_constraints = torch.stack([
+                        chop_vector(1 - brain_control), # return complement, such that native control is the "0" condition, no constraint
+                        chop_vector(active_assist),
+                        chop_vector(passive_assist),
+                    ], 2) # trial x chop_size x 3 x hidden
+
                 other_args = {
                     DataKey.bhvr_vel: chop_vector(session_vel),
-                    DataKey.brain_control: chop_vector(brain_control),
-                    DataKey.active_assist: chop_vector(active_assist),
-                    DataKey.passive_assist: chop_vector(passive_assist),
+                    DataKey.constraint: chopped_constraints,
                 }
                 for i, trial_spikes in enumerate(spikes):
                     other_args_trial = {k: v[i] for k, v in other_args.items() if v is not None}

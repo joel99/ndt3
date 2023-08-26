@@ -5,7 +5,7 @@ import numpy as np
 import torch
 from torch import nn
 import torch.nn.functional as F
-from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
+from einops import rearrange, repeat, reduce, einsum, pack, unpack # baby steps...
 from einops.layers.torch import Rearrange
 from sklearn.metrics import r2_score
 import logging
@@ -792,7 +792,7 @@ class CovariateReadout(TaskPipeline):
     r"""
         Base class for decoding (regression/classification) of covariates.
     """
-    modifies = [DataKey.bhvr_vel, DataKey.active_assist, DataKey.passive_assist, DataKey.brain_control]
+    modifies = [DataKey.bhvr_vel, DataKey.constraint, DataKey.constraint_time]
 
     def __init__(
         self,
@@ -866,12 +866,10 @@ class CovariateReadout(TaskPipeline):
         self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
         if self.cfg.encode_constraints:
             if self.inject_constraint_tokens:
-                # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford no zero token if no constraints are active...?
+                # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
                 # TODO ablate this
                 self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
-            self.active_cls = nn.Parameter(torch.randn(cfg.hidden_size))
-            self.passive_cls = nn.Parameter(torch.randn(cfg.hidden_size))
-            self.brain_control_cls = nn.Parameter(torch.randn(cfg.hidden_size))
+            self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
 
     @abc.abstractmethod
     def initialize_readin(self):
@@ -920,9 +918,7 @@ class CovariateReadout(TaskPipeline):
         if self.cfg.decode_tokenize_dims:
             covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
             if self.cfg.encode_constraints:
-                batch[DataKey.active_assist] = rearrange(batch[DataKey.active_assist], 'b t bhvr_dim -> b (t bhvr_dim) 1')
-                batch[DataKey.passive_assist] = rearrange(batch[DataKey.passive_assist], 'b t bhvr_dim -> b (t bhvr_dim) 1')
-                batch[DataKey.brain_control] = rearrange(batch[DataKey.brain_control], 'b t bhvr_dim -> b (t bhvr_dim) 1')
+                batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t 3 bhvr_dim -> b (t bhvr_dim) 3')
             batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
         if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
             breakpoint()
@@ -946,9 +942,8 @@ class CovariateReadout(TaskPipeline):
             shuffle_key(key)
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
             for key in [
-                DataKey.brain_control,
-                DataKey.active_assist,
-                DataKey.passive_assist,
+                DataKey.constraint,
+                DataKey.constraint_time
             ]:
                 shuffle_key(key)
 
@@ -960,16 +955,13 @@ class CovariateReadout(TaskPipeline):
         })
         return batch
 
-    def encode_constraint(self, active, passive, brain):
+    def encode_constraint(self, constraint: torch.Tensor):
+        # constraint: B (T) 3 - last dim is brain, active, passive (see `pitt_co`)
         if not self.cfg.encode_constraints:
             return 0
         if self.inject_constraint_tokens:
             raise NotImplementedError # sparse shape not considered
-        constraint_embed = (
-            self.active_cls * active + # H * B T 1
-            self.passive_cls * passive +
-            self.brain_control_cls * (1 - brain)
-        ) # designed in such a way that native control (full brain) should embed to 0
+        constraint_embed = einsum(constraint, self.constraint_dims, 'b t 3, 3 h -> b t h')
         if self.inject_constraint_tokens:
             constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
         return constraint_embed
@@ -979,7 +971,7 @@ class CovariateReadout(TaskPipeline):
             return super().get_context(batch)
         return (
             self.encode_cov(batch[self.cfg.behavior_target]) +
-            self.encode_constraint(batch[DataKey.active_assist], batch[DataKey.passive_assist], batch[DataKey.brain_control]),
+            self.encode_constraint(batch[DataKey.constraint]),
             batch[f'{self.handle}_{DataKey.time}'],
             batch[f'{self.handle}_{DataKey.position}']
         )
@@ -1007,11 +999,10 @@ class CovariateReadout(TaskPipeline):
                 injected_time=batch.get(f'{self.handle}_{DataKey.time}_target', None),
                 injected_space=batch.get(f'{self.handle}_{DataKey.position}_target', None)
             )
-            decode_tokens = decode_tokens + self.encode_constraint(
-                batch[f'{DataKey.active_assist}_target'],
-                batch[f'{DataKey.passive_assist}_target'],
-                batch[f'{DataKey.brain_control}_target'],
-            )
+            if not self.inject_constraint_tokens:
+                decode_tokens = decode_tokens + self.encode_constraint(
+                    batch[f'{DataKey.constraint}_target'],
+                )
 
             # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.
             if self.cfg.decode_time_pool:
