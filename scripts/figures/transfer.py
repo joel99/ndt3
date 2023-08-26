@@ -10,7 +10,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from torch.utils.data import DataLoader
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions

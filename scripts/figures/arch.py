@@ -10,7 +10,7 @@ import matplotlib.ticker as ticker
 import pandas as pd
 import seaborn as sns
 import torch
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from einops import rearrange
 
 from config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey

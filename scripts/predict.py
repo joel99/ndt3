@@ -11,7 +11,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 import torch
 from torch.utils.data import DataLoader
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 from nlb_tools.make_tensors import save_to_h5
 

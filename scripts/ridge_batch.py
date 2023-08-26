@@ -10,7 +10,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
 from einops import rearrange
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from sklearn.linear_model import Ridge # note default metric is r2
 from sklearn.model_selection import GridSearchCV
 
@@ -20,8 +20,6 @@ logging.basicConfig(stream=sys.stdout, level=logging.ERROR)
 from matplotlib import pyplot as plt
 from sklearn.metrics import r2_score
 from copy import deepcopy
-import pytorch_lightning as pl
-from einops import rearrange
 
 from context_general_bci.contexts import context_registry
 from context_general_bci.config import DatasetConfig, DataKey, MetaKey

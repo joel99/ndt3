@@ -11,7 +11,7 @@ from einops import rearrange
 from context_general_bci.config import DatasetConfig, DataKey, MetaKey
 from context_general_bci.analyze_utils import prep_plt
 import pandas as pd
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 
 
 #%%

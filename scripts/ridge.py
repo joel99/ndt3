@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from omegaconf import OmegaConf
 from einops import rearrange
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from sklearn.linear_model import Ridge # note default metric is r2
 from sklearn.model_selection import GridSearchCV
 from sklearn.model_selection import train_test_split

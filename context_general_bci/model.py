@@ -7,7 +7,8 @@ import numpy as np
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-import pytorch_lightning as pl
+# import lightning.pytorch as pl
+import lightning.pytorch as pl
 from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
 from omegaconf import OmegaConf, ListConfig, DictConfig
 from dacite import from_dict

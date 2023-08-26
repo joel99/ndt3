@@ -19,7 +19,8 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 from einops import rearrange, repeat
 
-import pytorch_lightning as pl
+# import lightning.pytorch as pl
+import lightning.pytorch as pl
 
 from context_general_bci.config import DatasetConfig, MetaKey, DataKey
 from context_general_bci.subjects import SubjectArrayRegistry, SubjectName

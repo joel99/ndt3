@@ -16,18 +16,21 @@ from omegaconf import OmegaConf
 import dataclasses
 
 import torch
-import pytorch_lightning as pl
-from lightning.pytorch.tuner import Tuner
-
-from pytorch_lightning.callbacks import (
+import lightning as pl
+# import lightning.pytorch as pl
+from lightning import seed_everything
+from lightning.pytorch.callbacks import (
     ModelCheckpoint,
     EarlyStopping,
     LearningRateMonitor
 )
+from lightning.pytorch.loggers.wandb import WandbLogger
+from lightning.pytorch.strategies.ddp import DDPStrategy
+from lightning_utilities.core.rank_zero import rank_zero_only
+from lightning.pytorch.trainer import Trainer
+from lightning.pytorch.tuner import Tuner
+from lightning.pytorch.tuner import Tuner
 
-from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.strategies import DDPStrategy
-from pytorch_lightning.utilities.rank_zero import rank_zero_only
 import wandb
 
 from context_general_bci.config import RootConfig, Metric, ModelTask, hp_sweep_space, propagate_config
@@ -216,7 +219,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     propagate_config(cfg)
     logger = logging.getLogger(__name__)
-    pl.seed_everything(seed=cfg.seed)
+    seed_everything(seed=cfg.seed)
 
     dataset = SpikingDataset(cfg.dataset)
     dataset.build_context_index()
@@ -336,7 +339,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     is_distributed = (torch.cuda.device_count() > 1) or getattr(cfg, 'nodes', 1) > 1
     default_strat = 'auto' if pl.__version__.startswith('2.0') else None
-    trainer = pl.Trainer(
+    trainer = Trainer(
         logger=wandb_logger,
         max_epochs=epochs,
         max_steps=max_steps,

@@ -1,7 +1,7 @@
 from typing import Dict, Any
 import torch
 from torch.optim.optimizer import Optimizer
-import pytorch_lightning as pl
+import lightning.pytorch as pl
 from pytorch_lightning.callbacks import (
     ModelCheckpoint,
     EarlyStopping,

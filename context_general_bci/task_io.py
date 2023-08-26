@@ -3,9 +3,8 @@ from pathlib import Path
 import abc
 import numpy as np
 import torch
-from torch import nn, optim
+from torch import nn
 import torch.nn.functional as F
-import pytorch_lightning as pl
 from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
 from einops.layers.torch import Rearrange
 from sklearn.metrics import r2_score
