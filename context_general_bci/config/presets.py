@@ -167,7 +167,7 @@ class JointDecodeFlatTaskConfigV2(FlatEncDecTaskConfig):
     metrics: List[Metric] = field(default_factory=lambda: [Metric.kinematic_r2])
     task_weights: List[float] = field(default_factory=lambda: [1.0, 0.1])
     decode_strategy: EmbedStrat = EmbedStrat.token
-    decode_separate: True
+    decode_separate: bool = True
 
 cs.store(group='model/task', name='joint_decode_flat_v2', node=JointDecodeFlatTaskConfigV2)
 

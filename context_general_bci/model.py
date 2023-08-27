@@ -33,7 +33,6 @@ from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
 from context_general_bci.components import (
     SpaceTimeTransformer,
     ReadinMatrix,
-    ReadinCrossAttention,
     ContextualMLP,
 )
 from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_token_padding_mask
@@ -379,47 +378,6 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.task != transfer_cfg.task:
             logger.info(pformat(f'Task config updating.. (first logged is new config)'))
             recursive_diff_log(self.cfg.task, transfer_cfg.task)
-            #  from {transfer_cfg.task} to {self.cfg.task}'))
-        # def try_transfer_embed(
-        #     embed_name: str, # Used for looking up possibly existing attribute
-        #     new_attrs: List[str],
-        #     old_attrs: List[str] ,
-        # ) -> nn.Embedding:
-        #     if new_attrs == old_attrs:
-        #         try_transfer(embed_name)
-        #         return
-        #     if not hasattr(self, embed_name):
-        #         return
-        #     embed = getattr(self, embed_name)
-        #     if not old_attrs:
-        #         # if isinstance(embed, nn.Parameter):
-        #         #     self.novel_params.append(self._wrap_key(embed_name, embed_name))
-        #         # else:
-        #         #     self.novel_params.extend(self._wrap_keys(embed_name, embed.named_parameters()))
-        #         logger.info(f'New {embed_name} weights.')
-        #         return
-        #     if not new_attrs:
-        #         logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
-        #         return
-        #     num_reassigned = 0
-        #     def get_param(embed):
-        #         if isinstance(embed, nn.Parameter):
-        #             return embed
-        #         return getattr(embed, 'weight')
-        #     for n_idx, target in enumerate(new_attrs):
-        #         if target in old_attrs:
-        #             get_param(embed).data[n_idx] = get_param(getattr(transfer_model, embed_name)).data[old_attrs.index(target)]
-        #             num_reassigned += 1
-        #     logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
-        #     if num_reassigned == 0:
-        #         logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
-        #     if num_reassigned < len(new_attrs):
-        #         # There is no non-clunky granular grouping assignment (probably) but we don't need it either
-        #         logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
-        #         # if isinstance(embed, nn.Parameter):
-        #         #     self.novel_params.append(self._wrap_key(embed_name, embed_name))
-        #         # else:
-        #         #     self.novel_params.extend(self._wrap_keys(embed_name, embed.named_parameters()))
         self.try_transfer_embed(
             'session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session,
             getattr(transfer_model, 'session_embed', None)

@@ -19,7 +19,7 @@ model:
     n_layers: 8
 dataset:
   pitt_co:
-    chop_size_ms: 2000
+    chop_size_ms: 2500
   datasets:
   - observation.*
   - fbc.*

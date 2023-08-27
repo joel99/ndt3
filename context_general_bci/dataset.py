@@ -43,9 +43,12 @@ r"""
 # Padding tokens
 LENGTH_KEY = 'length'
 CHANNEL_KEY = 'channel_counts'
-# TODO deprecate when remodularizing data loaders...
+# TODO deprecate when remodularizing data loaders... (where essentially we will just track data, position, trial, and pack densely)
 COVARIATE_LENGTH_KEY = 'covariate_length' # we need another length tracker for padded sequences of covariates in the flat case
 COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout channels only
+
+CONSTRAINT_LENGTH_KEY = 'constraint_length' # needed for sparse constraints
+
 HELDOUT_CHANNEL_KEY = 'heldout_channel_counts'
 
 r"""
@@ -558,23 +561,32 @@ class SpikingDataset(Dataset):
                 for i, b in enumerate(batch):
                     for k in b.keys():
                         if isinstance(k, DataKey):
-                            item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
-                            if k == DataKey.time:
-                                item = item - item[0]
-                            if self.cfg.serve_tokenized_flat:
-                                if k in [DataKey.spikes, DataKey.time, DataKey.position]:
-                                    # These keys have spatial dimensions that we will serve flat to maximize data throughput across heterogeneous trials
-                                    item = item.flatten(0, 1) # T S H -> Token H
-                                else:
-                                    covariate_key = k # will need separate padding, track for later
-                            else: # pad in space
-                                if k == DataKey.spikes: # B T S C H
-                                    item = F.pad(item, (0, 0, 0, 0, 0, space_lengths[i] - item.size(1)), value=self.pad_value)
-                                elif k in [DataKey.time, DataKey.position]:
-                                    # ! Note... this "pad_value" is set for spikes, and will definitely conflict with meaningful values for
-                                    # time and position. This shouldn't be a problem right now, as we're using LENGTH_KEY and CHANNEL_KEY to determine what's padding and not when computing masks.
-                                    # ! For the flat case, we should directly ID a pad value (e.g. 0) for time/position and adjust in code.
-                                    item = F.pad(item, (0, space_lengths[i] - item.size(1)), value=self.pad_value)
+                            if k == DataKey.constraint: # sparse, check time
+                                constraint_mask = b[DataKey.constraint_time] < crop_start[i] + time_budget[i] & b[DataKey.constraint_time] >= crop_start[i]
+                                constraint = b[k][constraint_mask]
+                                constraint_time = b[DataKey.constraint_time][constraint_mask] - crop_start[i]
+                                stack_batch[k].append(constraint)
+                                stack_batch[DataKey.constraint_time].append(constraint_time)
+                            elif k == DataKey.constraint_time:
+                                pass # treated above
+                            else:
+                                item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
+                                if k == DataKey.time:
+                                    item = item - item[0]
+                                if self.cfg.serve_tokenized_flat:
+                                    if k in [DataKey.spikes, DataKey.time, DataKey.position]:
+                                        # These keys have spatial dimensions that we will serve flat to maximize data throughput across heterogeneous trials
+                                        item = item.flatten(0, 1) # T S H -> Token H
+                                    else:
+                                        covariate_key = k # will need separate padding, track for later
+                                else: # pad in space
+                                    if k == DataKey.spikes: # B T S C H
+                                        item = F.pad(item, (0, 0, 0, 0, 0, space_lengths[i] - item.size(1)), value=self.pad_value)
+                                    elif k in [DataKey.time, DataKey.position]:
+                                        # ! Note... this "pad_value" is set for spikes, and will definitely conflict with meaningful values for
+                                        # time and position. This shouldn't be a problem right now, as we're using LENGTH_KEY and CHANNEL_KEY to determine what's padding and not when computing masks.
+                                        # ! For the flat case, we should directly ID a pad value (e.g. 0) for time/position and adjust in code.
+                                        item = F.pad(item, (0, space_lengths[i] - item.size(1)), value=self.pad_value)
                             stack_batch[k].append(item)
                         else:
                             if self.cfg.serve_tokenized_flat and k == CHANNEL_KEY: # determine cropped channel count
@@ -591,6 +603,8 @@ class SpikingDataset(Dataset):
                     pad_els = [0] + [0, 0] * (stack_batch[covariate_key][0].ndim - 2)
                     for i, el in enumerate(stack_batch[covariate_key]):
                         stack_batch[covariate_key][i] = F.pad(el, (*pad_els, covariate_max - el.size(1)), value=self.pad_value)
+                if DataKey.constraint in stack_batch:
+                    stack_batch[CONSTRAINT_LENGTH_KEY] = torch.tensor([el.size(0) for el in stack_batch[DataKey.constraint]])
                 for k in stack_batch.keys():
                     if isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
                         stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value)
