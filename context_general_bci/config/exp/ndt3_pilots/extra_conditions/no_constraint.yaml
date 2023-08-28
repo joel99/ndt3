@@ -9,3 +9,6 @@ dataset:
   sparse_constraints: True
   data_keys:
   - DataKey.spikes
+train:
+  batch_size: 16 # freak accident to 32, always OOM and regardless of training steps # (pretrain 4 gpus)
+  # max_batch_size: 16 # freak accident to 32, always OOM and regardless of training steps

@@ -7,3 +7,4 @@ model:
     use_constraint_cls: False
 dataset:
   sparse_constraints: True
+inherit_tag: sparse_constraint

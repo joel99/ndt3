@@ -97,6 +97,8 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['target'] = torch.from_numpy(payload['target'][:limit_dims])
         if 'force' in payload:
             out['force'] = torch.from_numpy(payload['force'])
+            if out['force'].ndim == 1:
+                out['force'] = out['force'].unsqueeze(1)
             assert out['force'].size(-1) == 1, "Force feedback should be 1D"
         if 'brain_control' in payload:
             out['brain_control'] = torch.from_numpy(payload['brain_control']).half() # half as these are very simple fractions
@@ -258,7 +260,8 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Force
             if 'force' in payload:
-                raise NotImplementedError("Force not implemented for Pitt CO")
+                pass # Do nothing for now
+                # raise NotImplementedError("Force not implemented for Pitt CO")
 
             # * Constraints
             brain_control = payload.get('brain_control', None)

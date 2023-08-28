@@ -1,7 +1,0 @@
-# @package _global_
-defaults:
-  - _default
-model:
-  task:
-    encode_constraints: True
-    use_constraint_cls: True

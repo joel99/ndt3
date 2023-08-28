@@ -366,7 +366,8 @@ class SpaceTimeTransformer(nn.Module):
             We assume that the provided trial and temporal context is consistently shaped. i.e. any context provided is provided for all samples.
             (So attention masks do not vary across batch)
         """
-        # import pdb;pdb.set_trace()
+        # breakpoint()
+        # print(src.size())
         src = self.dropout_in(src)
         # === Embeddings ===
         src = src + self.time_encoder(times)

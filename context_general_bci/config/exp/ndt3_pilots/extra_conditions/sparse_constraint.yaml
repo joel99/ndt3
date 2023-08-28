@@ -7,3 +7,5 @@ model:
     use_constraint_cls: True
 dataset:
   sparse_constraints: True
+train:
+  batch_size: 16 # always OOM and regardless of training steps # (pretrain 4 gpus)

@@ -5,3 +5,4 @@ model:
   task:
     encode_constraints: True
     use_constraint_cls: True
+inherit_tag: no_constraint

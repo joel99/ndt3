@@ -365,7 +365,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     # === Train ===
     num_workers = len(os.sched_getaffinity(0)) # If this is set too high, the dataloader may crash.
-    num_workers = 0 # for testing
+    # num_workers = 0 # for testing
     if num_workers == 0:
         logger.warning("Num workers is 0, DEBUGGING.")
     logger.info("Preparing to fit...")
@@ -394,10 +394,9 @@ def run_exp(cfg : RootConfig) -> None:
             datamodule=data_module,
             mode="power",
             init_val=4,
-            steps_per_trial=8,
-            # max_trials=10
+            steps_per_trial=15,
         )
-        if cfg.train.max_batch_size:
+        if cfg.train.max_batch_size and data_module.batch_size > cfg.train.max_batch_size:
             data_module.batch_size = min(data_module.batch_size, cfg.train.max_batch_size)
             print(f'Clip down max batch size to  {data_module.batch_size}')
 
@@ -408,7 +407,8 @@ def run_exp(cfg : RootConfig) -> None:
             raise ValueError(f"Effective batch size {cfg.train.effective_batch_size} must be larger than (probably autoscaled) batch size {cfg.train.batch_size}")
         if is_distributed:
             replicas = cfg.nodes * torch.cuda.device_count()
-            cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / (cfg.train.batch_size * replicas))
+            logger.info(f"Running on {replicas} replicas")
+            cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / (data_module.batch_size * replicas))
         else:
             cfg.train.batch_size = data_module.batch_size
             # Autotune, then determine

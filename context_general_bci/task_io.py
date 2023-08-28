@@ -551,11 +551,6 @@ class ShuffleInfill(SpikeBase):
         self.causal = cfg.causal
         # import pdb;pdb.set_trace()
         self.out = RatePrediction.create_linear_head(cfg, cfg.hidden_size, cfg.neurons_per_token)
-        if cfg.force_zero_mask:
-            self.register_buffer('mask_token', torch.zeros(cfg.hidden_size))
-        else:
-            self.mask_token = nn.Parameter(torch.randn(cfg.hidden_size))
-
         self.decode_cross_attn = getattr(cfg, 'spike_context_integration', 'in_context') == 'cross_attn'
         self.injector = TemporalTokenInjector(
             cfg,
@@ -864,7 +859,7 @@ class CovariateReadout(DataPipeline):
             except:
                 print("Blacklist not successfully loaded, skipping blacklist logic (not a concern for inference)")
 
-        if getattr(self.cfg, 'decode_normalizer', ''):
+        if self.cfg.decode_normalizer:
             # See `data_kin_global_stat`
             zscore_path = Path(self.cfg.decode_normalizer)
             assert zscore_path.exists(), f'normalizer path {zscore_path} does not exist'
@@ -875,7 +870,7 @@ class CovariateReadout(DataPipeline):
             self.bhvr_std = None
         self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
-
+        breakpoint()
         self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
         if self.cfg.encode_constraints:
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
