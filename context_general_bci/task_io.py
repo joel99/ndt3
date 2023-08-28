@@ -16,7 +16,14 @@ from context_general_bci.config import (
     ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey,
 )
 
-from context_general_bci.dataset import DataAttrs, LENGTH_KEY, CHANNEL_KEY, HELDOUT_CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
+from context_general_bci.dataset import (
+    DataAttrs,
+    LENGTH_KEY,
+    CHANNEL_KEY,
+    COVARIATE_LENGTH_KEY,
+    COVARIATE_CHANNEL_KEY,
+    CONSTRAINT_LENGTH_KEY
+)
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
 
@@ -186,8 +193,68 @@ class TaskPipeline(nn.Module):
         """
         raise NotImplementedError
 
-class MetadataPipeline(TaskPipeline):
-    pass
+class ContextPipeline(TaskPipeline):
+    # Doesn't do anything, just injects tokens
+    def forward(self, *args, **kwargs):
+        return {}
+
+class ConstraintPipeline(ContextPipeline):
+    r"""
+        Note this pipeline is mutually exclusive with the dense implementation in CovariateReadout.
+    """
+
+    def __init__(
+        self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ) -> None:
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
+        if self.cfg.encode_constraints:
+            if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
+                # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
+                self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
+            self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
+
+    def encode_constraint(self, constraint: torch.Tensor) -> torch.Tensor:
+        # constraint: B (T) 3 - last dim goes brain, active, passive (see `pitt_co`)
+        if self.inject_constraint_tokens:
+            # In the dense path, tokens already arrive rearranged due to crop batch. Flattening occurs outside this func
+            constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint d, constraint h -> b t h d')
+            if self.cfg.use_constraint_cls:
+                constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h 1')
+        else:
+            constraint_embed = einsum(constraint, self.constraint_dims, 'b t 3, 3 h -> b t h')
+        return constraint_embed
+
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
+        constraint = batch[DataKey.constraint]
+        constraint_embed = self.encode_constraint(constraint) # b t h d
+        time = batch[DataKey.constraint_time] if self.inject_constraint_tokens \
+            else torch.zeros(constraint_embed.size(0), constraint_embed.size(1), device=constraint_embed.device)
+        time = repeat(time, 'b t -> b (t d)', d=constraint_embed.size(-1))
+        space = repeat(torch.arange(constraint_embed.size(-1), device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=constraint_embed.size(1))
+        padding = repeat(create_token_padding_mask(
+            constraint_embed,
+            batch,
+            length_key=CONSTRAINT_LENGTH_KEY,
+            shuffle_key=''
+        ), 'b t -> b (t d)', d=constraint_embed.size(-1))
+        constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
+        return (
+            constraint_embed,
+            time,
+            space,
+            padding,
+        )
 
 
 class DataPipeline(TaskPipeline):
@@ -795,10 +862,10 @@ class TemporalTokenInjector(nn.Module):
         return features[:, -batch[self.reference].size(1):] # assuming queries stitched to back
 
 
-class CovariateReadout(DataPipeline):
+class CovariateReadout(DataPipeline, ConstraintPipeline):
     r"""
         Base class for decoding (regression/classification) of covariates.
-        Constraints are packed in here because the encoding is fused with behavior in the non-sparse case, but we may want to refactor that out.
+        Constraints may be packed in here because the encoding is fused with behavior in the non-sparse case, but we may want to refactor that out.
     """
     modifies = [DataKey.bhvr_vel, DataKey.constraint, DataKey.constraint_time]
 
@@ -871,12 +938,7 @@ class CovariateReadout(DataPipeline):
         self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
         breakpoint()
-        self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
-        if self.cfg.encode_constraints:
-            if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
-                # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
-                self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
-            self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
+
 
     @abc.abstractmethod
     def initialize_readin(self):
@@ -962,17 +1024,6 @@ class CovariateReadout(DataPipeline):
         })
         return batch
 
-    def encode_constraint(self, constraint: torch.Tensor):
-        # constraint: B (T) 3 - last dim is brain, active, passive (see `pitt_co`)
-        if not self.cfg.encode_constraints:
-            return 0
-        if self.inject_constraint_tokens:
-            raise NotImplementedError # sparse shape not considered
-        constraint_embed = einsum(constraint, self.constraint_dims, 'b t 3, 3 h -> b t h')
-        if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
-            constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
-        return constraint_embed
-
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
             return super().get_context(batch)
@@ -983,15 +1034,9 @@ class CovariateReadout(DataPipeline):
             length_key=f'{self.handle}_{LENGTH_KEY}',
             shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
         )[:, :enc.shape[1]]
-        constraint = self.encode_constraint(batch[DataKey.constraint])
-        if self.inject_constraint_tokens:
-            enc = torch.cat([enc, constraint], dim=1)
-            breakpoint()
-            constraint_padding = create_token_padding_mask(
-                constraint, batch, length_key=f'constraint_{LENGTH_KEY}' # TODO oh god, ideally more shuffle logic. Since this is sparse, this is hard, and aligning with covariate is harder. For simplicity, I'm going to not implement and just always provide all constraint (never shuffled out); this is fine since we never predict constraints.
-            )
-            padding = torch.cat([padding, constraint_padding], dim=1)
-        else:
+
+        if self.cfg.encode_constraints and not self.inject_constraint_tokens:
+            constraint = self.encode_constraint(batch[DataKey.constraint])
             enc = enc + constraint
         return (
             enc,
@@ -1335,4 +1380,5 @@ task_modules = {
     # ModelTask.shuffle_next_step_prediction: ShuffleNextStepPrediction,
     ModelTask.kinematic_decoding: BehaviorRegression,
     ModelTask.kinematic_classification: BehaviorClassification,
+    ModelTask.constraints: ConstraintPipeline,
 }
