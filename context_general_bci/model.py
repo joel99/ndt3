@@ -286,8 +286,7 @@ class BrainBertInterface(pl.LightningModule):
             return channel_count
         self.task_pipelines = nn.ModuleDict({
             k.value: task_modules[k](
-                self.cfg.hidden_size if task_modules[k].unique_space and self.cfg.readout_strategy is not EmbedStrat.none \
-                    else self.backbone.out_size,
+                self.backbone.out_size,
                 get_target_size(k),
                 self.cfg,
                 self.data_attrs
@@ -448,14 +447,13 @@ class BrainBertInterface(pl.LightningModule):
             for p in m.parameters():
                 p.requires_grad = False
 
-    def _prepare_trial_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def _prepare_trial_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""
             Format spikes and context into tokens for backbone.
             In:
                 spikes: B T A C H=1 (features provided on channel dim for principles but functionally useless)
                 or B (Token) C H if `serve_tokens_flat`
             Returns:
-                state_in: B x T x A x H (A should be flattened in backbone)
                 static_context: List(T') [B x H]
         """
         assert self.cfg.array_embed_strategy == EmbedStrat.none, "Array embed strategy deprecated"
@@ -481,81 +479,66 @@ class BrainBertInterface(pl.LightningModule):
                 task: torch.Tensor = self.task_embed(batch[MetaKey.task])
         else:
             task = None
-        # collapse space/array, channel/feature --> # b t s h
 
-        # state_in = rearrange(state_in,
-        #     'b t s chunk h -> b t s (chunk h)' if self.data_attrs.serve_tokens else \
-        #     'b t a s_a chunk h -> b t a s_a (chunk h)'
-        # ) # yes, we rearrange twice... better for alternative control flows..
         if self.cfg.encode_decode or self.cfg.task.decode_separate: # TODO decouple - or at least move after flag injection below
             # cache context
             batch['session'] = session
             batch['subject'] = subject
             batch['task'] = task
 
-        static_context = []
-        project_context = [] # only for static info
+        static_context: List[torch.Tensor] = []
         # Note we may augment padding tokens below but if attn is implemented correctly that should be fine
         def _add_context(context: torch.Tensor, flag: torch.Tensor, strategy: EmbedStrat):
             if strategy is EmbedStrat.none:
                 return
-            if strategy == EmbedStrat.token:
-                context = context + flag
-                static_context.extend(context.unbind(1) if context.ndim == 3 else [context])
-            elif strategy == EmbedStrat.token_add:
-                assert not self.cfg.transform_space, 'not implemented'
-                state_in = state_in + rearrange(context, 'b h -> b 1 1 h')
-            elif strategy == EmbedStrat.concat:
-                assert not self.cfg.transform_space, 'not implemented'
-                context = repeat(context, 'b h -> b t 1 h', t=state_in.shape[1])
-                project_context.append(session)
+            # assume token strategy
+            context = context + flag
+            static_context.append(context)
         _add_context(session, getattr(self, 'session_flag', None), self.cfg.session_embed_strategy)
         _add_context(subject, getattr(self, 'subject_flag', None), self.cfg.subject_embed_strategy)
         _add_context(task, getattr(self, 'task_flag', None), self.cfg.task_embed_strategy)
-        return static_context
+        metadata_context = pack(static_context, 'b * h')[0]
+        return (
+            metadata_context,
+            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=int), # time
+            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=int), # space
+            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
+        )
 
     def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        # returns backbone features B T S H
-        trial_context = self._prepare_trial_context(batch)
+        # Encoder: returns backbone features B T H
 
-        # TODO the issue with turning neural data proc into a TaskIO is that we then enforce its presence even if we're not optimizing on neural data
-        # ! We should make a mock, I think the abstraction/organization is worthwhile nonetheless
+        # There are two main types of tokens: conditioning and data tokens
+        # Conditioning tokens are never meant to be retrieved, solely to condition the backbone
+        # Data token may serve as prediction targets
 
-        pipeline_context = {} # really, these should be other dataloaders/data modules, pipeline is a bad abstraction
-        pipeline_times = {}
-        pipeline_space = {}
-        tks = []
-        for tk, tp in self.task_pipelines.items():
-            pipeline_context[tk], pipeline_times[tk], pipeline_space[tk] = tp.get_context(batch)
-            if pipeline_context[tk] is not None:
-                tks.append(tk)
-        pipeline_context = [tc for tc in pipeline_context.values() if tc is not None]
-        pipeline_times = [tt for tt in pipeline_times.values() if tt is not None]
-        pipeline_space = [ts for ts in pipeline_space.values() if ts is not None]
-        pipeline_padding = [create_token_padding_mask(
-            tc, batch,
-            length_key=f'{self.task_pipelines[tk].handle}_{LENGTH_KEY}',
-            shuffle_key=f'{self.task_pipelines[tk].handle}_{SHUFFLE_KEY}' # create_token_padding_mask will extract the positions if shuffle exists, so we crop to the encoded length
-        )[:,:tc.shape[1]] for tk, tc in zip(tks, pipeline_context)]
+        # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
+        trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
+        trial_space = trial_space - 1 # reserve 0 space for trial (we add back later). Other pipelines share space vocab, but metadata doesn't have a special cls indicator, so we reserve space.
 
-        # Merge temporal context into mainline seq (in NDT3, data/neuro is not revealed to backbone)
-        pipeline_context, ps = pack(pipeline_context, 'b * h')
-        times, _ = pack(pipeline_times, 'b *')
-        space, _ = pack(pipeline_space, 'b *')
-        pipeline_padding, _ = pack(pipeline_padding, 'b *')
+        pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
+            tp.get_context(batch) for tp in self.task_pipelines.values()
+        ])
+        # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
+        pipeline_context, ps = pack([*pipeline_context, trial_context], 'b * h')
+        times, _ = pack([*pipeline_times, trial_times], 'b *')
+        space, _ = pack([*pipeline_space, trial_space], 'b *')
+        space = space + 1
+        pipeline_padding, _ = pack([*pipeline_padding, trial_padding], 'b *')
 
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
-            trial_context=trial_context,
             padding_mask=pipeline_padding,
             causal=self.cfg.causal,
             times=times,
             positions=space,
         ) # B x Token x H (flat)
         pipeline_outputs = unpack(outputs, ps, 'b * h')
-        # TODO surface extra temporal context if needed
-        # extract per-pipeline features using tks
-        return pipeline_outputs[0] # TODO currently just assuming first is spikes and surfaces that, instead return rest
+
+        # TODO surface other pipelines if needed
+        tks = list(self.task_pipelines.keys())
+        enc_index = tks.index('shuffle_infill')
+        return pipeline_outputs[enc_index]
 
     def _step(self, batch: Dict[str, torch.Tensor], eval_mode=False) -> Dict[str, torch.Tensor]:
         r"""
@@ -579,6 +562,7 @@ class BrainBertInterface(pl.LightningModule):
                 stim: B T C H
                 channel_counts: B A (counts per array)
         """
+        # breakpoint()
         batch_out: Dict[str, torch.Tensor] = {}
         if Output.spikes in self.cfg.task.outputs:
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]

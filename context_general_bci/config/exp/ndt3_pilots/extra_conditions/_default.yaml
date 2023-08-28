@@ -18,7 +18,8 @@ model:
 dataset:
   behavior_dim: 8
   datasets:
-  - pitt_broad.*
+  - pitt_test.* # Currently has obs, ortho, fbc, helicopter rescue
+  # - pitt_broad.*
   data_keys:
   - DataKey.spikes
   - DataKey.constraint

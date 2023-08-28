@@ -113,7 +113,6 @@ class TaskPipeline(nn.Module):
         i.e. is responsible for returning loss, decoder outputs, and metrics
     """
     modifies: List[DataKey] = [] # Which DataKeys are altered in use of this Pipeline? (We check to prevent multiple subscriptions)
-    unique_space = False # accept unique space as input?
 
     def __init__(
         self,
@@ -128,16 +127,80 @@ class TaskPipeline(nn.Module):
         self.serve_tokens = data_attrs.serve_tokens
         self.serve_tokens_flat = data_attrs.serve_tokens_flat
 
+    @abc.abstractproperty
+    def handle(self) -> str:
+        r"""
+            Handle for identifying task
+        """
+        raise NotImplementedError
+
+    def get_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | List, torch.Tensor | List, torch.Tensor | List, torch.Tensor | List]:
+        r"""
+            Context for covariates that should be embedded.
+            (e.g. behavior, stimuli, ICMS)
+            JY co-opting to also just track separate covariates that should possibly be reoncstructed (but main model doesn't know to do this atm, may need to signal.)
+            returns:
+            - a sequence of embedded tokens (B T H)
+            - their associated timesteps. (B T)
+            - their associated space steps (B T)
+            - padding mask (B T)
+            Defaults to empty list for packing op
+        """
+        return [], [], [], []
+
+    def get_conditioning_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | List, torch.Tensor | List, torch.Tensor | List, torch.Tensor | List]:
+        r"""
+            For task specific trial _input_. (B T H)
+            Same return as above.
+        """
+        raise NotImplementedError # TODO still not consumed in main model
+        return None, None, None, None
+
+    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+        r"""
+            Currently redundant with get_context - need to refactor.
+            It could be that this forces a one-time modification.
+            Update batch in place for modifying/injecting batch info.
+        """
+        return batch
+
+    def get_trial_query(self, batch: Dict[str, torch.Tensor]):
+        r"""
+            For task specific trial _query_. (B H)
+        """
+        raise NotImplementedError # nothing in main model to use this
+        return []
+
+    def extract_trial_context(self, batch, detach=False):
+        trial_context = []
+        for key in ['session', 'subject', 'task']:
+            if key in batch and batch[key] is not None:
+                trial_context.append(batch[key] if not detach else batch[key].detach())
+        return trial_context
+
+    def forward(self, batch, backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
+        r"""
+            By default only return outputs. (Typically used in inference)
+            - compute_metrics: also return metrics.
+            - eval_mode: Run IO in eval mode (e.g. no masking)
+        """
+        raise NotImplementedError
+
+class MetadataPipeline(TaskPipeline):
+    pass
+
+
+class DataPipeline(TaskPipeline):
     def get_masks(
-            self,
-            batch: Dict[str, torch.Tensor],
-            channel_key=CHANNEL_KEY,
-            length_key=LENGTH_KEY,
-            ref: torch.Tensor | None = None,
-            compute_channel=True,
-            shuffle_key=SHUFFLE_KEY,
-            encoder_frac=0,
-        ):
+        self,
+        batch: Dict[str, torch.Tensor],
+        channel_key=CHANNEL_KEY,
+        length_key=LENGTH_KEY,
+        ref: torch.Tensor | None = None,
+        compute_channel=True,
+        shuffle_key=SHUFFLE_KEY,
+        encoder_frac=0,
+    ):
         r"""
             length_key: token-level padding info
             channel_key: intra-token padding info
@@ -171,63 +234,8 @@ class TaskPipeline(nn.Module):
             channel_mask = None
         return loss_mask, length_mask, channel_mask
 
-    @abc.abstractproperty
-    def handle(self) -> str:
-        r"""
-            Handle for identifying task
-        """
-        raise NotImplementedError
 
-    def get_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | None, torch.Tensor | None, torch.Tensor | None]:
-        r"""
-            Context for covariates that should be embedded.
-            (e.g. behavior, stimuli, ICMS)
-            JY co-opting to also just track separate covariates that should possibly be reoncstructed (but main model doesn't know to do this atm, may need to signal.)
-            returns:
-            - a sequence of embedded tokens (B T H)
-            - their associated timesteps. (B T)
-            - their associated space steps (B T)
-        """
-        return None, None, None
-
-    def get_trial_context(self, batch: Dict[str, torch.Tensor]):
-        r"""
-            For task specific trial _input_. (B H)
-        """
-        raise NotImplementedError # Nothing in main model to use this
-        return []
-
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
-        r"""
-            Currently redundant with get_context - need to refactor.
-            It could be that this forces a one-time modification.
-            Update batch in place for modifying/injecting batch info.
-        """
-        return batch
-
-    def get_trial_query(self, batch: Dict[str, torch.Tensor]):
-        r"""
-            For task specific trial _query_. (B H)
-        """
-        raise NotImplementedError # nothing in main model to use this
-        return []
-
-    def extract_trial_context(self, batch, detach=False):
-        trial_context = []
-        for key in ['session', 'subject', 'task']:
-            if key in batch and batch[key] is not None:
-                trial_context.append(batch[key] if not detach else batch[key].detach())
-        return trial_context
-
-    def forward(self, batch, backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
-        r"""
-            By default only return outputs. (Typically used in inference)
-            - compute_metrics: also return metrics.
-            - eval_mode: Run IO in eval mode (e.g. no masking)
-        """
-        raise NotImplementedError
-
-class RatePrediction(TaskPipeline):
+class RatePrediction(DataPipeline):
     def __init__(
         self,
         backbone_out_size: int,
@@ -408,13 +416,16 @@ class SpikeBase(RatePrediction):
         spikes = self.encode(batch)
         time = batch[DataKey.time]
         space = batch[DataKey.position]
-        return spikes, time, space
+        return spikes, time, space, create_token_padding_mask(
+            spikes, batch,
+            length_key=LENGTH_KEY, # Use the right key, if there's no shuffle
+            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
+        )[:,:spikes.shape[1]] # crop to encoding context
 
     # TODO implement... needed to make sure spikes are encoded now that we've delegated internally
 
 class SelfSupervisedInfill(RatePrediction):
     modifies = [DataKey.spikes]
-    unique_space = True
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         spikes = batch[DataKey.spikes]
         target = spikes[..., 0]
@@ -648,7 +659,7 @@ class ShuffleInfill(SpikeBase):
         backbone_features: torch.Tensor = self.decoder(
             decode_tokens,
             padding_mask=token_padding_mask,
-            trial_context=self.extract_trial_context(batch=batch),
+            # trial_context=self.extract_trial_context(batch=batch), # TODO removed for now, bring back in decoder tests?
             times=decode_time,
             positions=decode_space,
             causal=self.causal,
@@ -788,9 +799,11 @@ class TemporalTokenInjector(nn.Module):
             return batch[DataKey.extra]
         return features[:, -batch[self.reference].size(1):] # assuming queries stitched to back
 
-class CovariateReadout(TaskPipeline):
+
+class CovariateReadout(DataPipeline):
     r"""
         Base class for decoding (regression/classification) of covariates.
+        Constraints are packed in here because the encoding is fused with behavior in the non-sparse case, but we may want to refactor that out.
     """
     modifies = [DataKey.bhvr_vel, DataKey.constraint, DataKey.constraint_time]
 
@@ -961,18 +974,35 @@ class CovariateReadout(TaskPipeline):
         if self.inject_constraint_tokens:
             raise NotImplementedError # sparse shape not considered
         constraint_embed = einsum(constraint, self.constraint_dims, 'b t 3, 3 h -> b t h')
-        if self.inject_constraint_tokens:
+        if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
             constraint_embed = constraint_embed + self.constraint_cls.unsqueeze(0).unsqueeze(0)
         return constraint_embed
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
             return super().get_context(batch)
+        enc = self.encode_cov(batch[self.cfg.behavior_target])
+        padding = create_token_padding_mask(
+            enc,
+            batch,
+            length_key=f'{self.handle}_{LENGTH_KEY}',
+            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
+        )[:, :enc.shape[1]]
+        constraint = self.encode_constraint(batch[DataKey.constraint])
+        if self.inject_constraint_tokens:
+            enc = torch.cat([enc, constraint], dim=1)
+            breakpoint()
+            constraint_padding = create_token_padding_mask(
+                constraint, batch, length_key=f'constraint_{LENGTH_KEY}' # TODO oh god, ideally more shuffle logic. Since this is sparse, this is hard, and aligning with covariate is harder. For simplicity, I'm going to not implement and just always provide all constraint (never shuffled out); this is fine since we never predict constraints.
+            )
+            padding = torch.cat([padding, constraint_padding], dim=1)
+        else:
+            enc = enc + constraint
         return (
-            self.encode_cov(batch[self.cfg.behavior_target]) +
-            self.encode_constraint(batch[DataKey.constraint]),
+            enc,
             batch[f'{self.handle}_{DataKey.time}'],
-            batch[f'{self.handle}_{DataKey.position}']
+            batch[f'{self.handle}_{DataKey.position}'],
+            padding
         )
 
     @abc.abstractmethod
@@ -1054,7 +1084,7 @@ class CovariateReadout(TaskPipeline):
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=token_padding_mask,
-                trial_context=self.extract_trial_context(batch, detach=True),
+                # trial_context=self.extract_trial_context(batch, detach=True), # TODO removed for now, bring back in a test where we explore decoder inputs?
                 times=decode_time,
                 positions=decode_space,
                 causal=self.causal,
