@@ -12,7 +12,7 @@ from omegaconf import OmegaConf
 from context_general_bci.contexts import context_registry
 from context_general_bci.config import RootConfig, DatasetConfig, DataKey, MetaKey
 from context_general_bci.dataset import SpikingDataset
-from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.config.presets import FlatDataConfig, ScaleHistoryDatasetConfig
 from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest
@@ -24,8 +24,8 @@ from context_general_bci.utils import wandb_query_latest
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 # _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
-cfg = FlatDataConfig()
-cfg.datasets = ['observation_.*']
+cfg = ScaleHistoryDatasetConfig()
+cfg.datasets = ['pitt_test_.*']
 
 cfg.odoherty_rtt.include_sorted = False
 cfg.odoherty_rtt.arrays = ['Indy-M1', 'Loco-M1']
@@ -65,6 +65,7 @@ sns.histplot(mins)
 # sns.histplot(means)
 # sns.histplot(lengths)
 print(session_stats[sessions[0]].max(0))
+
 #%%
 # Create blacklist based on statistic cutoffs
 blacklist = []

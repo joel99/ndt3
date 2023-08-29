@@ -224,14 +224,16 @@ class ConstraintPipeline(ContextPipeline):
             self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
 
     def encode_constraint(self, constraint: torch.Tensor) -> torch.Tensor:
-        # constraint: B (T) 3 - last dim goes brain, active, passive (see `pitt_co`)
-        if self.inject_constraint_tokens:
-            # In the dense path, tokens already arrive rearranged due to crop batch. Flattening occurs outside this func
+        # constraint: Out is B T H Bhvr_Dim for sparse/tokenized, or B T H if dense
+        if self.inject_constraint_tokens or not self.cfg.decode_tokenize_dims:
+            # In the dense decode_tokenize_dims path, tokens already arrive rearranged due to crop batch. Flattening occurs outside this func
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint d, constraint h -> b t h d')
-            if self.cfg.use_constraint_cls:
+            if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h 1')
+            if not self.inject_constraint_tokens: # reduce
+                constraint_embed = constraint_embed.mean(-1) # B T H
         else:
-            constraint_embed = einsum(constraint, self.constraint_dims, 'b t 3, 3 h -> b t h')
+            constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint, constraint h -> b t h')
         return constraint_embed
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
@@ -937,8 +939,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             self.bhvr_std = None
         self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
-        breakpoint()
-
 
     @abc.abstractmethod
     def initialize_readin(self):
@@ -1026,7 +1026,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
-            return super().get_context(batch)
+            # return super().get_context(batch)
+            return [], [], [], []
         enc = self.encode_cov(batch[self.cfg.behavior_target])
         padding = create_token_padding_mask(
             enc,
@@ -1036,7 +1037,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         )[:, :enc.shape[1]]
 
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
-            constraint = self.encode_constraint(batch[DataKey.constraint])
+            constraint = self.encode_constraint(batch[DataKey.constraint]) # B T H Bhvr_Dim. Straight up not sure how to collapse non-losslessly - we just mean pool for now.
             enc = enc + constraint
         return (
             enc,
@@ -1318,7 +1319,7 @@ class BehaviorClassification(CovariateReadout):
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         if not self.cfg.decode_tokenize_dims:
-            covariate = covariate.sum(-2) # B T Bhvr_Dims H -> B T H
+            covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H
         covariate = self.inp_norm(covariate)
         return covariate
 

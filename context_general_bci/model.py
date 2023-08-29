@@ -519,6 +519,12 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in self.task_pipelines.values()
         ])
+        filtered = [i for i, p in enumerate(pipeline_context) if p != []]
+        pipeline_context = [pipeline_context[i] for i in filtered]
+        pipeline_times = [pipeline_times[i] for i in filtered]
+        pipeline_space = [pipeline_space[i] for i in filtered]
+        pipeline_padding = [pipeline_padding[i] for i in filtered]
+
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
         pipeline_context, ps = pack([*pipeline_context, trial_context], 'b * h')
         times, _ = pack([*pipeline_times, trial_times], 'b *')
@@ -534,6 +540,12 @@ class BrainBertInterface(pl.LightningModule):
             positions=space,
         ) # B x Token x H (flat)
         pipeline_outputs = unpack(outputs, ps, 'b * h')
+        repacked_outputs = []
+        for i in range(len(self.task_pipelines)):
+            if i in filtered:
+                repacked_outputs.append(pipeline_outputs[filtered.index(i)])
+            else:
+                repacked_outputs.append(None)
 
         # TODO surface other pipelines if needed
         tks = list(self.task_pipelines.keys())

@@ -5,6 +5,7 @@ model:
   task:
     encode_constraints: False
     use_constraint_cls: False
+    decode_tokenize_dims: True
 dataset:
   sparse_constraints: True
 inherit_tag: sparse_constraint

@@ -6,6 +6,7 @@ model:
     tasks: [ModelTask.shuffle_infill, ModelTask.kinematic_decoding, ModelTask.constraints]
     encode_constraints: True
     use_constraint_cls: True
+    decode_tokenize_dims: True
 dataset:
   sparse_constraints: True
 inherit_tag: sparse_constraint_enc
