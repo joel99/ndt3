@@ -105,8 +105,8 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['active_assist'] = torch.from_numpy(payload['active_assist']).half()
             out['passive_assist'] = torch.from_numpy(payload['passive_assist']).half()
             assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
-        if 'passed' in payload:
-            out['passed'] = torch.from_numpy(payload['passed']).int()
+        # if 'passed' in payload:
+            # out['passed'] = torch.from_numpy(payload['passed']).int()
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -230,8 +230,7 @@ class PittCOLoader(ExperimentalTaskLoader):
 
         if not datapath.is_dir() and datapath.suffix == '.mat': # payload style, preproc-ed/binned elsewhere
             payload = load_trial(datapath, key='thin_data', limit_dims=cfg.pitt_co.limit_kin_dims)
-
-            # Sanitize
+            # Sanitize / renormalize
             spikes = payload['spikes']
             # elements = spikes.nelement()
             unique, counts = np.unique(spikes, return_counts=True)
@@ -242,9 +241,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                     # spikes[spikes == u] = 0
 
             # Iterate by trial, assumes continuity so we grab velocity outside
-            # start_pad = round(500 / cfg.bin_size_ms)
-            # end_pad = round(1000 / cfg.bin_size_ms)
-            # should_clip = False
             exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
             # * Kinematics (labeled 'vel' as we take derivative of reported position)
@@ -252,6 +248,15 @@ class PittCOLoader(ExperimentalTaskLoader):
                 'position' in payload # and \
                 # task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
             ): # We only "trust" in the labels provided by obs (for now)
+                if exp_task_cfg.minmax: # T x C
+                    payload['position_mean'] = payload['position'].mean(0)
+                    payload['position_minimax'] = payload['position'].min(0).values, payload['position'].max(0).values
+                    rescale = payload['position_minimax'][1] - payload['position_minimax'][0]
+                    rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
+                    payload['position'] = (payload['position'] - payload['position_mean']) / rescale # Think this rescales to a bit less than 1
+                    # TODO we should really sanitize for severely abberant values... or checking for outlier effects
+
+
                 if exp_task_cfg.closed_loop_intention_estimation == "refit" and task in [ExperimentalTask.ortho, ExperimentalTask.fbc]:
                     # breakpoint()
                     session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)

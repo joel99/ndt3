@@ -314,7 +314,7 @@ class BrainBertInterface(pl.LightningModule):
                         assert transfer_data_attrs is not None, "Must provide data attrs for readin matrix transfer"
                         module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
                     else:
-                        module.load_state_dict(transfer_module.state_dict())
+                        module.load_state_dict(transfer_module.state_dict(), strict=False)
                 logger.info(f'Transferred {module_name} weights.')
             else:
                 # if isinstance(module, nn.Parameter):

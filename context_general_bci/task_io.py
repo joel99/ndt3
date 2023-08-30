@@ -225,7 +225,7 @@ class ConstraintPipeline(ContextPipeline):
 
     def encode_constraint(self, constraint: torch.Tensor) -> torch.Tensor:
         # constraint: Out is B T H Bhvr_Dim for sparse/tokenized, or B T H if dense
-        if self.inject_constraint_tokens or not self.cfg.decode_tokenize_dims:
+        if not self.cfg.decode_tokenize_dims:
             # In the dense decode_tokenize_dims path, tokens already arrive rearranged due to crop batch. Flattening occurs outside this func
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint d, constraint h -> b t h d')
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
@@ -242,15 +242,17 @@ class ConstraintPipeline(ContextPipeline):
         constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time] if self.inject_constraint_tokens \
             else torch.zeros(constraint_embed.size(0), constraint_embed.size(1), device=constraint_embed.device)
-        time = repeat(time, 'b t -> b (t d)', d=constraint_embed.size(-1))
-        space = repeat(torch.arange(constraint_embed.size(-1), device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=constraint_embed.size(1))
+        bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
+        time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
+        space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
         padding = repeat(create_token_padding_mask(
             constraint_embed,
             batch,
             length_key=CONSTRAINT_LENGTH_KEY,
             shuffle_key=''
-        ), 'b t -> b (t d)', d=constraint_embed.size(-1))
-        constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
+        ), 'b t -> b (t d)', d=bhvr_attr_factor)
+        if not self.cfg.decode_tokenize_dims: # already flattened
+            constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
         return (
             constraint_embed,
             time,
@@ -885,8 +887,10 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             data_attrs=data_attrs
         )
         if self.inject_constraint_tokens: # if they're injected, we don't need these params in kinematic
-            del self.constraint_cls
-            del self.constraint_dims
+            if hasattr(self, 'constraint_cls'):
+                del self.constraint_cls
+            if hasattr(self, 'constraint_dims'):
+                del self.constraint_dims
         assert self.cfg.decode_strategy == EmbedStrat.token, 'Non-token decoding deprecated'
         self.decode_cross_attn = cfg.decoder_context_integration == 'cross_attn'
         self.injector = TemporalTokenInjector(
@@ -995,7 +999,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         if self.cfg.decode_tokenize_dims:
             covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
             if self.cfg.encode_constraints:
-                batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t 3 bhvr_dim -> b (t bhvr_dim) 3')
+                batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t constraint bhvr_dim -> b (t bhvr_dim) constraint')
             batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
         if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
             breakpoint()

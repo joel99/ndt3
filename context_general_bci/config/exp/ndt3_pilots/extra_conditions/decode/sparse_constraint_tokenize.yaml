@@ -11,4 +11,4 @@ dataset:
   sparse_constraints: True
 inherit_tag: sparse_constraint_enc
 train:
-  batch_size: 16 # always OOM and regardless of training steps # (pretrain 4 gpus), yikes, 16 is too high
+  batch_size: 8 # always OOM and regardless of training steps # (pretrain 4 gpus), yikes, 16 is too high

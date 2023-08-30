@@ -48,20 +48,48 @@ print(len(dataset))
 #%%
 from collections import defaultdict
 session_stats = defaultdict(list)
+debug = None
 for t in range(len(dataset)):
+    if dataset.meta_df.iloc[t][MetaKey.session] == "ExperimentalTask.pitt_co-CRS02b-1365-pitt_test_pitt_co_CRS02bLab_1365_20":
+        debug = dataset[t][DataKey.bhvr_vel]
+    else:
+        pass
     print(dataset.meta_df.iloc[t][MetaKey.unique])
-    session_stats[dataset.meta_df.iloc[t][MetaKey.session]].append(dataset[t][DataKey.bhvr_vel])
-for session in session_stats:
-    session_stats[session] = torch.cat(session_stats[session], 0)
-
-torch.save(session_stats, 'pitt_obs_session_stats.pt')
+    # session_stats[dataset.meta_df.iloc[t][MetaKey.session]].append(dataset[t][DataKey.bhvr_vel])
+# for session in session_stats:
+    # session_stats[session] = torch.cat(session_stats[session], 0)
+#%%
+plt.plot(debug[:,1])
+# torch.save(session_stats, 'pitt_obs_session_stats.pt')
 #%%
 session_stats = torch.load('pitt_obs_session_stats.pt')
 sessions = list(session_stats.keys())
 def summarize(s):
     return s.min().item(), s.max().item(), s.mean().item(), s.std().item(), len(s)
 mins, maxes, means, stds, lengths = zip(*[summarize(session_stats[s]) for s in sessions])
-sns.histplot(mins)
+
+
+#%%
+print(torch.tensor(maxes).sort(descending=True).indices)
+print(torch.tensor(mins).sort().indices)
+print(mins[0])
+print((torch.tensor(mins) < -10).sum())
+print((torch.tensor(maxes) > 10).sum())
+print(len(mins))
+for s in sessions:
+    if summarize(session_stats[s])[1] > 1000:
+        print(s)
+#%%
+# sns.boxplot(mins)
+# sns.boxplot(maxes)
+# sns.boxplot(np.array(maxes) - np.array(mins))
+
+# print quantiles of maxes
+
+
+# sns.boxplot(means)
+
+# sns.histplot(mins)
 # sns.histplot(maxes)
 # sns.histplot(stds)
 # sns.histplot(means)
