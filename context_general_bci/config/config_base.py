@@ -316,6 +316,7 @@ class ModelConfig:
     neurons_per_token: int = 1 # how many neurons to embed per token (only makes sense for token/project)
     # This needs to match neurons_per_token in data config if data is in serve_tokenized mode
     max_neuron_count: int = 21 # pretty safe upper bound on number of neurons that can be embedded. Must be > data.pad_value
+    max_return: int = 20 # max reward expected to embed or decode
 
     causal: bool = False # Set this for fine-tuning
 

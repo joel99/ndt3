@@ -48,7 +48,6 @@ COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout cha
 
 CONSTRAINT_LENGTH_KEY = 'constraint_length' # needed for sparse constraints
 RETURN_LENGTH_KEY = 'return_length'
-REWARD_LENGTH_KEY = 'reward_length'
 
 HELDOUT_CHANNEL_KEY = 'heldout_channel_counts'
 
@@ -380,7 +379,7 @@ class SpikingDataset(Dataset):
                         array_group = torch.cat([payload[k][a] for a in alias_arrays], dim=-2) # T C' H
                         if self.cfg.max_channels:
                             array_group = array_group[:,:self.cfg.max_channels] # crop
-                        if getattr(self.cfg, 'permute_channels', False):
+                        if self.cfg.permute_channels:
                             perm = self.channel_perms[trial[MetaKey.session]]
                             perm  = perm[perm < array_group.shape[-2]]
                             array_group = array_group[:,perm]
@@ -389,7 +388,7 @@ class SpikingDataset(Dataset):
                         # * Note to get array tokenization to respect array boundaries, use non-alias full array references
                         if self.cfg.serve_tokenized:
                             pad_amount = (self.cfg.neurons_per_token - array_group.size(-2) % self.cfg.neurons_per_token) % self.cfg.neurons_per_token
-                            array_group = F.pad(array_group, (0, 0, 0, pad_amount), value=getattr(self.cfg, 'pad_spike_value', 0))
+                            array_group = F.pad(array_group, (0, 0, 0, pad_amount), value=self.cfg.pad_spike_value)
                             tokenized_spikes = array_group.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # time space H channel_in_token
                             array_spikes.append(rearrange(tokenized_spikes, 'time space h c -> time space c h'))
                             time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1) # track across aliases and arrays
@@ -414,7 +413,7 @@ class SpikingDataset(Dataset):
                 else:
                     data_items[k] = torch.cat(array_spikes, 1) # T A C H
             else:
-                if k == DataKey.heldout_spikes and getattr(self.cfg, 'heldout_key_spoof_shape', []):
+                if k == DataKey.heldout_spikes and self.cfg.heldout_key_spoof_shape:
                     data_items[k] = torch.full(list(self.cfg.heldout_key_spoof_shape), fill_value=self.pad_value)
                 elif k == DataKey.bhvr_vel:
                     mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
@@ -430,8 +429,8 @@ class SpikingDataset(Dataset):
                         return repeat(constraint, 't d domain -> t d (domain 3)')[..., :self.cfg.behavior_dim]
                     if self.cfg.sparse_constraints:
                         if k not in payload:
-                            data_items[k] = torch.zeros((1, self.cfg.behavior_dim))
-                        # Need to denote a constraint change across tokens. In this case safe to assume default no constraint.
+                            data_items[k] = torch.zeros((1, self.cfg.behavior_dim)) # add an initial token indicating no constraint
+                            data_items[DataKey.constraint_time] = torch.tensor([0])
                         else:
                             # check for change
                             constraint_dense = payload[k]
@@ -444,16 +443,19 @@ class SpikingDataset(Dataset):
                         else:
                             # comes in as T x 3 x 3 -> expand to domain of 9, and then clip. Assumes Pitt data, and we're reporting first N dimensions in Pitt data. (i.e. this is very brittle preproc)
                             data_items[k] = project_to_bhvr(payload[k])
+                        # If not sparse, we don't need to create constraint time, as code reuses covariate time.
                 elif k == DataKey.task_return:
                     assert k in payload, "Don't have task return signal in payload, filter out this data."
                     if self.cfg.sparse_rewards:
                         return_dense = payload[k]
                         change_steps = torch.cat([torch.tensor([0]), (return_dense[1:] != return_dense[:-1]).any(1).nonzero().squeeze(1) + 1])
-                        data_items[k] = return_dense[change_steps]
+                        data_items[k] = return_dense[change_steps] # + 1 # +1, 0 is pad
                         data_items[DataKey.task_return_time] = change_steps
-                        data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps]
+                        data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps] #  + 1 # +1, 0 is pad
                     else:
                         data_items[k] = payload[k]
+                        breakpoint()
+                        data_items[DataKey.task_return_time] = torch.arange(payload[k].size(0)) # create, for simplicity, though we might technically mirror `DataKey.time` if we must...
                         data_items[DataKey.task_reward] = payload[DataKey.task_reward]
                 else:
                     data_items[k] = payload[k]
@@ -558,6 +560,8 @@ class SpikingDataset(Dataset):
                 stack_batch[covariate_key][i] = F.pad(el, (*pad_els, covariate_max - el.size(1)), value=self.pad_value)
         if DataKey.constraint_time in stack_batch: # sparse, can't just use covariate length
             constraint_lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.constraint]])
+        if DataKey.task_return_time in stack_batch:
+            task_return_lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.task_return]])
         for k in stack_batch.keys():
             if isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
                 # This padding injects pad values into time/space. The alternate is to assign time/space at collation time, but this is not as flexible, I'd rather individual trials specify their times.
@@ -567,6 +571,8 @@ class SpikingDataset(Dataset):
         stack_batch[LENGTH_KEY] = lengths
         if DataKey.constraint_time in stack_batch:
             stack_batch[CONSTRAINT_LENGTH_KEY] = constraint_lengths
+        if DataKey.task_return_time in stack_batch:
+            stack_batch[RETURN_LENGTH_KEY] = task_return_lengths
         if covariate_key is not None:
             stack_batch[COVARIATE_LENGTH_KEY] = covariate_lengths
             stack_batch[COVARIATE_CHANNEL_KEY] = covariate_channels

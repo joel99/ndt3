@@ -22,7 +22,8 @@ from context_general_bci.dataset import (
     CHANNEL_KEY,
     COVARIATE_LENGTH_KEY,
     COVARIATE_CHANNEL_KEY,
-    CONSTRAINT_LENGTH_KEY
+    CONSTRAINT_LENGTH_KEY,
+    RETURN_LENGTH_KEY
 )
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
@@ -249,8 +250,7 @@ class ConstraintPipeline(ContextPipeline):
         # breakpoint()
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
-        time = batch[DataKey.constraint_time] if self.inject_constraint_tokens \
-            else torch.zeros(constraint_embed.size(0), constraint_embed.size(1), device=constraint_embed.device)
+        time = batch[DataKey.constraint_time]
         bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
         space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
         time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
@@ -892,10 +892,31 @@ class ReturnContext(ContextPipeline):
             cfg=cfg,
             data_attrs=data_attrs
         )
-        # raise NotImplementedError
+        self.is_sparse = data_attrs.sparse_rewards
+        self.return_enc = nn.Embedding(
+            cfg.max_return,
+            cfg.hidden_size,
+            padding_idx=data_attrs.pad_token if data_attrs.pad_token else None,
+        )
+        self.reward_enc = nn.Embedding(
+            2, # 0 or 1, not a parameter for simple API convenience
+            cfg.hidden_size
+        )
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
-        raise NotImplementedError
+        return_embed = self.return_enc(batch[DataKey.task_return])
+        reward_embed = self.reward_enc(batch[DataKey.task_reward])
+        times = batch[DataKey.task_return_time]
+        space = torch.zeros_like(times)
+        padding = create_token_padding_mask(
+            return_embed, batch, length_key=RETURN_LENGTH_KEY
+        )
+        return (
+            return_embed + reward_embed,
+            times,
+            space,
+            padding
+        )
 
 class ReturnInfill(DataPipeline, ReturnContext):
     def forward(
