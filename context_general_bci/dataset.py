@@ -19,7 +19,6 @@ from torch.nn.utils.rnn import pad_sequence
 import torch.nn.functional as F
 from einops import rearrange, repeat
 
-# import lightning.pytorch as pl
 import lightning.pytorch as pl
 
 from context_general_bci.config import DatasetConfig, MetaKey, DataKey
@@ -48,6 +47,8 @@ COVARIATE_LENGTH_KEY = 'covariate_length' # we need another length tracker for p
 COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout channels only
 
 CONSTRAINT_LENGTH_KEY = 'constraint_length' # needed for sparse constraints
+RETURN_LENGTH_KEY = 'return_length'
+REWARD_LENGTH_KEY = 'reward_length'
 
 HELDOUT_CHANNEL_KEY = 'heldout_channel_counts'
 
@@ -90,6 +91,7 @@ class DataAttrs:
     neurons_per_token: int = 8
 
     sparse_constraints: bool = False
+    sparse_rewards: bool = False # also counts for return
 
     @property
     def max_spatial_tokens(self):
@@ -429,7 +431,7 @@ class SpikingDataset(Dataset):
                     if self.cfg.sparse_constraints:
                         if k not in payload:
                             data_items[k] = torch.zeros((1, self.cfg.behavior_dim))
-                        # Need to denote a constraint change across tokens.
+                        # Need to denote a constraint change across tokens. In this case safe to assume default no constraint.
                         else:
                             # check for change
                             constraint_dense = payload[k]
@@ -442,6 +444,17 @@ class SpikingDataset(Dataset):
                         else:
                             # comes in as T x 3 x 3 -> expand to domain of 9, and then clip. Assumes Pitt data, and we're reporting first N dimensions in Pitt data. (i.e. this is very brittle preproc)
                             data_items[k] = project_to_bhvr(payload[k])
+                elif k == DataKey.task_return:
+                    assert k in payload, "Don't have task return signal in payload, filter out this data."
+                    if self.cfg.sparse_rewards:
+                        return_dense = payload[k]
+                        change_steps = torch.cat([torch.tensor([0]), (return_dense[1:] != return_dense[:-1]).any(1).nonzero().squeeze(1) + 1])
+                        data_items[k] = return_dense[change_steps]
+                        data_items[DataKey.task_return_time] = change_steps
+                        data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps]
+                    else:
+                        data_items[k] = payload[k]
+                        data_items[DataKey.task_reward] = payload[DataKey.task_reward]
                 else:
                     data_items[k] = payload[k]
 
@@ -494,6 +507,20 @@ class SpikingDataset(Dataset):
                                 stack_batch[DataKey.constraint_time].append(torch.arange(constraint.size(0))) # assume no crop
                         stack_batch[k].append(constraint)
                     elif k == DataKey.constraint_time:
+                        pass # treated above
+                    elif k == DataKey.task_return:
+                        task_return = b[k]
+                        task_reward = b[DataKey.task_reward]
+                        if self.cfg.sparse_rewards:
+                            # assumes return time is present, note we are aware of diff with constraints
+                            time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i]) & (b[DataKey.task_return_time] >= crop_start[i])
+                            task_return = task_return[time_mask]
+                            task_reward = task_reward[time_mask]
+                            task_return_time = b[DataKey.task_return_time][time_mask] - crop_start[i]
+                            stack_batch[DataKey.task_return_time].append(task_return_time)
+                        stack_batch[k].append(task_return)
+                        stack_batch[DataKey.task_reward].append(task_reward)
+                    elif k in [DataKey.task_return_time, DataKey.task_reward]:
                         pass # treated above
                     else:
                         item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
@@ -626,6 +653,7 @@ class SpikingDataset(Dataset):
             serve_tokens_flat=self.cfg.serve_tokenized_flat,
             neurons_per_token=self.cfg.neurons_per_token,
             sparse_constraints=self.cfg.sparse_constraints,
+            sparse_rewards=self.cfg.sparse_rewards,
         )
 
     # ==================== Data splitters ====================

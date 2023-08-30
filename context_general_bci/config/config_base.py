@@ -15,6 +15,9 @@ class ModelTask(Enum):
     next_step_prediction = 'next_step'
     infill = 'infill'
 
+    return_context = 'return_context'
+    return_infill = 'return_infill'
+
     spike_context = 'spike_context'
     shuffle_next_step_prediction = 'shuffle_next_step_prediction'
     shuffle_infill = 'shuffle_infill'
@@ -74,7 +77,9 @@ class DataKey(Enum):
     # brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
     constraint_time = 'constraint_time' # for sparse constraints
 
+    # Inclusion of return will auto-include reward. Note that return changepoints are strict superset of reward changepoints, as return changepoints include future reward showing up in horizon as well as reward toggle in present timepoint.
     task_return = 'task_return' # Reward conditioned behavior cloning
+    task_reward = 'task_reward' # Reward conditioned behavior cloning
     task_return_time = 'task_return_time'
 
     time = 'time'
@@ -481,6 +486,8 @@ class DatasetConfig:
     behavior_dim: int = 2
 
     sparse_constraints: bool = False
+    sparse_rewards: bool = False
+    return_horizon_s: float = 10. # lookahead for return computation # TODO this should trigger preproc
 
     serve_tokenized: bool = False # master flag for space time operator (in anticipation that space time will move to tokenized)
     # Tokenized == serve B T S H instead of B T A C H

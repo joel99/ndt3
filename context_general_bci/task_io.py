@@ -195,8 +195,13 @@ class TaskPipeline(nn.Module):
 
 class ContextPipeline(TaskPipeline):
     # Doesn't do anything, just injects tokens
+    # Responsible for encoding a piece of the datastream
     def forward(self, *args, **kwargs):
         return {}
+
+    @abc.abstractmethod
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        raise NotImplementedError
 
 class ConstraintPipeline(ContextPipeline):
     r"""
@@ -765,7 +770,6 @@ class ShuffleInfill(SpikeBase):
         batch_out['loss'] = loss.mean()
         return batch_out
 
-
 class NextStepPrediction(RatePrediction):
     r"""
         One-step-ahead modeling prediction. Teacher-forced (we don't use force self-consistency, to save on computation)
@@ -873,6 +877,35 @@ class TemporalTokenInjector(nn.Module):
         if DataKey.extra in batch: # in-place path assumed
             return batch[DataKey.extra]
         return features[:, -batch[self.reference].size(1):] # assuming queries stitched to back
+
+class ReturnContext(ContextPipeline):
+    def __init__(
+        self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        # raise NotImplementedError
+
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        raise NotImplementedError
+
+class ReturnInfill(DataPipeline, ReturnContext):
+    def forward(
+        self,
+        batch: Dict[str, torch.Tensor],
+        backbone_features: torch.Tensor,
+        compute_metrics=True,
+        eval_mode=False,
+    ) -> torch.Tensor:
+        raise NotImplementedError
 
 
 class CovariateReadout(DataPipeline, ConstraintPipeline):
@@ -1405,4 +1438,6 @@ task_modules = {
     ModelTask.kinematic_decoding: BehaviorRegression,
     ModelTask.kinematic_classification: BehaviorClassification,
     ModelTask.constraints: ConstraintPipeline,
+    ModelTask.return_context: ReturnContext,
+    ModelTask.return_infill: ReturnInfill,
 }
