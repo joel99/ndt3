@@ -105,6 +105,8 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['active_assist'] = torch.from_numpy(payload['active_assist']).half()
             out['passive_assist'] = torch.from_numpy(payload['passive_assist']).half()
             assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
+        if 'passed' in payload:
+            out['passed'] = torch.from_numpy(payload['passed']).int()
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -268,6 +270,14 @@ class PittCOLoader(ExperimentalTaskLoader):
             active_assist = payload.get('active_assist', None)
             passive_assist = payload.get('passive_assist', None)
             # TODO need to think about smoothing these constraints?
+
+
+            # * Reward and return!
+            passed = payload.get('passed', None)
+            if passed is not None:
+                trial_num = payload['trial_num']
+                trial_change_step = (trial_num.roll(1, dims=0) != trial_num)[1:] # No, we want one reward at the end as well I think...? Hmm
+                # In long form, I need to compute 1) compute the reward per timestep, then compute the return to go in horizon, then crop correctly...
 
             if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
                 # Constraints not implemented
