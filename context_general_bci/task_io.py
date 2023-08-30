@@ -216,7 +216,7 @@ class ConstraintPipeline(ContextPipeline):
             cfg=cfg,
             data_attrs=data_attrs
         )
-        self.inject_constraint_tokens = data_attrs.sparse_constraints # Injects as timevarying context
+        self.inject_constraint_tokens = data_attrs.sparse_constraints and self.cfg.encode_constraints # Injects as timevarying context
         if self.cfg.encode_constraints:
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
@@ -234,11 +234,14 @@ class ConstraintPipeline(ContextPipeline):
                 constraint_embed = constraint_embed.mean(-1) # B T H
         else:
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint, constraint h -> b t h')
+            if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
+                constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h')
         return constraint_embed
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
         constraint = batch[DataKey.constraint]
+        # breakpoint()
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time] if self.inject_constraint_tokens \
@@ -253,8 +256,8 @@ class ConstraintPipeline(ContextPipeline):
             shuffle_key='',
             multiplicity=bhvr_attr_factor if self.cfg.decode_tokenize_dims else 1,
         ) # Make it before constraint is flattened
-        # padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
         if not self.cfg.decode_tokenize_dims: # already flattened
+            padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
             constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
         return (
             constraint_embed,
@@ -1071,7 +1074,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
         """
         if self.cfg.decode_separate:
-            backbone_padding = create_token_padding_mask(backbone_features, batch)
+            backbone_padding = create_token_padding_mask(backbone_features, batch, shuffle_Key='spike_shuffle')
             if 'spike_encoder_frac' in batch:
                 backbone_padding = backbone_padding[:, :batch['spike_encoder_frac']]
             if self.cfg.decode_time_pool: # B T H -> B T H
@@ -1084,7 +1087,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 injected_time=batch.get(f'{self.handle}_{DataKey.time}_target', None),
                 injected_space=batch.get(f'{self.handle}_{DataKey.position}_target', None)
             )
-            if not self.inject_constraint_tokens:
+            if not self.inject_constraint_tokens and self.cfg.encode_constraints:
                 decode_tokens = decode_tokens + self.encode_constraint(
                     batch[f'{DataKey.constraint}_target'],
                 )

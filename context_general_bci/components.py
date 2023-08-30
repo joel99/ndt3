@@ -367,6 +367,7 @@ class SpaceTimeTransformer(nn.Module):
             (So attention masks do not vary across batch)
         """
         # print(src.size())
+        # breakpoint()
         src = self.dropout_in(src)
         # === Embeddings ===
         src = src + self.time_encoder(times)
@@ -395,7 +396,7 @@ class SpaceTimeTransformer(nn.Module):
                     times, memory_times
                 )
                 memory_mask = repeat(memory_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
-            # convert padding masks to float to suppress torch 2 warnings - TODO bake into generation
+            # convert padding masks to float to suppress torch 2 warnings - TODO bake into generation to save op
             if padding_mask is not None:
                 padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
             if memory_padding_mask is not None:
@@ -408,6 +409,8 @@ class SpaceTimeTransformer(nn.Module):
                 memory_mask=memory_mask,
                 memory_key_padding_mask=memory_padding_mask
             )
+            if output.isnan().any():
+                breakpoint()
         else:
             if padding_mask is not None:
                 if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher

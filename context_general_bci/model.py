@@ -515,7 +515,7 @@ class BrainBertInterface(pl.LightningModule):
         # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
         trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
         trial_space = trial_space - 1 # reserve 0 space for trial (we add back later). Other pipelines share space vocab, but metadata doesn't have a special cls indicator, so we reserve space.
-
+        # breakpoint()
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in self.task_pipelines.values()
         ])

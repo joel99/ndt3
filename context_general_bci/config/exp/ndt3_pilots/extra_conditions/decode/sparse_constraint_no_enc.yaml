@@ -11,5 +11,6 @@ dataset:
   sparse_constraints: True
 inherit_tag: sparse_constraint_enc
 train:
+  autoscale_batch_size: False
   batch_size: 8 # always OOM and regardless of training steps # (pretrain 4 gpus), yikes, 16 is too high
 # load_from_id: sparse_constraint_no_enc-67jq6ci1
