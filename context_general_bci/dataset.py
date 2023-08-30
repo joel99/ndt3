@@ -533,6 +533,7 @@ class SpikingDataset(Dataset):
             constraint_lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.constraint]])
         for k in stack_batch.keys():
             if isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
+                # This padding injects pad values into time/space. The alternate is to assign time/space at collation time, but this is not as flexible, I'd rather individual trials specify their times.
                 stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value)
             else:
                 stack_batch[k] = torch.stack(stack_batch[k])

@@ -15,6 +15,7 @@ class ModelTask(Enum):
     next_step_prediction = 'next_step'
     infill = 'infill'
 
+    spike_context = 'spike_context'
     shuffle_next_step_prediction = 'shuffle_next_step_prediction'
     shuffle_infill = 'shuffle_infill'
 

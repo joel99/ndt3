@@ -549,7 +549,10 @@ class BrainBertInterface(pl.LightningModule):
 
         # TODO surface other pipelines if needed
         tks = list(self.task_pipelines.keys())
-        enc_index = tks.index('shuffle_infill')
+        if 'shuffle_infill' in tks:
+            enc_index = tks.index('shuffle_infill') # TODO replace with something that targets the spike context provider...
+        else:
+            enc_index = tks.index('spike_context')
         return pipeline_outputs[enc_index]
 
     def _step(self, batch: Dict[str, torch.Tensor], eval_mode=False) -> Dict[str, torch.Tensor]:

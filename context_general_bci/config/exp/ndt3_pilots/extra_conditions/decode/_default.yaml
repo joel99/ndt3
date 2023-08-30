@@ -4,7 +4,7 @@ defaults:
     - flat_enc_dec
     - scale_history
   - /model/task:
-    - joint_decode_flat_v2
+    - decode_flat_v2
   - /dataset:
     - flat
     - scale_history
@@ -15,7 +15,9 @@ model:
   causal: True
   decoder_context_integration: 'cross_attn'
   task:
-    mask_ratio: 0.1
+    # mask_ratio: 0.0 # Actually, it's possible that if we drop random spikes, we'll lose any references for early timesteps, which means the cross attention step will fail. This is not good.
+    # 1. We can remove this backbone dropping (easy default for now)
+    # 2. We can allow acausal attention (bigger decision)
     covariate_mask_ratio: 0.8
     task_weights: [1.0, 0.1]
   transformer:

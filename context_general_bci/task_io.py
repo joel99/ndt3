@@ -442,8 +442,7 @@ class RatePrediction(DataPipeline):
             )
         return nn.Sequential(*out_layers)
 
-class SpikeBase(RatePrediction):
-    modifies = [DataKey.spikes]
+class SpikeContext(ContextPipeline):
 
     def __init__(
         self,
@@ -589,6 +588,10 @@ class SelfSupervisedInfill(RatePrediction):
             )
 
         return batch_out
+
+class SpikeBase(SpikeContext, RatePrediction):
+    modifies = [DataKey.spikes]
+    pass
 
 class ShuffleInfill(SpikeBase):
     r"""
@@ -1074,7 +1077,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
         """
         if self.cfg.decode_separate:
-            backbone_padding = create_token_padding_mask(backbone_features, batch, shuffle_Key='spike_shuffle')
+            backbone_padding = create_token_padding_mask(backbone_features, batch, shuffle_key='spike_shuffle')
             if 'spike_encoder_frac' in batch:
                 backbone_padding = backbone_padding[:, :batch['spike_encoder_frac']]
             if self.cfg.decode_time_pool: # B T H -> B T H
@@ -1395,6 +1398,7 @@ def create_token_padding_mask(
 task_modules = {
     ModelTask.infill: SelfSupervisedInfill,
     ModelTask.shuffle_infill: ShuffleInfill,
+    ModelTask.spike_context: SpikeContext,
     ModelTask.next_step_prediction: NextStepPrediction,
     ModelTask.shuffle_next_step_prediction: ShuffleInfill, # yeahhhhh it's the SAME TASK WTH
     # ModelTask.shuffle_next_step_prediction: ShuffleNextStepPrediction,
