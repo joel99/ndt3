@@ -3,7 +3,7 @@ defaults:
   - _default
 model:
   task:
-    tasks: [ModelTask.shuffle_infill, ModelTask.kinematic_decoding, ModelTask.constraints]
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints]
     encode_constraints: True
     use_constraint_cls: True
     covariate_mask_ratio: 1.0
