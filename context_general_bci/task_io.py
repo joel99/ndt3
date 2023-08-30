@@ -239,18 +239,21 @@ class ConstraintPipeline(ContextPipeline):
     def get_context(self, batch: Dict[str, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
         constraint = batch[DataKey.constraint]
+
         constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time] if self.inject_constraint_tokens \
             else torch.zeros(constraint_embed.size(0), constraint_embed.size(1), device=constraint_embed.device)
         bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
-        time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
         space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
-        padding = repeat(create_token_padding_mask(
-            constraint_embed,
+        time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
+        padding = create_token_padding_mask(
+            constraint,
             batch,
             length_key=CONSTRAINT_LENGTH_KEY,
-            shuffle_key=''
-        ), 'b t -> b (t d)', d=bhvr_attr_factor)
+            shuffle_key='',
+            multiplicity=bhvr_attr_factor if self.cfg.decode_tokenize_dims else 1,
+        ) # Make it before constraint is flattened
+        # padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
         if not self.cfg.decode_tokenize_dims: # already flattened
             constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
         return (
@@ -1366,6 +1369,7 @@ def create_token_padding_mask(
     batch: Dict[str, torch.Tensor],
     length_key: str = LENGTH_KEY,
     shuffle_key: str = SHUFFLE_KEY,
+    multiplicity: int = 1, # if reference has extra time dimensions flattened
 ) -> torch.Tensor:
     r"""
         Identify which features are padding or not.
@@ -1381,7 +1385,7 @@ def create_token_padding_mask(
         token_position = batch[shuffle_key]
     else:
         # assumes not shuffled
-        token_position = torch.arange(reference.size(1), device=reference.device)
+        token_position = repeat(torch.arange(reference.size(1) // multiplicity, device=reference.device), 't -> (t m)', m=multiplicity)
     token_position = rearrange(token_position, 't -> () t')
     return token_position >= rearrange(batch[length_key], 'b -> b ()')
 
