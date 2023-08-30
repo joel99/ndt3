@@ -884,12 +884,15 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             cfg=cfg,
             data_attrs=data_attrs
         )
+        if self.inject_constraint_tokens: # if they're injected, we don't need these params in kinematic
+            del self.constraint_cls
+            del self.constraint_dims
         assert self.cfg.decode_strategy == EmbedStrat.token, 'Non-token decoding deprecated'
         self.decode_cross_attn = cfg.decoder_context_integration == 'cross_attn'
         self.injector = TemporalTokenInjector(
             cfg,
             data_attrs,
-            self.cfg.behavior_target if self.cfg.covariate_mask_ratio == 1.0 else f'{self.handle}_target',
+            self.cfg.behavior_target if not self.encodes else f'{self.handle}_target',
             force_zero_mask=self.decode_cross_attn and not self.cfg.decode_tokenize_dims
         )
         self.time_pad = cfg.transformer.max_trial_length
@@ -910,7 +913,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         assert self.spacetime, "Only spacetime transformer is supported for token decoding"
         self.bhvr_lag_bins = round(self.cfg.behavior_lag / data_attrs.bin_size_ms)
         assert self.bhvr_lag_bins >= 0, "behavior lag must be >= 0, code not thought through otherwise"
-        assert not (self.bhvr_lag_bins and self.cfg.covariate_mask_ratio < 1.0), "behavior lag not supported with encoded covariates as encoding uses shuffle mask which breaks simple lag shift"
+        assert not (self.bhvr_lag_bins and self.encodes), "behavior lag not supported with encoded covariates as encoding uses shuffle mask which breaks simple lag shift"
 
         self.session_blacklist = []
         if self.cfg.blacklist_session_supervision:
@@ -937,8 +940,13 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         else:
             self.bhvr_mean = None
             self.bhvr_std = None
-        self.initialize_readin(cfg.hidden_size)
+        if self.encodes:
+            self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
+
+    @property
+    def encodes(self):
+        return self.cfg.covariate_mask_ratio < 1.0
 
     @abc.abstractmethod
     def initialize_readin(self):
@@ -953,7 +961,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         return 'covariate'
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
-        if self.cfg.covariate_mask_ratio < 1.0:
+        if self.encodes:
             batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
         if self.cfg.decode_strategy != EmbedStrat.token or self.cfg.decode_separate:
             return batch
@@ -1076,7 +1084,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
             # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.
             if self.cfg.decode_time_pool:
-                assert not self.cfg.covariate_mask_ratio < 1.0, "not implemented"
+                assert not self.encodes, "not implemented"
                 assert not self.cfg.decode_tokenize_dims, 'time pool not implemented with tokenized dims'
                 src_time = decode_time
                 src_space = torch.zeros_like(decode_space)

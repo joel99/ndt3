@@ -9,3 +9,6 @@ model:
 dataset:
   sparse_constraints: True
 inherit_tag: sparse_constraint_enc
+train:
+  batch_size: 8
+  autoscale_batch_size: False
