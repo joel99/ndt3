@@ -26,8 +26,6 @@ from context_general_bci.dataset import (
     RETURN_LENGTH_KEY
 )
 from context_general_bci.contexts import context_registry, ContextInfo
-from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
-
 from context_general_bci.components import SpaceTimeTransformer
 
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
