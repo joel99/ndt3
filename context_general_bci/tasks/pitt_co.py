@@ -26,6 +26,14 @@ CLAMP_MAX = 15
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.
 """
+def compute_return_to_go(rewards: torch.Tensor, horizon=100):
+    # rewards: T
+    if horizon:
+        padded_reward = F.pad(rewards, (0, horizon - 1), value=0)
+        return padded_reward.unfold(0, horizon, 1).sum(-1) # T
+    reversed_rewards = torch.flip(rewards, [0])
+    returns_to_go_reversed = torch.cumsum(reversed_rewards, dim=0)
+    return torch.flip(returns_to_go_reversed, [0])
 
 def extract_ql_data(ql_data):
     # ql_data: .mat['iData']['QL']['Data']
@@ -63,7 +71,7 @@ def events_to_raster(
         0.001
     )
     timebins = np.digitize(events['spikes_source_timestamp'], bins, right=False) - 1
-    spikes = torch.zeros((len(bins), 256), dtype=torch.uint8)
+    spikes = torch.zeros((len(bins), 256), dtype=int)
     spikes[timebins, events['spikes_channel']] = 1
     return spikes
 
@@ -105,8 +113,14 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['active_assist'] = torch.from_numpy(payload['active_assist']).half()
             out['passive_assist'] = torch.from_numpy(payload['passive_assist']).half()
             assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
-        # if 'passed' in payload:
-            # out['passed'] = torch.from_numpy(payload['passed']).int()
+        if 'passed' in payload:
+            try:
+                if isinstance(payload['passed'], int):
+                    out['passed'] = torch.tensor([payload['passed']], dtype=int) # It's 1 trial
+                else:
+                    out['passed'] = torch.from_numpy(payload['passed'].astype(int))
+            except:
+                breakpoint()
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -267,7 +281,7 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Force
             if 'force' in payload:
-                pass # Do nothing for now
+                pass # Do nothing for now # TODO add normalization
                 # raise NotImplementedError("Force not implemented for Pitt CO")
 
             # * Constraints
@@ -279,10 +293,20 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Reward and return!
             passed = payload.get('passed', None)
-            if passed is not None:
-                trial_num = payload['trial_num']
-                trial_change_step = (trial_num.roll(1, dims=0) != trial_num)[1:] # No, we want one reward at the end as well I think...? Hmm
-                # In long form, I need to compute 1) compute the reward per timestep, then compute the return to go in horizon, then crop correctly...
+            trial_num: torch.Tensor = payload['trial_num']
+            if passed is not None and trial_num.max() > 1: # Heuristic - single trial means this is probably not a task-based dataset
+                trial_change_step = (trial_num.roll(-1, dims=0) != trial_num).nonzero()[:,0] # end of episode timestep
+
+                per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=int)
+                per_trial_pass = torch.clamp(per_trial_pass, max=1) # Literally, clamp that. What does 2x reward even mean? (It shows up sometimes...)
+                reward_dense = torch.zeros_like(trial_num, dtype=int) # only 0 or 1 reward
+                reward_dense.scatter_(0, trial_change_step, per_trial_pass)
+                return_dense = compute_return_to_go(reward_dense, horizon=int((cfg.return_horizon_s * 1000) // cfg.bin_size_ms))
+                reward_dense = reward_dense.unsqueeze(-1) # T -> Tx1
+                return_dense = return_dense.unsqueeze(-1) # T -> Tx1
+            else:
+                reward_dense = None
+                return_dense = None
 
             if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
                 # Constraints not implemented
@@ -318,10 +342,14 @@ class PittCOLoader(ExperimentalTaskLoader):
                         chop_vector(active_assist),
                         chop_vector(passive_assist),
                     ], 2) # trial x chop_size x 3 x hidden
-
+                if reward_dense is not None:
+                    reward_dense = chop_vector(reward_dense)
+                    return_dense = chop_vector(return_dense)
                 other_args = {
                     DataKey.bhvr_vel: chop_vector(session_vel),
                     DataKey.constraint: chopped_constraints,
+                    DataKey.task_reward: reward_dense,
+                    DataKey.task_return: return_dense,
                 }
                 for i, trial_spikes in enumerate(spikes):
                     other_args_trial = {k: v[i] for k, v in other_args.items() if v is not None}

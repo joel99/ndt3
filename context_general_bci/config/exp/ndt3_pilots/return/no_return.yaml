@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks: [ModelTask.shuffle_infill]
+# dataset:
+  # sparse_rewards: True
+train:
+  batch_size: 16

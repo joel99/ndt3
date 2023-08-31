@@ -22,7 +22,8 @@ from context_general_bci.dataset import (
     CHANNEL_KEY,
     COVARIATE_LENGTH_KEY,
     COVARIATE_CHANNEL_KEY,
-    CONSTRAINT_LENGTH_KEY
+    CONSTRAINT_LENGTH_KEY,
+    RETURN_LENGTH_KEY
 )
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.components import SpaceTimeTransformer
@@ -193,8 +194,13 @@ class TaskPipeline(nn.Module):
 
 class ContextPipeline(TaskPipeline):
     # Doesn't do anything, just injects tokens
+    # Responsible for encoding a piece of the datastream
     def forward(self, *args, **kwargs):
         return {}
+
+    @abc.abstractmethod
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        raise NotImplementedError
 
 class ConstraintPipeline(ContextPipeline):
     r"""
@@ -242,8 +248,7 @@ class ConstraintPipeline(ContextPipeline):
         # breakpoint()
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
-        time = batch[DataKey.constraint_time] if self.inject_constraint_tokens \
-            else torch.zeros(constraint_embed.size(0), constraint_embed.size(1), device=constraint_embed.device)
+        time = batch[DataKey.constraint_time]
         bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
         space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
         time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
@@ -763,7 +768,6 @@ class ShuffleInfill(SpikeBase):
         batch_out['loss'] = loss.mean()
         return batch_out
 
-
 class NextStepPrediction(RatePrediction):
     r"""
         One-step-ahead modeling prediction. Teacher-forced (we don't use force self-consistency, to save on computation)
@@ -871,6 +875,61 @@ class TemporalTokenInjector(nn.Module):
         if DataKey.extra in batch: # in-place path assumed
             return batch[DataKey.extra]
         return features[:, -batch[self.reference].size(1):] # assuming queries stitched to back
+
+class ReturnContext(ContextPipeline):
+    def __init__(
+        self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        self.is_sparse = data_attrs.sparse_rewards
+        self.return_enc = nn.Embedding(
+            cfg.max_return,
+            cfg.hidden_size,
+            padding_idx=data_attrs.pad_token,
+        )
+        self.reward_enc = nn.Embedding(
+            3 if data_attrs.pad_token is not None else 2, # 0 or 1, not a parameter for simple API convenience
+            cfg.hidden_size,
+            padding_idx=data_attrs.pad_token,
+        )
+
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        # print('Return max: ', batch[DataKey.task_return].max())
+        # print('Reward max: ', batch[DataKey.task_reward].max())
+        # print(f'Time max: {batch[DataKey.task_return_time].max()} min: {batch[DataKey.task_return_time].min()}')
+        return_embed = self.return_enc(batch[DataKey.task_return])
+        reward_embed = self.reward_enc(batch[DataKey.task_reward])
+        times = batch[DataKey.task_return_time]
+        space = torch.zeros_like(times)
+        # breakpoint()
+        padding = create_token_padding_mask(
+            return_embed, batch, length_key=RETURN_LENGTH_KEY
+        )
+        return (
+            return_embed + reward_embed,
+            times,
+            space,
+            padding
+        )
+
+class ReturnInfill(DataPipeline, ReturnContext):
+    def forward(
+        self,
+        batch: Dict[str, torch.Tensor],
+        backbone_features: torch.Tensor,
+        compute_metrics=True,
+        eval_mode=False,
+    ) -> torch.Tensor:
+        raise NotImplementedError
 
 
 class CovariateReadout(DataPipeline, ConstraintPipeline):
@@ -1343,7 +1402,7 @@ class BehaviorClassification(CovariateReadout):
         return covariate
 
     def quantize(self, x: torch.Tensor):
-        x = torch.where(x != self.pad_value, x, 0)
+        x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
         return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
@@ -1403,4 +1462,6 @@ task_modules = {
     ModelTask.kinematic_decoding: BehaviorRegression,
     ModelTask.kinematic_classification: BehaviorClassification,
     ModelTask.constraints: ConstraintPipeline,
+    ModelTask.return_context: ReturnContext,
+    ModelTask.return_infill: ReturnInfill,
 }
