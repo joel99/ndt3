@@ -151,7 +151,10 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
             'fbc': ExperimentalTask.fbc,
         }, alias_prefix='pitt_full_'),
         *BCIContextInfo.build_from_dir(f'./data/pitt_broad', task_map={}, alias_prefix='pitt_broad_'),
+        # The following are identical datasets, just replicated so I could run different preproc in parallel
         *BCIContextInfo.build_from_dir(f'./data/pitt_test', task_map={}, alias_prefix='pitt_test_'),
+        *BCIContextInfo.build_from_dir(f'./data/pitt_return', task_map={}, alias_prefix='pitt_return_'),
+
         # *BCIContextInfo.build_from_dir(f'./data/pitt_misc/mat', task_map={
         #     'obs': ExperimentalTask.observation,
         #     'ortho': ExperimentalTask.ortho,
