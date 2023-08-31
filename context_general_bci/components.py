@@ -379,15 +379,6 @@ class SpaceTimeTransformer(nn.Module):
         if padding_mask is None:
             padding_mask = torch.zeros(src.size()[:2], dtype=torch.bool, device=src.device)
 
-        # ! Bug patch note
-        # There's an edge case that nans out outputs. It occurs when a padding token can't attend to anything.
-        # This occurs specifically due to confluence of:
-        # 1. padding specified by `src_key_padding_mask` can't be attended to (no self attending)
-        # 2. we use shuffle on heterogeneous datasets. So we may get datapoints that have no real data in given timesteps.
-        # 3. pad value set to 0, so padding gets marked at time 0
-        # 4. all timestep 0 tokens are padding (no other tokens in sequence that can be attended to)
-        # Suggested fix: pad value set to something nonzero. (IDR why we didn't set that in the first place, I think concerns about attending to sub-chunk padding?)
-        # import pdb;pdb.set_trace()
         if self.cross_attn_enabled and memory is not None:
             if memory_times is None: # No mask needed for trial-context only, unless specified
                 memory_mask = None

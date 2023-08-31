@@ -71,7 +71,7 @@ def events_to_raster(
         0.001
     )
     timebins = np.digitize(events['spikes_source_timestamp'], bins, right=False) - 1
-    spikes = torch.zeros((len(bins), 256), dtype=torch.uint8)
+    spikes = torch.zeros((len(bins), 256), dtype=int)
     spikes[timebins, events['spikes_channel']] = 1
     return spikes
 
@@ -114,7 +114,13 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['passive_assist'] = torch.from_numpy(payload['passive_assist']).half()
             assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
         if 'passed' in payload:
-            out['passed'] = torch.from_numpy(payload['passed'].astype(int))
+            try:
+                if isinstance(payload['passed'], int):
+                    out['passed'] = torch.tensor([payload['passed']], dtype=int) # It's 1 trial
+                else:
+                    out['passed'] = torch.from_numpy(payload['passed'].astype(int))
+            except:
+                breakpoint()
     else:
         data = payload['iData']
         trial_data = extract_ql_data(data['QL']['Data'])
@@ -287,14 +293,17 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Reward and return!
             passed = payload.get('passed', None)
-            if passed is not None:
-                trial_num: torch.Tensor = payload['trial_num']
+            trial_num: torch.Tensor = payload['trial_num']
+            if passed is not None and trial_num.max() > 1: # Heuristic - single trial means this is probably not a task-based dataset
                 trial_change_step = (trial_num.roll(-1, dims=0) != trial_num).nonzero()[:,0] # end of episode timestep
-                per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=torch.uint8)
-                reward_dense = torch.zeros_like(trial_num, dtype=torch.uint8) # only 0 or 1 reward
-                breakpoint()
+
+                per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=int)
+                per_trial_pass = torch.clamp(per_trial_pass, max=1) # Literally, clamp that. What does 2x reward even mean? (It shows up sometimes...)
+                reward_dense = torch.zeros_like(trial_num, dtype=int) # only 0 or 1 reward
                 reward_dense.scatter_(0, trial_change_step, per_trial_pass)
                 return_dense = compute_return_to_go(reward_dense, horizon=int((cfg.return_horizon_s * 1000) // cfg.bin_size_ms))
+                reward_dense = reward_dense.unsqueeze(-1) # T -> Tx1
+                return_dense = return_dense.unsqueeze(-1) # T -> Tx1
             else:
                 reward_dense = None
                 return_dense = None

@@ -22,7 +22,7 @@ dataset:
   # - pitt_broad.*
   data_keys:
   - DataKey.spikes
-  - DataKey.constraint
+  - DataKey.task_return
 train:
   patience: 50
   autoscale_batch_size: true

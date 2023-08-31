@@ -445,7 +445,12 @@ class SpikingDataset(Dataset):
                             data_items[k] = project_to_bhvr(payload[k])
                         # If not sparse, we don't need to create constraint time, as code reuses covariate time.
                 elif k == DataKey.task_return:
-                    assert k in payload, "Don't have task return signal in payload, filter out this data."
+                    # Default policy - if querying for reward and payload doesn't have it, just return nothing (which at most becomes padding), so stream is effectively unconditioned
+                    if k not in payload:
+                        data_items[DataKey.task_return] = torch.tensor([])
+                        data_items[DataKey.task_reward] = torch.tensor([])
+                        data_items[DataKey.task_return_time] = torch.tensor([])
+                        # Not sure this is legitimate
                     if self.cfg.sparse_rewards:
                         return_dense = payload[k]
                         change_steps = torch.cat([torch.tensor([0]), (return_dense[1:] != return_dense[:-1]).any(1).nonzero().squeeze(1) + 1])
@@ -457,6 +462,8 @@ class SpikingDataset(Dataset):
                         breakpoint()
                         data_items[DataKey.task_return_time] = torch.arange(payload[k].size(0)) # create, for simplicity, though we might technically mirror `DataKey.time` if we must...
                         data_items[DataKey.task_reward] = payload[DataKey.task_reward]
+                    data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
+                    data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
                 else:
                     data_items[k] = payload[k]
 
@@ -565,7 +572,7 @@ class SpikingDataset(Dataset):
         for k in stack_batch.keys():
             if isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
                 # This padding injects pad values into time/space. The alternate is to assign time/space at collation time, but this is not as flexible, I'd rather individual trials specify their times.
-                stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value)
+                stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value if k not in [DataKey.time, DataKey.constraint_time, DataKey.task_return_time] else self.cfg.pad_time_value)
             else:
                 stack_batch[k] = torch.stack(stack_batch[k])
         stack_batch[LENGTH_KEY] = lengths

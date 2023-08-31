@@ -896,18 +896,23 @@ class ReturnContext(ContextPipeline):
         self.return_enc = nn.Embedding(
             cfg.max_return,
             cfg.hidden_size,
-            padding_idx=data_attrs.pad_token if data_attrs.pad_token else None,
+            padding_idx=data_attrs.pad_token,
         )
         self.reward_enc = nn.Embedding(
-            2, # 0 or 1, not a parameter for simple API convenience
-            cfg.hidden_size
+            3 if data_attrs.pad_token is not None else 2, # 0 or 1, not a parameter for simple API convenience
+            cfg.hidden_size,
+            padding_idx=data_attrs.pad_token,
         )
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
+        # print('Return max: ', batch[DataKey.task_return].max())
+        # print('Reward max: ', batch[DataKey.task_reward].max())
+        # print(f'Time max: {batch[DataKey.task_return_time].max()} min: {batch[DataKey.task_return_time].min()}')
         return_embed = self.return_enc(batch[DataKey.task_return])
         reward_embed = self.reward_enc(batch[DataKey.task_reward])
         times = batch[DataKey.task_return_time]
         space = torch.zeros_like(times)
+        # breakpoint()
         padding = create_token_padding_mask(
             return_embed, batch, length_key=RETURN_LENGTH_KEY
         )
@@ -1399,7 +1404,7 @@ class BehaviorClassification(CovariateReadout):
         return covariate
 
     def quantize(self, x: torch.Tensor):
-        x = torch.where(x != self.pad_value, x, 0)
+        x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
         return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
