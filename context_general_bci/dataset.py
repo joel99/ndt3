@@ -460,7 +460,6 @@ class SpikingDataset(Dataset):
                             data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps] #  + 1 # +1, 0 is pad
                         else:
                             data_items[k] = payload[k]
-                            breakpoint()
                             data_items[DataKey.task_return_time] = torch.arange(payload[k].size(0)) # create, for simplicity, though we might technically mirror `DataKey.time` if we must...
                             data_items[DataKey.task_reward] = payload[DataKey.task_reward]
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
@@ -521,13 +520,14 @@ class SpikingDataset(Dataset):
                     elif k == DataKey.task_return:
                         task_return = b[k]
                         task_reward = b[DataKey.task_reward]
+                        task_return_time = b[DataKey.task_return_time]
                         if self.cfg.sparse_rewards:
                             # assumes return time is present, note we are aware of diff with constraints
                             time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i]) & (b[DataKey.task_return_time] >= crop_start[i])
                             task_return = task_return[time_mask]
                             task_reward = task_reward[time_mask]
-                            task_return_time = b[DataKey.task_return_time][time_mask] - crop_start[i]
-                            stack_batch[DataKey.task_return_time].append(task_return_time)
+                            task_return_time = task_return_time[time_mask] - crop_start[i] # assumes time starts at 0
+                        stack_batch[DataKey.task_return_time].append(task_return_time)
                         stack_batch[k].append(task_return)
                         stack_batch[DataKey.task_reward].append(task_reward)
                     elif k in [DataKey.task_return_time, DataKey.task_reward]:
