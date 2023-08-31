@@ -1,0 +1,39 @@
+# @package _global_
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+  - /model/task:
+    - decode_flat_v2
+  - /dataset:
+    - flat
+    - scale_history
+model:
+  session_embed_token_count: 1 # Keep it low for maybe easier FT?
+  subject_embed_strategy: EmbedStrat.token
+  neurons_per_token: 32
+  causal: True
+  decoder_context_integration: 'cross_attn'
+  task:
+    # mask_ratio: 0.0 # Actually, it's possible that if we drop random spikes, we'll lose any references for early timesteps, which means the cross attention step will fail. This is not good.
+    # 1. We can remove this backbone dropping (easy default for now)
+    # 2. We can allow acausal attention (bigger decision)
+    covariate_mask_ratio: 0.8
+    task_weights: [1.0, 0.1]
+  transformer:
+    n_layers: 8
+  lr_ramp_steps: 50
+dataset:
+  # eval_ratio: 0.5 # No heldout data since this is two part training
+  behavior_dim: 8
+  datasets:
+  - pitt_test.*
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+  - DataKey.constraint
+train:
+  patience: 50
+  autoscale_batch_size: true
+  effective_batch_size: 512
+inherit_exp: ndt3_pilots/return
