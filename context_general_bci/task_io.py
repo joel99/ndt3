@@ -660,9 +660,15 @@ class ShuffleInfill(SpikeBase):
                 # f'{DataKey.position}_target': batch[DataKey.position],
             })
             return batch
-        # spikes: B T S H or B T H (no array support)
+        # spikes: B T H (no array support)
         # TODO (low-pri) also support spacetime shuffle
+        # First need to connect to time...
+        # 1. Identify illegible tokens on basis of time. NO, this is not good, it becomes notsquare. Just pick a certain length and deal.
+        # OTOH, NO, then we'll have mismatch on different data streams.
+        # prompt_time = batch[DataKey.time] < self.cfg.context_prompt_time_thresh
+        # spikes
         shuffle = torch.randperm(spikes.size(1), device=spikes.device)
+        # Mask ratio becomes a comment on the remainder of the data
         encoder_frac = int((1 - mask_ratio) * spikes.size(1))
         # shuffle_spikes = spikes.gather(1, shuffle.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, spikes.size(2), spikes.size(3)))
         for key in [DataKey.time, DataKey.position, CHANNEL_KEY]:

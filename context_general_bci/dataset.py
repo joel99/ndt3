@@ -91,6 +91,7 @@ class DataAttrs:
 
     sparse_constraints: bool = False
     sparse_rewards: bool = False # also counts for return
+    tokenize_covariates: bool = False
 
     @property
     def max_spatial_tokens(self):
@@ -177,7 +178,9 @@ class SpikingDataset(Dataset):
     def preproc_version(self, task: ExperimentalTask):
         version = {
             'max_trial_length': self.cfg.max_trial_length, # defunct
-            'bin_size_ms': self.cfg.bin_size_ms
+            'bin_size_ms': self.cfg.bin_size_ms,
+            'tokenize_covariates': self.cfg.tokenize_covariates,
+            'return_horizon_s': self.cfg.return_horizon_s,
         }
         task_cfg = getattr(self.cfg, task.value)
         # version.update(task_cfg.reproc_dict())
@@ -668,6 +671,7 @@ class SpikingDataset(Dataset):
             neurons_per_token=self.cfg.neurons_per_token,
             sparse_constraints=self.cfg.sparse_constraints,
             sparse_rewards=self.cfg.sparse_rewards,
+            tokenize_covariates=self.cfg.tokenize_covariates,
         )
 
     # ==================== Data splitters ====================

@@ -273,15 +273,16 @@ class PittCOLoader(ExperimentalTaskLoader):
 
                 if exp_task_cfg.closed_loop_intention_estimation == "refit" and task in [ExperimentalTask.ortho, ExperimentalTask.fbc]:
                     # breakpoint()
-                    session_vel = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
+                    covariates = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                 else:
-                    session_vel = PittCOLoader.get_velocity(payload['position'])
+                    covariates = PittCOLoader.get_velocity(payload['position'])
             else:
-                session_vel = None
+                covariates = None
 
             # * Force
             if 'force' in payload:
                 pass # Do nothing for now # TODO add normalization
+                # something with append to covariates
                 # raise NotImplementedError("Force not implemented for Pitt CO")
 
             # * Constraints
@@ -308,52 +309,68 @@ class PittCOLoader(ExperimentalTaskLoader):
                 reward_dense = None
                 return_dense = None
 
-            if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
-                # Constraints not implemented
-                for i in payload['trial_num'].unique():
-                    trial_spikes = payload['spikes'][payload['trial_num'] == i]
-                    if session_vel is not None:
-                        trial_vel = session_vel[payload['trial_num'] == i]
-                    if trial_spikes.size(0) < 10:
-                        continue
-                    if trial_spikes.size(0) < round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms):
-                        save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
-                    else:
-                        chopped_spikes = chop_vector(trial_spikes)
-                        if session_vel is not None:
-                            chopped_vel = chop_vector(trial_vel)
-                        for j, subtrial_spikes in enumerate(chopped_spikes):
-                            save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
+            # if exp_task_cfg.respect_trial_boundaries and not task in [ExperimentalTask.unstructured]:
+            #     # Constraints not implemented
+            #     for i in payload['trial_num'].unique():
+            #         trial_spikes = payload['spikes'][payload['trial_num'] == i]
+            #         if session_vel is not None:
+            #             trial_vel = session_vel[payload['trial_num'] == i]
+            #         if trial_spikes.size(0) < 10:
+            #             continue
+            #         if trial_spikes.size(0) < round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms):
+            #             save_trial_spikes(trial_spikes, i, {DataKey.bhvr_vel: trial_vel} if session_vel is not None else {})
+            #         else:
+            #             chopped_spikes = chop_vector(trial_spikes)
+            #             if session_vel is not None:
+            #                 chopped_vel = chop_vector(trial_vel)
+            #             for j, subtrial_spikes in enumerate(chopped_spikes):
+            #                 save_trial_spikes(subtrial_spikes, f'{i}_trial{j}', {DataKey.bhvr_vel: chopped_vel[j]} if session_vel is not None else {})
 
-                        end_of_trial = trial_spikes.size(0) % round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms)
-                        if end_of_trial > 10:
-                            trial_spikes_end = trial_spikes[-end_of_trial:]
-                            if session_vel is not None:
-                                trial_vel_end = trial_vel[-end_of_trial:]
-                            save_trial_spikes(trial_spikes_end, f'{i}_end', {DataKey.bhvr_vel: trial_vel_end} if session_vel is not None else {})
+            #             end_of_trial = trial_spikes.size(0) % round(exp_task_cfg.chop_size_ms / cfg.bin_size_ms)
+            #             if end_of_trial > 10:
+            #                 trial_spikes_end = trial_spikes[-end_of_trial:]
+            #                 if session_vel is not None:
+            #                     trial_vel_end = trial_vel[-end_of_trial:]
+            #                 save_trial_spikes(trial_spikes_end, f'{i}_end', {DataKey.bhvr_vel: trial_vel_end} if session_vel is not None else {})
+            # else:
+            # chop both
+            spikes = chop_vector(spikes)
+            if brain_control is None:
+                chopped_constraints = None
             else:
-                # chop both
-                spikes = chop_vector(spikes)
-                if brain_control is None:
-                    chopped_constraints = None
-                else:
-                    chopped_constraints = torch.stack([
-                        chop_vector(1 - brain_control), # return complement, such that native control is the "0" condition, no constraint
-                        chop_vector(active_assist),
-                        chop_vector(passive_assist),
-                    ], 2) # trial x chop_size x 3 x hidden
-                if reward_dense is not None:
-                    reward_dense = chop_vector(reward_dense)
-                    return_dense = chop_vector(return_dense)
-                other_args = {
-                    DataKey.bhvr_vel: chop_vector(session_vel),
-                    DataKey.constraint: chopped_constraints,
-                    DataKey.task_reward: reward_dense,
-                    DataKey.task_return: return_dense,
-                }
-                for i, trial_spikes in enumerate(spikes):
-                    other_args_trial = {k: v[i] for k, v in other_args.items() if v is not None}
-                    save_trial_spikes(trial_spikes, i, other_args_trial)
+                chopped_constraints = torch.stack([
+                    chop_vector(1 - brain_control), # return complement, such that native control is the "0" condition, no constraint
+                    chop_vector(active_assist),
+                    chop_vector(passive_assist),
+                ], 2) # trial x chop_size x 3 x hidden
+            if reward_dense is not None:
+                reward_dense = chop_vector(reward_dense)
+                return_dense = chop_vector(return_dense)
+
+            # TODO split by emptiness
+            # Expecting a 9D vector (T x 9), 8D from kinematics, 1D from force
+            if cfg.tokenize_covariates:
+                raise NotImplementedError
+                covariate_dict = {}
+                labels = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f']
+                if covariates is not None:
+                    for i, cov in enumerate(covariates.T):
+                        if cov.any(): # i.e. nonempty
+                            covariate_dict[labels[i]] = chop_vector(cov) # If I only store by label, how will I know canonical order? That's the trick, it shouldn't matter...?
+                            # But still, not knowing the order is inconvenient for R2 score, maybe?
+                        # Hm... kind of feels like I should add ICL prefixing first. Or else the behavioral task is impossible.
+                        # Also this save function will break if I pass a dict.
+
+            other_args = {
+                DataKey.bhvr_vel: chop_vector(covariates),
+                DataKey.constraint: chopped_constraints,
+                DataKey.task_reward: reward_dense,
+                DataKey.task_return: return_dense,
+            }
+            for i, trial_spikes in enumerate(spikes):
+                other_args_trial = {k: v[i] for k, v in other_args.items() if v is not None}
+                save_trial_spikes(trial_spikes, i, other_args_trial)
+
         else: # folder style, preproc-ed on mind
             for i, fname in enumerate(datapath.glob("*.mat")):
                 if fname.stem.startswith('QL.Task'):

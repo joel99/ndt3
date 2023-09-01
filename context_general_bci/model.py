@@ -35,7 +35,7 @@ from context_general_bci.components import (
     ReadinMatrix,
     ContextualMLP,
 )
-from context_general_bci.task_io import task_modules, SHUFFLE_KEY, create_token_padding_mask
+from context_general_bci.task_io import task_modules
 from context_general_bci.utils import enum_backport
 
 logger = logging.getLogger(__name__)
@@ -505,8 +505,8 @@ class BrainBertInterface(pl.LightningModule):
             torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
         )
 
-    def forward(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
-        # Encoder: returns backbone features B T H
+    def forward(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+        # Encoder: returns backbone features B T H, and timesteps B T
 
         # There are two main types of tokens: conditioning and data tokens
         # Conditioning tokens are never meant to be retrieved, solely to condition the backbone
@@ -516,10 +516,12 @@ class BrainBertInterface(pl.LightningModule):
         trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
         trial_space = trial_space - 1 # reserve 0 space for trial (we add back later). Other pipelines share space vocab, but metadata doesn't have a special cls indicator, so we reserve space.
         # breakpoint()
+        tks, tps = list(self.task_pipelines.items())
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
-            tp.get_context(batch) for tp in self.task_pipelines.values()
+            tp.get_context(batch) for tp in tps
         ])
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
+        tks = [tks[i] for i in filtered]
         pipeline_context = [pipeline_context[i] for i in filtered]
         pipeline_times = [pipeline_times[i] for i in filtered]
         pipeline_space = [pipeline_space[i] for i in filtered]
@@ -540,20 +542,16 @@ class BrainBertInterface(pl.LightningModule):
             positions=space,
         ) # B x Token x H (flat)
         pipeline_outputs = unpack(outputs, ps, 'b * h')
-        repacked_outputs = []
-        for i in range(len(self.task_pipelines)):
-            if i in filtered:
-                repacked_outputs.append(pipeline_outputs[filtered.index(i)])
-            else:
-                repacked_outputs.append(None)
-
-        # TODO surface other pipelines if needed
-        tks = list(self.task_pipelines.keys())
-        if 'shuffle_infill' in tks:
-            enc_index = tks.index('shuffle_infill') # TODO replace with something that targets the spike context provider...
+        breakpoint()
+        if getattr(self.cfg, 'use_full_encode', False):
+            return pipeline_outputs, times
         else:
-            enc_index = tks.index('spike_context')
-        return pipeline_outputs[enc_index]
+            # tks = list(self.task_pipelines.keys())
+            if 'shuffle_infill' in tks:
+                enc_index = tks.index('shuffle_infill') # TODO replace with something that targets the spike context provider...
+            else:
+                enc_index = tks.index('spike_context')
+            return pipeline_outputs[enc_index], times[enc_index]
 
     def _step(self, batch: Dict[str, torch.Tensor], eval_mode=False) -> Dict[str, torch.Tensor]:
         r"""
@@ -583,7 +581,7 @@ class BrainBertInterface(pl.LightningModule):
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
-        features = self(batch) # B T S H
+        features, times = self(batch) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -593,12 +591,10 @@ class BrainBertInterface(pl.LightningModule):
         # Create outputs for configured task
         running_loss = 0
         for i, task in enumerate(self.cfg.task.tasks):
-            pipeline_features = features
-            if 'infill' not in task.value and self.detach_backbone_for_task:
-                pipeline_features = pipeline_features.detach()
+            should_detach = 'infill' not in task.value and self.detach_backbone_for_task
             update = self.task_pipelines[task.value](
                 batch,
-                pipeline_features,
+                features.detach() if should_detach else features,
                 eval_mode=eval_mode
             )
             for k in update:

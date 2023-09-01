@@ -138,6 +138,11 @@ class TaskConfig:
 
     # infill
     mask_ratio: float = 0.25 # we don't have any schedule right now - the smaller this is, the higher the ceiling (probably), the slower the training
+    context_prompt_time_thresh: int = 0 # Supporting in-context learning by providing minimal start of sequence
+    # Based on timestep of tokens
+    # For autoregressive models, this just means we start evaluating loss after N tokens (and is probably honestly unnecessary)
+    # TODO implement for autoregressive
+    # For shuffle based non-autoregressive models, this means never shuffle out the first N tokens during decoding, we assume those are provided.
 
     # These ratios are only relevant for non-asymmetric path (i.e. defunct)
     mask_token_ratio: float = 0.8
@@ -234,6 +239,7 @@ class ModelConfig:
     decoder_layers: int = 2
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
+    use_full_encode: bool = False # ! Major change, return all tokens in decode stream
 
     # 1. makes masking shuffle-based
 
@@ -486,9 +492,10 @@ class DatasetConfig:
     max_arrays: int = 1
     behavior_dim: int = 2
 
+    tokenize_covariates: bool = False # Global preproc req. Should significantly change proc in CovariateReadout
     sparse_constraints: bool = False
     sparse_rewards: bool = False
-    return_horizon_s: float = 10. # lookahead for return computation # TODO this should trigger preproc
+    return_horizon_s: float = 10. # lookahead for return computation
 
     serve_tokenized: bool = False # master flag for space time operator (in anticipation that space time will move to tokenized)
     # Tokenized == serve B T S H instead of B T A C H

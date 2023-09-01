@@ -34,6 +34,8 @@ def get_best_ckpt_in_dir(ckpt_dir: Path, tag="val_loss", higher_is_better=False)
     # Newest is best since we have early stopping callback, and modelcheckpoint only saves early stopped checkpoints (not e.g. latest)
     res = sorted(ckpt_dir.glob("*.ckpt"), key=osp.getmtime)
     res = [r for r in res if tag in r.name]
+    if len(res) == 0:
+        raise ValueError(f"No ckpts found in {ckpt_dir}")
     if tag:
         # names are of the form {key1}={value1}-{key2}={value2}-...-{keyn}={valuen}.ckpt
         # write regex that parses out the value associated with the tag key
