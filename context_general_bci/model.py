@@ -131,6 +131,7 @@ class BrainBertInterface(pl.LightningModule):
         for safe_attr in [
             'decoder_layers', # ! assuming we're freshly initializing, this is kind of not safe
             'decoder_context_integration', # ^
+            'use_full_encode',
             'dropout',
             'weight_decay',
             'causal',
@@ -505,7 +506,7 @@ class BrainBertInterface(pl.LightningModule):
             torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
         )
 
-    def forward(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor]:
+    def forward(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         # Encoder: returns backbone features B T H, and timesteps B T
 
         # There are two main types of tokens: conditioning and data tokens
@@ -514,9 +515,7 @@ class BrainBertInterface(pl.LightningModule):
 
         # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
         trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
-        trial_space = trial_space - 1 # reserve 0 space for trial (we add back later). Other pipelines share space vocab, but metadata doesn't have a special cls indicator, so we reserve space.
-        # breakpoint()
-        tks, tps = list(self.task_pipelines.items())
+        tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
@@ -531,9 +530,7 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_context, ps = pack([*pipeline_context, trial_context], 'b * h')
         times, _ = pack([*pipeline_times, trial_times], 'b *')
         space, _ = pack([*pipeline_space, trial_space], 'b *')
-        space = space + 1
         pipeline_padding, _ = pack([*pipeline_padding, trial_padding], 'b *')
-
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             padding_mask=pipeline_padding,
@@ -541,17 +538,19 @@ class BrainBertInterface(pl.LightningModule):
             times=times,
             positions=space,
         ) # B x Token x H (flat)
-        pipeline_outputs = unpack(outputs, ps, 'b * h')
-        breakpoint()
         if getattr(self.cfg, 'use_full_encode', False):
-            return pipeline_outputs, times
+            return outputs, times, space, pipeline_padding
         else:
+            outputs = unpack(outputs, ps, 'b * h')
+            times = unpack(times, ps, 'b *')
+            space = unpack(space, ps, 'b *')
+            pipeline_padding = unpack(pipeline_padding, ps, 'b *')
             # tks = list(self.task_pipelines.keys())
             if 'shuffle_infill' in tks:
                 enc_index = tks.index('shuffle_infill') # TODO replace with something that targets the spike context provider...
             else:
                 enc_index = tks.index('spike_context')
-            return pipeline_outputs[enc_index], times[enc_index]
+            return outputs[enc_index], times[enc_index], space[enc_index], pipeline_padding[enc_index]
 
     def _step(self, batch: Dict[str, torch.Tensor], eval_mode=False) -> Dict[str, torch.Tensor]:
         r"""
@@ -581,7 +580,7 @@ class BrainBertInterface(pl.LightningModule):
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
-        features, times = self(batch) # B T H
+        features, times, space, padding = self(batch) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -595,6 +594,9 @@ class BrainBertInterface(pl.LightningModule):
             update = self.task_pipelines[task.value](
                 batch,
                 features.detach() if should_detach else features,
+                times,
+                space,
+                padding,
                 eval_mode=eval_mode
             )
             for k in update:

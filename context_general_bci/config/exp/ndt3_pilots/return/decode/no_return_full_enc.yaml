@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding]
+    # covariate_mask_ratio: 1.0
+  use_full_encode: True
+dataset:
+  sparse_rewards: False
+inherit_tag: no_return
+train:
+  autoscale_batch_size: False
+  # batch_size: 8 # About 18G, but 16 seems to OOM on 40G.
+  batch_size: 32 # 80G

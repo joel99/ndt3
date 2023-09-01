@@ -184,7 +184,16 @@ class TaskPipeline(nn.Module):
                 trial_context.append(batch[key] if not detach else batch[key].detach())
         return trial_context
 
-    def forward(self, batch, backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
+    def forward(
+            self,
+            batch,
+            backbone_features: torch.Tensor,
+            backbone_times: torch.Tensor,
+            backbone_space: torch.Tensor,
+            backbone_padding: torch.Tensor,
+            compute_metrics=True,
+            eval_mode=False
+        ) -> torch.Tensor:
         r"""
             By default only return outputs. (Typically used in inference)
             - compute_metrics: also return metrics.
@@ -265,7 +274,7 @@ class ConstraintPipeline(ContextPipeline):
         return (
             constraint_embed,
             time,
-            space,
+            space + 1, # +1, reserve 0 for trial context
             padding,
         )
 
@@ -491,15 +500,21 @@ class SpikeContext(ContextPipeline):
         state_in = state_in.flatten(-2, -1)
         return state_in
 
+    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+        spikes = batch[DataKey.spikes]
+        batch[DataKey.padding] = create_token_padding_mask(
+            spikes, batch,
+            length_key=LENGTH_KEY, # Use the right key, if there's no shuffle # TODO fix dataloader to load LENGTH_KEY as SPIKE_LENGTH_KEY (make spikes less special)
+            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}', # This is actually pre-shuffle, no need!
+        )
+        return batch
+
     def get_context(self, batch: Dict[str, torch.Tensor]):
         spikes = self.encode(batch)
         time = batch[DataKey.time]
-        space = batch[DataKey.position]
-        return spikes, time, space, create_token_padding_mask(
-            spikes, batch,
-            length_key=LENGTH_KEY, # Use the right key, if there's no shuffle
-            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
-        )[:,:spikes.shape[1]] # crop to encoding context
+        space = batch[DataKey.position] + 1 # reserve 0 for trial context
+        padding = batch[DataKey.padding] # Padding should be made in the `update` step
+        return spikes, time, space, padding
 
     # TODO implement... needed to make sure spikes are encoded now that we've delegated internally
 
@@ -561,7 +576,17 @@ class SelfSupervisedInfill(RatePrediction):
         })
         return batch
 
-    def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
+    def forward(
+            self,
+            batch,
+            backbone_features: torch.Tensor,
+            backbone_times: torch.Tensor,
+            backbone_space: torch.Tensor,
+            backbone_padding: torch.Tensor,
+            compute_metrics=True,
+            eval_mode=False
+        ) -> torch.Tensor:
+        assert False, "Deprecated"
         rates: torch.Tensor = self.out(backbone_features)
         batch_out = {}
         if Output.logrates in self.cfg.outputs:
@@ -642,6 +667,7 @@ class ShuffleInfill(SpikeBase):
         )
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+        super().update_batch(batch, eval_mode=eval_mode)
         return self.shuffle_crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode)
 
     def shuffle_crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
@@ -671,7 +697,7 @@ class ShuffleInfill(SpikeBase):
         # Mask ratio becomes a comment on the remainder of the data
         encoder_frac = int((1 - mask_ratio) * spikes.size(1))
         # shuffle_spikes = spikes.gather(1, shuffle.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, spikes.size(2), spikes.size(3)))
-        for key in [DataKey.time, DataKey.position, CHANNEL_KEY]:
+        for key in [DataKey.time, DataKey.position, DataKey.padding, CHANNEL_KEY]:
             if key in batch:
                 shuffled = apply_shuffle(batch[key], shuffle)
                 batch.update({
@@ -679,12 +705,14 @@ class ShuffleInfill(SpikeBase):
                     f'{key}_target': shuffled[:, encoder_frac:],
                 })
         # import pdb;pdb.set_trace()
+        target = apply_shuffle(target, shuffle)[:,encoder_frac:]
         batch.update({
             DataKey.spikes: apply_shuffle(spikes, shuffle)[:,:encoder_frac],
-            f'{self.handle}_target': apply_shuffle(target, shuffle)[:,encoder_frac:],
+            f'{self.handle}_target': target,
             f'{self.handle}_encoder_frac': encoder_frac,
             f'{self.handle}_{SHUFFLE_KEY}': shuffle, # seems good to keep around...
         })
+        batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
 
     def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor):
@@ -704,46 +732,52 @@ class ShuffleInfill(SpikeBase):
             loss_mask = loss_mask & channel_mask
         return loss_mask
 
-    def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
+    def forward(
+            self,
+            batch,
+            backbone_features: torch.Tensor,
+            backbone_times: torch.Tensor,
+            backbone_space: torch.Tensor,
+            backbone_padding: torch.Tensor,
+            compute_metrics=True,
+            eval_mode=False
+        ) -> torch.Tensor:
         batch_out = {}
         target = batch[f'{self.handle}_target'] # B T H
         if not eval_mode:
-            decode_tokens, decode_time, decode_space = self.injector.inject(
-                batch,
-                injected_time=batch[f'{DataKey.time}_target'],
-                injected_space=batch[f'{DataKey.position}_target'],
-            ) # there are definitely space tokens, so we don't clamp.. # decode tokens should be b t h like spike_target
+            decode_tokens = batch[f'{self.handle}_query']
+            decode_time = batch[f'{DataKey.time}_target']
+            decode_space = batch[f'{DataKey.position}_target']
+            decode_padding = batch[f'{DataKey.padding}_target']
         else:
             breakpoint() # JY is not sure of the flow here, TODO
+            assert False, "Need to account for unified stream (use_full_encode)"
             decode_tokens = backbone_features
             decode_time = batch[DataKey.time]
             decode_space = batch[DataKey.position]
-        token_padding_mask = create_token_padding_mask(
-            None, batch,
-            length_key=f'{LENGTH_KEY}', # Use the default length key that comes with dataloader # TODO fix dataloader to be more modular
-            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
-        ) # Padding mask for full seq
+            decode_padding = None
+            # token_padding_mask = create_token_padding_mask(
+            #     None, batch,
+            #     length_key=f'{LENGTH_KEY}', # Use the default length key that comes with dataloader
+            #     shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
+            # ) # Padding mask for full seq
         if self.decode_cross_attn:
-            backbone_padding_mask, token_padding_mask = torch.split(
-                token_padding_mask,
-                [backbone_features.size(1), token_padding_mask.size(1)-backbone_features.size(1)],
-                dim=1
-            )
             other_kwargs = {
                 'memory': backbone_features,
-                'memory_times': batch[DataKey.time],
-                'memory_padding_mask': backbone_padding_mask
+                'memory_times': backbone_times,
+                'memory_padding_mask': backbone_padding
             }
         else:
             decode_tokens = torch.cat([backbone_features, decode_tokens], dim=1)
-            decode_time = torch.cat([batch[DataKey.time], decode_time], 1)
-            decode_space = torch.cat([batch[DataKey.position], decode_space], 1)
+            decode_time = torch.cat([backbone_times, decode_time], 1)
+            decode_space = torch.cat([backbone_space, decode_space], 1)
+            decode_padding = torch.cat([backbone_padding, decode_padding], 1)
             other_kwargs = {}
 
         backbone_features: torch.Tensor = self.decoder(
             decode_tokens,
-            padding_mask=token_padding_mask,
-            # trial_context=self.extract_trial_context(batch=batch), # TODO removed for now, bring back in decoder tests?
+            padding_mask=decode_padding,
+            # trial_context=self.extract_trial_context(batch=batch), # TODO removed for now, bring back in decoder tests?. Actually, superseded by in unified stream codde.
             times=decode_time,
             positions=decode_space,
             causal=self.causal,
@@ -751,10 +785,11 @@ class ShuffleInfill(SpikeBase):
         )
 
         if not self.decode_cross_attn:
-            backbone_features = self.injector.extract(batch, backbone_features)
+            backbone_features = backbone_features[:, -decode_tokens.size(1):]
         rates = self.out(backbone_features)
 
         if Output.logrates in self.cfg.outputs:
+            assert False, 'no chance this is still accurate'
             # out is B T C, we want B T' C, and then to unshuffle
             if eval_mode:
                 # we're doing a full query for qualitative eval
@@ -800,11 +835,15 @@ class NextStepPrediction(RatePrediction):
 
     def forward(
         self,
-        batch: Dict[str, torch.Tensor],
+        batch,
         backbone_features: torch.Tensor,
+        backbone_times: torch.Tensor,
+        backbone_space: torch.Tensor,
+        backbone_padding: torch.Tensor,
         compute_metrics=True,
-        eval_mode=False,
+        eval_mode=False
     ) -> torch.Tensor:
+        assert False, "Deprecated"
         rates: torch.Tensor = self.out(backbone_features)
         batch_out = {}
         if Output.logrates in self.cfg.outputs:
@@ -850,6 +889,13 @@ class TemporalTokenInjector(nn.Module):
         self.pad_value = data_attrs.pad_token
         self.max_space = data_attrs.max_spatial_tokens
 
+    def make_query(self, reference: torch.Tensor):
+        r"""
+            Much simpler abstraction to just make a few tokens from a flat ref
+        """
+        b, t, *_ = reference.size() # reference should already be tokenized to desired res
+        return repeat(self.cls_token, 'h -> b t h', b=b, t=t)
+
     def inject(self, batch: Dict[str, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None, injected_space: torch.Tensor | None = None):
         # create tokens for decoding with (inject them into seq or return them)
         # Assumption is that behavior time == spike time (i.e. if spike is packed, so is behavior), and there's no packing
@@ -876,11 +922,6 @@ class TemporalTokenInjector(nn.Module):
             batch[DataKey.extra_time] = injected_time
             batch[DataKey.extra_position] = injected_space
         return injected_tokens, injected_time, injected_space
-
-    def extract(self, batch: Dict[str, torch.Tensor], features: torch.Tensor) -> torch.Tensor:
-        if DataKey.extra in batch: # in-place path assumed
-            return batch[DataKey.extra]
-        return features[:, -batch[self.reference].size(1):] # assuming queries stitched to back
 
 class ReturnContext(ContextPipeline):
     def __init__(
@@ -919,21 +960,24 @@ class ReturnContext(ContextPipeline):
         # breakpoint()
         padding = create_token_padding_mask(
             return_embed, batch, length_key=RETURN_LENGTH_KEY
-        )
+        ) # Don't need a separate update step unless we need the retrieve padding at later time.
         return (
             return_embed + reward_embed,
             times,
-            space,
+            space + 1, # reserve 0 for trial context
             padding
         )
 
 class ReturnInfill(DataPipeline, ReturnContext):
     def forward(
         self,
-        batch: Dict[str, torch.Tensor],
+        batch,
         backbone_features: torch.Tensor,
+        backbone_times: torch.Tensor,
+        backbone_space: torch.Tensor,
+        backbone_padding: torch.Tensor,
         compute_metrics=True,
-        eval_mode=False,
+        eval_mode=False
     ) -> torch.Tensor:
         raise NotImplementedError
 
@@ -1037,6 +1081,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         return 'covariate'
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
+        batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
+            batch[self.cfg.behavior_target], batch,
+            length_key=f'{self.handle}_{LENGTH_KEY}',
+            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
+        )
         if self.encodes:
             batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
         if self.cfg.decode_strategy != EmbedStrat.token or self.cfg.decode_separate:
@@ -1091,6 +1140,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         for key in [
             f'{self.handle}_{DataKey.time}',
             f'{self.handle}_{DataKey.position}',
+            f'{self.handle}_{DataKey.padding}',
         ]:
             shuffle_key(key)
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
@@ -1100,12 +1150,14 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             ]:
                 shuffle_key(key)
 
+        enc, target = torch.split(apply_shuffle(covariates, shuffle), [encoder_frac, covariates.size(1) - encoder_frac], dim=1)
         batch.update({
-            self.cfg.behavior_target: apply_shuffle(covariates, shuffle)[:, :encoder_frac],
-            f'{self.handle}_target': apply_shuffle(covariates, shuffle)[:, encoder_frac:],
+            self.cfg.behavior_target: enc,
+            f'{self.handle}_target': target,
             f'{self.handle}_encoder_frac': encoder_frac,
             f'{self.handle}_{SHUFFLE_KEY}': shuffle,
         })
+        batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
@@ -1113,46 +1165,44 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             # return super().get_context(batch)
             return [], [], [], []
         enc = self.encode_cov(batch[self.cfg.behavior_target])
-        padding = create_token_padding_mask(
-            enc,
-            batch,
-            length_key=f'{self.handle}_{LENGTH_KEY}',
-            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
-        )[:, :enc.shape[1]]
-
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
             constraint = self.encode_constraint(batch[DataKey.constraint]) # B T H Bhvr_Dim. Straight up not sure how to collapse non-losslessly - we just mean pool for now.
             enc = enc + constraint
         return (
             enc,
             batch[f'{self.handle}_{DataKey.time}'],
-            batch[f'{self.handle}_{DataKey.position}'],
-            padding
+            batch[f'{self.handle}_{DataKey.position}'] + 1, # reserve 0 for trial context
+            batch[f'{self.handle}_{DataKey.padding}']
         )
 
     @abc.abstractmethod
     def encode_cov(self, covariate: torch.Tensor) -> torch.Tensor: # B T Bhvr_Dims or possibly B (T Bhvr_Dims)
         raise NotImplementedError
 
-    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
+    def get_cov_pred(
+        self,
+        batch: Dict[str, torch.Tensor],
+        backbone_features: torch.Tensor,
+        backbone_times: torch.Tensor,
+        backbone_space: torch.Tensor,
+        backbone_padding: torch.Tensor,
+        eval_mode=False,
+        batch_out={}
+    ) -> torch.Tensor:
         r"""
-
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
         """
         if self.cfg.decode_separate:
-            backbone_padding = create_token_padding_mask(backbone_features, batch, shuffle_key='spike_shuffle')
-            if 'spike_encoder_frac' in batch:
-                backbone_padding = backbone_padding[:, :batch['spike_encoder_frac']]
             if self.cfg.decode_time_pool: # B T H -> B T H
+                assert False, "Deprecated, currently would pool across modalities... but time is available if you still wanna try"
                 backbone_features, backbone_padding = temporal_pool(batch, backbone_features, backbone_padding, pool=self.cfg.decode_time_pool)
                 if Output.pooled_features in self.cfg.outputs:
                     batch_out[Output.pooled_features] = backbone_features.detach()
-            # * This "injection" step only really needs to happen if we've not already injected covariates as inputs; in that case, we need to retrieve previously injected info (see `crop_batch`)
-            decode_tokens, decode_time, decode_space = self.injector.inject(
-                batch,
-                injected_time=batch.get(f'{self.handle}_{DataKey.time}_target', None),
-                injected_space=batch.get(f'{self.handle}_{DataKey.position}_target', None)
-            )
+
+            decode_tokens = batch[f'{self.handle}_query']
+            decode_time = batch[f'{self.handle}_{DataKey.time}_target']
+            decode_space = batch[f'{self.handle}_{DataKey.position}_target']
+            decode_padding = batch[f'{self.handle}_{DataKey.padding}_target']
             if not self.inject_constraint_tokens and self.cfg.encode_constraints:
                 decode_tokens = decode_tokens + self.encode_constraint(
                     batch[f'{DataKey.constraint}_target'],
@@ -1160,6 +1210,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
             # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.
             if self.cfg.decode_time_pool:
+                assert False, "Deprecated"
                 assert not self.encodes, "not implemented"
                 assert not self.cfg.decode_tokenize_dims, 'time pool not implemented with tokenized dims'
                 src_time = decode_time
@@ -1168,10 +1219,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     # We want to pool, but encoding doesn't necessarily have all timesteps. Pad to match
                     backbone_features = F.pad(backbone_features, (0, 0, 0, src_time.size(1) - backbone_features.size(1)), value=0)
                     backbone_padding = F.pad(backbone_padding, (0, src_time.size(1) - backbone_padding.size(1)), value=True)
-            else:
-                src_time = batch.get(DataKey.time, None)
-                # Space only used in non-cross attn path. JY doesn't remember why I zero-ed this out, but skipping over for tokenize dim decode
-                src_space = torch.zeros_like(batch[DataKey.position]) if DataKey.position in batch else None
 
             # allow looking N-bins of neural data into the "future"; we back-shift during the actual loss comparison.
             if self.causal and self.cfg.behavior_lag_lookahead:
@@ -1180,35 +1227,21 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             if self.decode_cross_attn:
                 other_kwargs = {
                     'memory': backbone_features,
-                    'memory_times': batch.get(DataKey.time, None),
+                    'memory_times': backbone_times,
                     'memory_padding_mask': backbone_padding,
                 }
-                token_padding_mask = create_token_padding_mask(
-                    decode_tokens,
-                    batch,
-                    length_key=f'{self.handle}_{LENGTH_KEY}',
-                    shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
-                )
-                # Since we are decoding, extract decoding portion of mask.
-                if f'{self.handle}_encoder_frac' in batch:
-                    token_padding_mask = token_padding_mask[:, batch[f'{self.handle}_encoder_frac']:]
             else:
                 assert not self.cfg.decode_tokenize_dims, 'non-cross attn not implemented with tokenized dims'
                 if backbone_padding is not None:
-                    extra_padding_mask = create_token_padding_mask(decode_tokens, batch, length_key=COVARIATE_LENGTH_KEY, shuffle_key=f'{self.handle}_{SHUFFLE_KEY}')
-                    # Since we are decoding, extract decoding portion of mask.
-                    if f'{self.handle}_encoder_frac' in batch:
-                        extra_padding_mask = extra_padding_mask[:, batch[f'{self.handle}_encoder_frac']:]
-                    token_padding_mask = torch.cat([backbone_padding, extra_padding_mask], dim=1)
+                    decode_padding = torch.cat([backbone_padding, decode_padding], dim=1)
                 logger.warning('This is untested code where we flipped order of padding declarations. Previously extra padding was declared after we concatenated backbone, but this did not make sense')
                 decode_tokens = torch.cat([backbone_features, decode_tokens], dim=1)
-                decode_time = torch.cat([src_time, decode_time], dim=1)
-                decode_space = torch.cat([src_space, decode_space], dim=1)
+                decode_time = torch.cat([backbone_times, decode_time], dim=1)
+                decode_space = torch.cat([backbone_space, decode_space], dim=1)
                 other_kwargs = {}
-
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
-                padding_mask=token_padding_mask,
+                padding_mask=decode_padding,
                 # trial_context=self.extract_trial_context(batch, detach=True), # TODO removed for now, bring back in a test where we explore decoder inputs?
                 times=decode_time,
                 positions=decode_space,
@@ -1217,7 +1250,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             )
         # crop out injected tokens, -> B T H
         if not self.decode_cross_attn:
-            backbone_features = self.injector.extract(batch, backbone_features)
+            backbone_features = batch[:, -decode_tokens.size(1):]
         return self.out(backbone_features)
 
     def get_target(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -1238,9 +1271,26 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
     def compute_loss(self, bhvr, bhvr_tgt):
         pass
 
-    def forward(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, compute_metrics=True, eval_mode=False) -> torch.Tensor:
+    def forward(
+        self,
+        batch,
+        backbone_features: torch.Tensor,
+        backbone_times: torch.Tensor,
+        backbone_space: torch.Tensor,
+        backbone_padding: torch.Tensor,
+        compute_metrics=True,
+        eval_mode=False
+    ) -> torch.Tensor:
         batch_out = {}
-        bhvr = self.get_cov_pred(batch, backbone_features, eval_mode=eval_mode, batch_out=batch_out) # Comes out flat (B T D)
+        bhvr = self.get_cov_pred(
+            batch,
+            backbone_features,
+            backbone_times,
+            backbone_space,
+            backbone_padding,
+            eval_mode=eval_mode,
+            batch_out=batch_out
+        ) # Comes out flat (B T D)
         # bhvr is still shuffled and tokenized..
 
         # At this point (computation and beyond) it is easiest to just restack tokenized targets, merge into regular API
@@ -1416,8 +1466,10 @@ class BehaviorClassification(CovariateReadout):
             raise Exception("go implement quantization clipping man")
         return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
 
-    def get_cov_pred(self, batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, eval_mode=False, batch_out={}) -> torch.Tensor:
-        bhvr = super().get_cov_pred(batch, backbone_features, eval_mode, batch_out)
+    def get_cov_pred(
+        self, *args, **kwargs
+    ) -> torch.Tensor:
+        bhvr = super().get_cov_pred(*args, **kwargs)
         if not self.cfg.decode_tokenize_dims:
             bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
         else:
@@ -1450,6 +1502,7 @@ def create_token_padding_mask(
     if length_key not in batch: # No plausible padding, everything is square
         return torch.zeros(reference.size()[:2], device=reference.device, dtype=torch.bool)
     if shuffle_key in batch:
+        # TODO deprecate this functionality, it shouldn't be relevant anymore
         # shuffle_key presence indicates reference tokens have been shuffled, and batch[shuffle_key] indicates true position. Truncation is done _outside_ of this function.
         token_position = batch[shuffle_key]
     else:

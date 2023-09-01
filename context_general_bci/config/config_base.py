@@ -84,6 +84,7 @@ class DataKey(Enum):
 
     time = 'time'
     position = 'position' # space, however you want to think about it. Tracks channel cluster.
+    padding = 'padding'
     extra = 'extra' # utility for decoding
     extra_time = 'extra_time'
     extra_position = 'extra_position'

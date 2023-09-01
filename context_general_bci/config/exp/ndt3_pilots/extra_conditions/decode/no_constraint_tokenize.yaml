@@ -11,3 +11,5 @@ dataset:
 inherit_tag: sparse_constraint
 train:
   batch_size: 8 # always OOM and regardless of training steps # (pretrain 4 gpus), yikes, 16 is too high
+# load_from_id: no_constraint_tokenize-yjuy8oja
+load_from_id: no_constraint_tokenize-zne1fgc2
