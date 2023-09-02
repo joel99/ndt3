@@ -272,7 +272,7 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Force
             if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
-                breakpoint()
+                # breakpoint()
                 # I do believe force velocity is still a helpful, used concept? For more symmetry with other dimensions
                 # Just minimize smoothing
                 covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))

@@ -17,12 +17,15 @@ model:
     n_layers: 8
 dataset:
   behavior_dim: 8
+  sparse_constraints: True
   datasets:
   - pitt_return.* # Currently has obs, ortho, fbc, helicopter rescue
   # - pitt_broad.*
   data_keys:
   - DataKey.spikes
-  - DataKey.task_return
+  - DataKey.constraint
+  - DataKey.bhvr_vel # Just testing
+  # - DataKey.task_return
 train:
   patience: 50
   autoscale_batch_size: true

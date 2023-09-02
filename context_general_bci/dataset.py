@@ -44,7 +44,7 @@ LENGTH_KEY = 'length'
 CHANNEL_KEY = 'channel_counts'
 # TODO deprecate when remodularizing data loaders... (where essentially we will just track data, position, trial, and pack densely)
 COVARIATE_LENGTH_KEY = 'covariate_length' # we need another length tracker for padded sequences of covariates in the flat case
-COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout channels only
+COVARIATE_CHANNEL_KEY = 'covariate_channel_counts' # essentially for heldout channels only (deprecated)
 
 CONSTRAINT_LENGTH_KEY = 'constraint_length' # needed for sparse constraints
 RETURN_LENGTH_KEY = 'return_length'
@@ -424,25 +424,39 @@ class SpikingDataset(Dataset):
                         per_zscore = self.z_score[trial[MetaKey.session]]
                         mean = per_zscore['mean']
                         std = per_zscore['std']
-                    data_items[k] = (payload[k] - mean) / std
-                elif k == DataKey.constraint: # T x Bhvr_dim
+                    cov = (payload[k] - mean) / std
+                    if self.cfg.tokenize_covariates:
+                        data_items[f'covariate_{DataKey.position}'] = repeat(torch.arange(cov.size(1)), 'b -> (t b)', t=cov.size(0))
+                        data_items[f'covariate_{DataKey.time}'] = repeat(torch.arange(cov.size(0)), 't -> (t b)', b=cov.size(1))
+                        cov = rearrange(cov, 't b -> (t b) 1')
+                    else:
+                        data_items[f'covariate_{DataKey.time}'] = torch.arange(cov.size(0))
+                    data_items[k] = cov
+                elif k == DataKey.constraint: # T x Constraint_Dim x Bhvr_dim
                     # Current implementation assumes fixed shape
-
                     if self.cfg.sparse_constraints:
                         if k not in payload:
-                            data_items[k] = torch.zeros((1, self.cfg.behavior_dim)) # add an initial token indicating no constraint
-                            data_items[DataKey.constraint_time] = torch.tensor([0])
+                            breakpoint() # TODO how does default even compile, we need a constraint dim, don't we? Vet what we currently do makes sense
+                            data_items[k] = torch.zeros((1, 3, min(self.cfg.behavior_dim, payload[DataKey.bhvr_vel].size(-1)))) # add an initial token indicating no constraint
+                            # data_items[k] = torch.zeros((1, min(self.cfg.behavior_dim, payload[DataKey.bhvr_vel].size(-1)))) # add an initial token indicating no constraint
+                            data_items[DataKey.constraint_time] = torch.zeros(1)
                         else:
                             # check for change
                             constraint_dense = payload[k]
                             change_steps = torch.cat([torch.tensor([0]), (constraint_dense[1:] != constraint_dense[:-1]).any(1).any(1).nonzero().squeeze(1) + 1])
+                            # T x 3 x Bhvr_Dim
                             data_items[k] = constraint_dense[change_steps]
                             data_items[DataKey.constraint_time] = change_steps
+
+                        if self.cfg.tokenize_covariates:
+                            data_items[DataKey.constraint_space] = repeat(torch.arange(data_items[k].size(-1)), 'b -> (t b)', t=data_items[k].size(0))
+                            data_items[DataKey.constraint_time] = repeat(data_items[DataKey.constraint_time], 't -> (t b)', b=data_items[k].size(-1))
+                            data_items[k] = rearrange(data_items[k], 't c b -> (t b) c')
                     else:
+                        assert not self.cfg.tokenize_covariates, "Not implemented"
                         if k not in payload: # e.g. monkey data - assume native control
                             data_items[k] = torch.zeros_like(payload[DataKey.bhvr_vel])
                         else:
-                            # comes in as T x 3 x 3 -> expand to domain of 9, and then clip. Assumes Pitt data, and we're reporting first N dimensions in Pitt data. (i.e. this is very brittle preproc)
                             data_items[k] = payload[k]
                         # If not sparse, we don't need to create constraint time, as code reuses covariate time.
                 elif k == DataKey.task_return:
@@ -508,15 +522,25 @@ class SpikingDataset(Dataset):
                     if k == DataKey.constraint:
                         constraint = b[k]
                         if self.cfg.sparse_constraints: # sparse and time delimited, check time
+                            breakpoint()
                             if DataKey.constraint_time in b:
                                 constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) & (b[DataKey.constraint_time] >= crop_start[i])
                                 constraint = constraint[constraint_mask]
+                                if DataKey.constraint_space in b:
+                                    constraint_space = b[DataKey.constraint_space][constraint_mask]
+                                    stack_batch[DataKey.constraint_space].append(constraint_space)
                                 constraint_time = b[DataKey.constraint_time][constraint_mask] - crop_start[i]
                                 stack_batch[DataKey.constraint_time].append(constraint_time)
                             else:
-                                stack_batch[DataKey.constraint_time].append(torch.arange(constraint.size(0))) # assume no crop
+                                stack_batch[DataKey.constraint_time].append(torch.arange(constraint.size(0))) # assume no crop, non tokenized, or something...
+                                # Don't bother with space in this case, but in general, this path is alarming and shouldn't be hit
+                                breakpoint()
+                        else:
+                            print("Shouldn't we be subsetting dense constraints according to covariate time")
+                            breakpoint()
+                            raise NotImplementedError
                         stack_batch[k].append(constraint)
-                    elif k == DataKey.constraint_time:
+                    elif k in [DataKey.constraint_time, DataKey.constraint_space]:
                         pass # treated above
                     elif k == DataKey.task_return:
                         task_return = b[k]
@@ -535,22 +559,24 @@ class SpikingDataset(Dataset):
                         pass # treated above
                     else:
                         item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
-                        if k == DataKey.time:
+                        if k in [DataKey.time, f'covariate_{DataKey.time}']:
                             item = item - item[0]
-                        if self.cfg.serve_tokenized_flat:
-                            if k in [DataKey.spikes, DataKey.time, DataKey.position]:
-                                # These keys have spatial dimensions that we will serve flat to maximize data throughput across heterogeneous trials
-                                item = item.flatten(0, 1) # T S H -> Token H
-                            else:
-                                covariate_key = k # will need separate padding, track for later
-                        else: # pad in space
-                            if k == DataKey.spikes: # B T S C H
-                                item = F.pad(item, (0, 0, 0, 0, 0, space_lengths[i] - item.size(1)), value=self.pad_value)
-                            elif k in [DataKey.time, DataKey.position]:
-                                # ! Note... this "pad_value" is set for spikes, and will definitely conflict with meaningful values for
-                                # time and position. This shouldn't be a problem right now, as we're using LENGTH_KEY and CHANNEL_KEY to determine what's padding and not when computing masks.
-                                # ! For the flat case, we should directly ID a pad value (e.g. 0) for time/position and adjust in code.
-                                item = F.pad(item, (0, space_lengths[i] - item.size(1)), value=self.pad_value)
+                        # if self.cfg.serve_tokenized_flat:
+                        if k in [DataKey.spikes, DataKey.time, DataKey.position]:
+                            # These keys have spatial dimensions that we will serve flat to maximize data throughput across heterogeneous trials
+                            item = item.flatten(0, 1) # T S H -> Token H
+                        else: # These have already been flattened
+                            breakpoint()
+                            covariate_key = k # will need separate padding, track for later
+                        # nonflat deprecated
+                        # else: # pad in space
+                        #     if k == DataKey.spikes: # B T S C H
+                        #         item = F.pad(item, (0, 0, 0, 0, 0, space_lengths[i] - item.size(1)), value=self.pad_value)
+                        #     elif k in [DataKey.time, DataKey.position]:
+                        #         # ! Note... this "pad_value" is set for spikes, and will definitely conflict with meaningful values for
+                        #         # time and position. This shouldn't be a problem right now, as we're using LENGTH_KEY and CHANNEL_KEY to determine what's padding and not when computing masks.
+                        #         # ! For the flat case, we should directly ID a pad value (e.g. 0) for time/position and adjust in code.
+                        #         item = F.pad(item, (0, space_lengths[i] - item.size(1)), value=self.pad_value)
                         stack_batch[k].append(item)
                 else:
                     if self.cfg.serve_tokenized_flat and k == CHANNEL_KEY: # determine cropped channel count
@@ -560,13 +586,15 @@ class SpikingDataset(Dataset):
                         stack_batch[k].append(b[k])
         lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.spikes]])
         if covariate_key is not None:
+            breakpoint()
             covariate_lengths = torch.tensor([el.size(0) for el in stack_batch[covariate_key]])
-            covariate_channels = torch.tensor([el.size(1) for el in stack_batch[covariate_key]])
+            # Covariate channel functionality deprecated
+            # covariate_channels = torch.tensor([el.size(1) for el in stack_batch[covariate_key]])
             # Manually pad to max channels
-            covariate_max = covariate_channels.max()
-            pad_els = [0] + [0, 0] * (stack_batch[covariate_key][0].ndim - 2)
-            for i, el in enumerate(stack_batch[covariate_key]):
-                stack_batch[covariate_key][i] = F.pad(el, (*pad_els, covariate_max - el.size(1)), value=self.pad_value)
+            # covariate_max = covariate_channels.max()
+            # pad_els = [0] + [0, 0] * (stack_batch[covariate_key][0].ndim - 2)
+            # for i, el in enumerate(stack_batch[covariate_key]):
+                # stack_batch[covariate_key][i] = F.pad(el, (*pad_els, covariate_max - el.size(1)), value=self.pad_value)
         if DataKey.constraint_time in stack_batch: # sparse, can't just use covariate length
             constraint_lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.constraint]])
         if DataKey.task_return_time in stack_batch:
@@ -584,7 +612,7 @@ class SpikingDataset(Dataset):
             stack_batch[RETURN_LENGTH_KEY] = task_return_lengths
         if covariate_key is not None:
             stack_batch[COVARIATE_LENGTH_KEY] = covariate_lengths
-            stack_batch[COVARIATE_CHANNEL_KEY] = covariate_channels
+            # stack_batch[COVARIATE_CHANNEL_KEY] = covariate_channels
         return dict(stack_batch) # cast back to dict as pytorch distributed can act up with defaultdicts
 
     def collater_factory(self):

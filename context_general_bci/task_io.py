@@ -1038,6 +1038,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             cfg=cfg,
             data_attrs=data_attrs
         )
+        self.served_tokenized_covariates = data_attrs.tokenize_covariates
         if self.inject_constraint_tokens: # if they're injected, we don't need these params in kinematic
             if hasattr(self, 'constraint_cls'):
                 del self.constraint_cls
@@ -1153,7 +1154,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 # Technically if data arrives as b t* 1, we can still use above if-case circuit
                 cov_space = torch.zeros_like(batch[f'{self.handle}_{DataKey.time}'])
             batch[f'{self.handle}_{DataKey.position}'] = cov_space
-        if self.cfg.decode_tokenize_dims:
+        if self.cfg.decode_tokenize_dims and not self.served_tokenized_covariates:
             covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
             if self.cfg.encode_constraints:
                 batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t constraint bhvr_dim -> b (t bhvr_dim) constraint')
@@ -1400,6 +1401,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
         batch_out['loss'] = loss
         if Metric.kinematic_r2 in self.cfg.metrics:
+            if self.served_tokenized_covariates:
+                breakpoint() # TODO reenable R2 given new tokenized
             valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()

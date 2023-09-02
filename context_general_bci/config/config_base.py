@@ -77,7 +77,8 @@ class DataKey(Enum):
     # active_assist = 'active_assist' # Autopilot (e.g. observation). Should be 1 at test.
     # passive_assist = 'passive_assist' # Constraint based (e.g. ortho). Should be 0 at test.
     # brain_control = 'brain_control' # Extent to which the neural data is driving behavior. Should be 1-active assist during task phases.
-    constraint_time = 'constraint_time' # for sparse constraints
+    constraint_time = 'constraints_time' # for sparse constraints
+    constraint_space = 'constraints_space' # TODO unify single/plural in key/value here (should trigger reproc)
 
     # Inclusion of return will auto-include reward. Note that return changepoints are strict superset of reward changepoints, as return changepoints include future reward showing up in horizon as well as reward toggle in present timepoint.
     task_return = 'task_return' # Reward conditioned behavior cloning
@@ -654,3 +655,4 @@ def propagate_config(config: RootConfig):
 
     config.model.readin_dim = config.model.hidden_size
     config.model.readout_dim = config.model.hidden_size
+    config.model.task.decode_tokenize_dims = config.dataset.tokenize_covariates
