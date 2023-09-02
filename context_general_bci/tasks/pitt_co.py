@@ -262,15 +262,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                 'position' in payload # and \
                 # task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
             ): # We only "trust" in the labels provided by obs (for now)
-                if exp_task_cfg.minmax: # T x C
-                    payload['position_mean'] = payload['position'].mean(0)
-                    payload['position_minimax'] = payload['position'].min(0).values, payload['position'].max(0).values
-                    rescale = payload['position_minimax'][1] - payload['position_minimax'][0]
-                    rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
-                    payload['position'] = (payload['position'] - payload['position_mean']) / rescale # Think this rescales to a bit less than 1
-                    # TODO we should really sanitize for severely abberant values... or checking for outlier effects
-
-
                 if exp_task_cfg.closed_loop_intention_estimation == "refit" and task in [ExperimentalTask.ortho, ExperimentalTask.fbc]:
                     # breakpoint()
                     covariates = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
@@ -280,10 +271,22 @@ class PittCOLoader(ExperimentalTaskLoader):
                 covariates = None
 
             # * Force
-            if 'force' in payload:
-                pass # Do nothing for now # TODO add normalization
-                # something with append to covariates
-                # raise NotImplementedError("Force not implemented for Pitt CO")
+            if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
+                # I do believe force velocity is still a helpful, used concept? For more symmetry with other dimensions
+                # Just minimize smoothing
+                breakpoint()
+                covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))
+                covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
+
+            if exp_task_cfg.minmax: # T x C
+                payload['cov_mean'] = covariates.mean(0)
+                payload['cov_min'] = covariates.min(0).values
+                payload['cov_max'] = covariates.max(0).values
+                rescale = payload['cov_max'] - payload['cov_min']
+                rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
+                covariates = (covariates - payload['cov_mean']) / rescale # Think this rescales to a bit less than 1
+                # TODO we should really sanitize for severely abberant values in a more robust way... or checking for outlier effects
+
 
             # * Constraints
             brain_control = payload.get('brain_control', None)
@@ -347,28 +350,36 @@ class PittCOLoader(ExperimentalTaskLoader):
                 reward_dense = chop_vector(reward_dense)
                 return_dense = chop_vector(return_dense)
 
-            # TODO split by emptiness
             # Expecting a 9D vector (T x 9), 8D from kinematics, 1D from force
             if cfg.tokenize_covariates:
-                raise NotImplementedError
-                covariate_dict = {}
+                covariate_dims = []
+                covariate_reduced = []
                 labels = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f']
                 if covariates is not None:
                     for i, cov in enumerate(covariates.T):
                         if cov.any(): # i.e. nonempty
-                            covariate_dict[labels[i]] = chop_vector(cov) # If I only store by label, how will I know canonical order? That's the trick, it shouldn't matter...?
-                            # But still, not knowing the order is inconvenient for R2 score, maybe?
-                        # Hm... kind of feels like I should add ICL prefixing first. Or else the behavioral task is impossible.
-                        # Also this save function will break if I pass a dict.
-
+                            covariate_dims.append(labels[i])
+                            covariate_reduced.append(cov)
+                covariates = torch.stack(covariate_reduced, 1) if covariate_reduced else None
             other_args = {
                 DataKey.bhvr_vel: chop_vector(covariates),
                 DataKey.constraint: chopped_constraints,
                 DataKey.task_reward: reward_dense,
                 DataKey.task_return: return_dense,
             }
+
+            global_args = {}
+            if exp_task_cfg.minmax:
+                global_args['cov_mean'] = payload['cov_mean']
+                global_args['cov_min'] = payload['cov_min']
+                global_args['cov_max'] = payload['cov_max']
+            if cfg.tokenize_covariates:
+                global_args['covariate_dims'] = covariate_dims
+
+
             for i, trial_spikes in enumerate(spikes):
                 other_args_trial = {k: v[i] for k, v in other_args.items() if v is not None}
+                other_args_trial.update(global_args)
                 save_trial_spikes(trial_spikes, i, other_args_trial)
 
         else: # folder style, preproc-ed on mind

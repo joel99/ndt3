@@ -69,6 +69,8 @@ class DataKey(Enum):
     bhvr_acc = 'bhvr_acc'
     bhvr_force = 'bhvr_force'
 
+    bhvr_labels = 'bhvr_labels' # For annotating sparse bhvr
+
     # Assist (for BCI exps)
     # Note these are timevarying because control toggles on and off often in historical BCI data (e.g. in trialized exps).
     constraint = 'constraints' # triplet of active, passive, brain control
