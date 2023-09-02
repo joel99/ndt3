@@ -32,6 +32,10 @@ from context_general_bci.components import SpaceTimeTransformer
 # through most of data collection (certainly good if we aggregate sensor/sessions)
 SHUFFLE_KEY = "shuffle"
 
+r"""
+Utilities
+"""
+
 def logsumexp(x):
     c = x.max()
     return c + (x - c).exp().sum().log()
@@ -40,6 +44,26 @@ def apply_shuffle(item: torch.Tensor, shuffle: torch.Tensor):
     # item: B T *
     # shuffle: T
     return item.transpose(1, 0)[shuffle].transpose(1, 0)
+
+def sort_A_by_B(A, B):
+    # Sort B along the Time dimension (dim=1) and get the sorting indices
+    _, indices = torch.sort(B, dim=1)
+    # Sort A using the sorting indices obtained from B
+    A_sorted = torch.gather(A, 1, indices)
+    return A_sorted
+
+def apply_shuffle_2d(item: torch.Tensor, shuffle: torch.Tensor):
+    # item: B T *
+    # shuffle: T
+    # return item.transpose(1, 0)[shuffle].transpose(1, 0)
+
+    batch_size, time_dim = shuffle.shape
+
+    # Create an index tensor to represent the batch dimension
+    batch_idx = torch.arange(batch_size)[:, None].repeat(1, time_dim)
+
+    # Use gather to apply different permutations to each batch
+    return item[batch_idx, shuffle]
 
 def temporal_pool(batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, temporal_padding_mask: torch.Tensor, pool='mean', override_time=0):
     # Originally developed for behavior regression, extracted for heldoutprediction
@@ -235,6 +259,7 @@ class ConstraintPipeline(ContextPipeline):
                 # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
                 self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
             self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
+        self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def encode_constraint(self, constraint: torch.Tensor) -> torch.Tensor:
         # constraint: Out is B T H Bhvr_Dim for sparse/tokenized, or B T H if dense
@@ -249,7 +274,7 @@ class ConstraintPipeline(ContextPipeline):
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint, constraint h -> b t h')
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h')
-        return constraint_embed
+        return self.norm(constraint_embed)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
@@ -289,6 +314,7 @@ class DataPipeline(TaskPipeline):
         compute_channel=True,
         shuffle_key=SHUFFLE_KEY,
         encoder_frac=0,
+        padding_mask: Optional[torch.Tensor]=None,
     ):
         r"""
             length_key: token-level padding info
@@ -300,9 +326,10 @@ class DataPipeline(TaskPipeline):
             ref: torch.Tensor = batch[DataKey.spikes][..., 0]
         loss_mask = torch.ones(ref.size(), dtype=torch.bool, device=ref.device)
 
-        padding_mask = create_token_padding_mask(ref, batch, length_key=length_key, shuffle_key=shuffle_key)
-        if encoder_frac:
-            padding_mask = padding_mask[..., encoder_frac:]
+        if padding_mask is None:
+            padding_mask = create_token_padding_mask(ref, batch, length_key=length_key, shuffle_key=shuffle_key)
+            if encoder_frac:
+                padding_mask = padding_mask[..., encoder_frac:]
         length_mask = ~(padding_mask & torch.isnan(ref).any(-1))
 
         loss_mask = loss_mask & length_mask.unsqueeze(-1)
@@ -688,42 +715,48 @@ class ShuffleInfill(SpikeBase):
             return batch
         # spikes: B T H (no array support)
         # TODO (low-pri) also support spacetime shuffle
-        # First need to connect to time...
-        # 1. Identify illegible tokens on basis of time. NO, this is not good, it becomes notsquare. Just pick a certain length and deal.
-        # OTOH, NO, then we'll have mismatch on different data streams.
-        # prompt_time = batch[DataKey.time] < self.cfg.context_prompt_time_thresh
-        # spikes
-        shuffle = torch.randperm(spikes.size(1), device=spikes.device)
+        if self.cfg.context_prompt_time_thresh:
+            shuffle_func = apply_shuffle_2d
+            nonprompt_time = (batch[DataKey.time] > self.cfg.context_prompt_time_thresh) # B x T mask
+            shuffle = torch.randperm(spikes.size(1), device=spikes.device).unsqueeze(0).repeat(spikes.size(0), 1)
+            nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
+            shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
+        else:
+            shuffle = torch.randperm(spikes.size(1), device=spikes.device) # T mask
+            shuffle_func = apply_shuffle
         # Mask ratio becomes a comment on the remainder of the data
         encoder_frac = int((1 - mask_ratio) * spikes.size(1))
         # shuffle_spikes = spikes.gather(1, shuffle.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, spikes.size(2), spikes.size(3)))
         for key in [DataKey.time, DataKey.position, DataKey.padding, CHANNEL_KEY]:
             if key in batch:
-                shuffled = apply_shuffle(batch[key], shuffle)
+                shuffled = shuffle_func(batch[key], shuffle)
                 batch.update({
                     key: shuffled[:, :encoder_frac],
                     f'{key}_target': shuffled[:, encoder_frac:],
                 })
         # import pdb;pdb.set_trace()
-        target = apply_shuffle(target, shuffle)[:,encoder_frac:]
+        target = shuffle_func(target, shuffle)[:,encoder_frac:]
         batch.update({
-            DataKey.spikes: apply_shuffle(spikes, shuffle)[:,:encoder_frac],
+            DataKey.spikes: shuffle_func(spikes, shuffle)[:,:encoder_frac],
             f'{self.handle}_target': target,
             f'{self.handle}_encoder_frac': encoder_frac,
-            f'{self.handle}_{SHUFFLE_KEY}': shuffle, # seems good to keep around...
+            # f'{self.handle}_{SHUFFLE_KEY}': shuffle, # seems good to keep around...
         })
         batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
 
-    def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor):
+    def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor, padding_mask: torch.Tensor | None = None):
         # get_masks
         loss_mask = torch.ones(loss.size(), device=loss.device, dtype=torch.bool)
         # note LENGTH_KEY and CHANNEL_KEY are for padding tracking
         # while DataKey.time and DataKey.position are for content
-        length_mask = ~create_token_padding_mask(None, batch, length_key=LENGTH_KEY, shuffle_key=f'{self.handle}_{SHUFFLE_KEY}')
-        if LENGTH_KEY in batch:
-            length_mask = length_mask[..., batch[f'{self.handle}_encoder_frac']:]
-            loss_mask = loss_mask & length_mask.unsqueeze(-1)
+        if padding_mask is not None:
+            loss_mask = loss_mask & ~padding_mask.unsqueeze(-1)
+        else:
+            length_mask = ~create_token_padding_mask(None, batch, length_key=LENGTH_KEY, shuffle_key=f'{self.handle}_{SHUFFLE_KEY}')
+            if LENGTH_KEY in batch:
+                length_mask = length_mask[..., batch[f'{self.handle}_encoder_frac']:]
+                loss_mask = loss_mask & length_mask.unsqueeze(-1)
         if CHANNEL_KEY in batch:
             # CHANNEL_KEY padding tracking has already been shuffled
             # And within each token, we just have c channels to track, always in order
@@ -774,7 +807,7 @@ class ShuffleInfill(SpikeBase):
             decode_padding = torch.cat([backbone_padding, decode_padding], 1)
             other_kwargs = {}
 
-        backbone_features: torch.Tensor = self.decoder(
+        decode_features: torch.Tensor = self.decoder(
             decode_tokens,
             padding_mask=decode_padding,
             # trial_context=self.extract_trial_context(batch=batch), # TODO removed for now, bring back in decoder tests?. Actually, superseded by in unified stream codde.
@@ -785,8 +818,8 @@ class ShuffleInfill(SpikeBase):
         )
 
         if not self.decode_cross_attn:
-            backbone_features = backbone_features[:, -decode_tokens.size(1):]
-        rates = self.out(backbone_features)
+            decode_features = decode_features[:, -(decode_tokens.size(1)-backbone_features.size(1)):]
+        rates = self.out(decode_features)
 
         if Output.logrates in self.cfg.outputs:
             assert False, 'no chance this is still accurate'
@@ -804,7 +837,7 @@ class ShuffleInfill(SpikeBase):
         if not compute_metrics:
             return batch_out
         loss: torch.Tensor = self.loss(rates, target) # b t' c
-        loss_mask = self.get_loss_mask(batch, loss) # shuffle specific
+        loss_mask = self.get_loss_mask(batch, loss, padding_mask=decode_padding[:,-rates.size(1):]) # shuffle specific
         loss = loss[loss_mask]
         batch_out['loss'] = loss.mean()
         return batch_out
@@ -948,6 +981,7 @@ class ReturnContext(ContextPipeline):
             cfg.hidden_size,
             padding_idx=data_attrs.pad_token,
         )
+        self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         # print('Return max: ', batch[DataKey.task_return].max())
@@ -962,7 +996,7 @@ class ReturnContext(ContextPipeline):
             return_embed, batch, length_key=RETURN_LENGTH_KEY
         ) # Don't need a separate update step unless we need the retrieve padding at later time.
         return (
-            return_embed + reward_embed,
+            self.norm(return_embed + reward_embed),
             times,
             space + 1, # reserve 0 for trial context
             padding
@@ -1129,10 +1163,18 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 f'{self.handle}_encoder_frac': covariates.size(1),
             })
         shuffle = torch.randperm(covariates.size(1), device=covariates.device)
+        if self.cfg.context_prompt_time_thresh:
+            shuffle_func = apply_shuffle_2d
+            nonprompt_time = (batch[f'{self.handle}_{DataKey.time}'] > self.cfg.context_prompt_time_thresh) # B x T mask
+            shuffle = repeat(shuffle, 't -> b t', b=covariates.size(0))
+            nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
+            shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
+        else:
+            shuffle_func = apply_shuffle
         encoder_frac = int((1 - mask_ratio) * covariates.size(1))
         def shuffle_key(key):
             if key in batch:
-                shuffled = apply_shuffle(batch[key], shuffle)
+                shuffled = shuffle_func(batch[key], shuffle)
                 batch.update({
                     key: shuffled[:, :encoder_frac],
                     f'{key}_target': shuffled[:, encoder_frac:],
@@ -1150,12 +1192,12 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             ]:
                 shuffle_key(key)
 
-        enc, target = torch.split(apply_shuffle(covariates, shuffle), [encoder_frac, covariates.size(1) - encoder_frac], dim=1)
+        enc, target = torch.split(shuffle_func(covariates, shuffle), [encoder_frac, covariates.size(1) - encoder_frac], dim=1)
         batch.update({
             self.cfg.behavior_target: enc,
             f'{self.handle}_target': target,
             f'{self.handle}_encoder_frac': encoder_frac,
-            f'{self.handle}_{SHUFFLE_KEY}': shuffle,
+            # f'{self.handle}_{SHUFFLE_KEY}': shuffle,
         })
         batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
@@ -1316,9 +1358,9 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         _, length_mask, _ = self.get_masks(
             batch, ref=bhvr_tgt,
             length_key=f'{self.handle}_{LENGTH_KEY}',
-            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}',
+            shuffle_key=None,
             compute_channel=False,
-            encoder_frac=batch.get(f'{self.handle}_encoder_frac', 0),
+            padding_mask=batch.get(f'{self.handle}_{DataKey.padding}_target', None),
         )
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
 

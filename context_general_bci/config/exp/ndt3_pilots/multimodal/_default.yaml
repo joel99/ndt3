@@ -1,0 +1,29 @@
+# @package _global_
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+  - /dataset:
+    - flat
+    - scale_history
+model:
+  session_embed_token_count: 1 # Keep it low for maybe easier FT?
+  subject_embed_strategy: EmbedStrat.token
+  neurons_per_token: 32
+  causal: True
+  task:
+    mask_ratio: 0.5
+  transformer:
+    n_layers: 8
+dataset:
+  behavior_dim: 8
+  datasets:
+  - pitt_return.* # Currently has obs, ortho, fbc, helicopter rescue
+  # - pitt_broad.*
+  data_keys:
+  - DataKey.spikes
+  - DataKey.task_return
+train:
+  patience: 50
+  autoscale_batch_size: true
+  effective_batch_size: 512
