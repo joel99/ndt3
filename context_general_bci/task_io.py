@@ -259,7 +259,7 @@ class ConstraintPipeline(ContextPipeline):
                 # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
                 self.constraint_cls = nn.Parameter(torch.randn(cfg.hidden_size))
             self.constraint_dims = nn.Parameter(torch.randn(3, cfg.hidden_size))
-        self.norm = nn.LayerNorm(cfg.hidden_size)
+        # self.norm = nn.LayerNorm(cfg.hidden_size) # * Actually no, don't norm the linear projection...
 
     def encode_constraint(self, constraint: torch.Tensor) -> torch.Tensor:
         # constraint: Out is B T H Bhvr_Dim for sparse/tokenized, or B T H if dense
@@ -274,7 +274,8 @@ class ConstraintPipeline(ContextPipeline):
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint, constraint h -> b t h')
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h')
-        return self.norm(constraint_embed)
+        return constraint_embed
+        # return self.norm(constraint_embed.permute(0,1,3,2)).permute(0,1,3,2)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
@@ -981,7 +982,7 @@ class ReturnContext(ContextPipeline):
             cfg.hidden_size,
             padding_idx=data_attrs.pad_token,
         )
-        self.norm = nn.LayerNorm(cfg.hidden_size)
+        # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         # print('Return max: ', batch[DataKey.task_return].max())
@@ -996,7 +997,8 @@ class ReturnContext(ContextPipeline):
             return_embed, batch, length_key=RETURN_LENGTH_KEY
         ) # Don't need a separate update step unless we need the retrieve padding at later time.
         return (
-            self.norm(return_embed + reward_embed),
+            return_embed + reward_embed,
+            # self.norm(return_embed + reward_embed),
             times,
             space + 1, # reserve 0 for trial context
             padding
@@ -1473,7 +1475,7 @@ class BehaviorClassification(CovariateReadout):
     QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
     def initialize_readin(self, backbone_size): # Assume quantized readin...
         self.inp = nn.Embedding(self.QUANTIZE_CLASSES, backbone_size)
-        self.inp_norm = nn.LayerNorm(backbone_size)
+        # self.inp_norm = nn.LayerNorm(backbone_size)
 
     def initialize_readout(self, backbone_size):
         if self.cfg.decode_tokenize_dims:
@@ -1496,7 +1498,7 @@ class BehaviorClassification(CovariateReadout):
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         if not self.cfg.decode_tokenize_dims:
             covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H
-        covariate = self.inp_norm(covariate)
+        # covariate = self.inp_norm(covariate)
         return covariate
 
     def quantize(self, x: torch.Tensor):

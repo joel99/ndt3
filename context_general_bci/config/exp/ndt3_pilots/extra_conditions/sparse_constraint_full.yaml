@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks: [ModelTask.shuffle_infill, ModelTask.constraints]
+    encode_constraints: True
+    use_constraint_cls: True
+  use_full_encode: True
+dataset:
+  sparse_constraints: True
+train:
+  batch_size: 32 # 80G
+  # batch_size: 16 # always OOM and regardless of training steps # (pretrain 4 gpus)
