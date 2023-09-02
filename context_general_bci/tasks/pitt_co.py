@@ -11,7 +11,7 @@ from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter1d
 # from scipy.signal import convolve
 import torch.nn.functional as F
-from einops import rearrange, reduce
+from einops import rearrange, reduce, repeat
 
 import logging
 logger = logging.getLogger(__name__)
@@ -272,9 +272,9 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Force
             if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
+                breakpoint()
                 # I do believe force velocity is still a helpful, used concept? For more symmetry with other dimensions
                 # Just minimize smoothing
-                breakpoint()
                 covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
@@ -338,29 +338,38 @@ class PittCOLoader(ExperimentalTaskLoader):
             # else:
             # chop both
             spikes = chop_vector(spikes)
-            if brain_control is None:
+            if brain_control is None or covariates is None:
                 chopped_constraints = None
             else:
+                # Chop first bc chop is only implemented for 3d
                 chopped_constraints = torch.stack([
                     chop_vector(1 - brain_control), # return complement, such that native control is the "0" condition, no constraint
                     chop_vector(active_assist),
                     chop_vector(passive_assist),
-                ], 2) # trial x chop_size x 3 x hidden
+                ], 2)
+                chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
+
+
             if reward_dense is not None:
                 reward_dense = chop_vector(reward_dense)
                 return_dense = chop_vector(return_dense)
 
-            # Expecting a 9D vector (T x 9), 8D from kinematics, 1D from force
+            # Expecting up to 9D vector (T x 9), 8D from kinematics, 1D from force
             if cfg.tokenize_covariates:
                 covariate_dims = []
                 covariate_reduced = []
+                constraints_reduced = []
                 labels = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f']
                 if covariates is not None:
                     for i, cov in enumerate(covariates.T):
                         if cov.any(): # i.e. nonempty
                             covariate_dims.append(labels[i])
                             covariate_reduced.append(cov)
-                covariates = torch.stack(covariate_reduced, 1) if covariate_reduced else None
+                            if chopped_constraints is not None:
+                                constraints_reduced.append(chopped_constraints[..., i]) # Subselect behavioral dim
+                covariates = torch.stack(covariate_reduced, -1) if covariate_reduced else None
+                chopped_constraints = torch.stack(constraints_reduced, -1) if constraints_reduced else None # T x 3 (constriant dim) x B
+
             other_args = {
                 DataKey.bhvr_vel: chop_vector(covariates),
                 DataKey.constraint: chopped_constraints,

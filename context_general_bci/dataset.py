@@ -426,10 +426,8 @@ class SpikingDataset(Dataset):
                         std = per_zscore['std']
                     data_items[k] = (payload[k] - mean) / std
                 elif k == DataKey.constraint: # T x Bhvr_dim
-                    # TODO once behavior tokenization maskdown is implementation, constraints should have mirrored logic
                     # Current implementation assumes fixed shape
-                    def project_to_bhvr(constraint: torch.Tensor):
-                        return repeat(constraint, 't d domain -> t d (domain 3)')[..., :self.cfg.behavior_dim]
+
                     if self.cfg.sparse_constraints:
                         if k not in payload:
                             data_items[k] = torch.zeros((1, self.cfg.behavior_dim)) # add an initial token indicating no constraint
@@ -438,14 +436,14 @@ class SpikingDataset(Dataset):
                             # check for change
                             constraint_dense = payload[k]
                             change_steps = torch.cat([torch.tensor([0]), (constraint_dense[1:] != constraint_dense[:-1]).any(1).any(1).nonzero().squeeze(1) + 1])
-                            data_items[k] = project_to_bhvr(constraint_dense[change_steps])
+                            data_items[k] = constraint_dense[change_steps]
                             data_items[DataKey.constraint_time] = change_steps
                     else:
                         if k not in payload: # e.g. monkey data - assume native control
                             data_items[k] = torch.zeros_like(payload[DataKey.bhvr_vel])
                         else:
                             # comes in as T x 3 x 3 -> expand to domain of 9, and then clip. Assumes Pitt data, and we're reporting first N dimensions in Pitt data. (i.e. this is very brittle preproc)
-                            data_items[k] = project_to_bhvr(payload[k])
+                            data_items[k] = payload[k]
                         # If not sparse, we don't need to create constraint time, as code reuses covariate time.
                 elif k == DataKey.task_return:
                     # Default policy - if querying for reward and payload doesn't have it, just return nothing (which at most becomes padding), so stream is effectively unconditioned
