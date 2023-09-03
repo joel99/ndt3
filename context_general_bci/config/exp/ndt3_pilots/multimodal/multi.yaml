@@ -1,9 +1,11 @@
 # @package _global_
 defaults:
   - _default
+  - /model/task:
+    - joint_decode_flat_v2
 model:
   task:
-    tasks: [ModelTask.shuffle_infill]
+    tasks: [ModelTask.shuffle_infill, ModelTask.kinematic_deocding]
     context_prompt_time_thresh: 100
 dataset:
   tokenize_covariates: True

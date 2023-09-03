@@ -1,12 +1,9 @@
-from typing import List, Any, Optional, Dict, Union
+from typing import List, Any, Dict, Union
 import copy
 import json
 import os
 from pathlib import Path
 from math import ceil
-import re
-import itertools
-from datetime import datetime
 from omegaconf import OmegaConf
 from dataclasses import dataclass, field
 from collections import defaultdict
@@ -22,7 +19,7 @@ from einops import rearrange, repeat
 import lightning.pytorch as pl
 
 from context_general_bci.config import DatasetConfig, MetaKey, DataKey
-from context_general_bci.subjects import SubjectArrayRegistry, SubjectName
+from context_general_bci.subjects import SubjectArrayRegistry
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.augmentations import augmentations
@@ -419,25 +416,32 @@ class SpikingDataset(Dataset):
                 if k == DataKey.heldout_spikes and self.cfg.heldout_key_spoof_shape:
                     data_items[k] = torch.full(list(self.cfg.heldout_key_spoof_shape), fill_value=self.pad_value)
                 elif k == DataKey.bhvr_vel:
-                    mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
-                    if self.z_score and trial[MetaKey.session] in self.z_score:
-                        per_zscore = self.z_score[trial[MetaKey.session]]
-                        mean = per_zscore['mean']
-                        std = per_zscore['std']
-                    cov = (payload[k] - mean) / std
-                    if self.cfg.tokenize_covariates:
-                        data_items[f'covariate_{DataKey.position}'] = repeat(torch.arange(cov.size(1)), 'b -> (t b)', t=cov.size(0))
-                        data_items[f'covariate_{DataKey.time}'] = repeat(torch.arange(cov.size(0)), 't -> (t b)', b=cov.size(1))
-                        cov = rearrange(cov, 't b -> (t b) 1')
+                    if k not in payload:
+                        data_items[k] = torch.zeros((1, 1)) # null
+                        data_items[DataKey.covariate_time] = torch.zeros(1)
+                        data_items[DataKey.covariate_space] = torch.zeros(1)
                     else:
-                        data_items[f'covariate_{DataKey.time}'] = torch.arange(cov.size(0))
-                    data_items[k] = cov
+                        mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
+                        if self.z_score and trial[MetaKey.session] in self.z_score:
+                            per_zscore = self.z_score[trial[MetaKey.session]]
+                            mean = per_zscore['mean']
+                            std = per_zscore['std']
+                        cov = (payload[k] - mean) / std
+                        if self.cfg.tokenize_covariates:
+                            data_items[DataKey.covariate_space] = repeat(torch.arange(cov.size(1)), 'b -> (t b)', t=cov.size(0))
+                            data_items[DataKey.covariate_time] = repeat(torch.arange(cov.size(0)), 't -> (t b)', b=cov.size(1))
+                            cov = rearrange(cov, 't b -> (t b) 1')
+                        else:
+                            data_items[DataKey.covariate_time] = torch.arange(cov.size(0))
+                        data_items[k] = cov
                 elif k == DataKey.constraint: # T x Constraint_Dim x Bhvr_dim
                     # Current implementation assumes fixed shape
                     if self.cfg.sparse_constraints:
                         if k not in payload:
-                            breakpoint() # TODO how does default even compile, we need a constraint dim, don't we? Vet what we currently do makes sense
-                            data_items[k] = torch.zeros((1, 3, min(self.cfg.behavior_dim, payload[DataKey.bhvr_vel].size(-1)))) # add an initial token indicating no constraint
+                            # breakpoint() # TODO how does default even compile, we need a constraint dim, don't we? Vet what we currently do makes sense
+                            bhvr_dim = payload[DataKey.bhvr_vel].size(-1) if DataKey.bhvr_vel in payload else 1
+                            default_dim = bhvr_dim if self.cfg.tokenize_covariates else self.cfg.behavior_dim
+                            data_items[k] = torch.zeros((1, 3, default_dim)) # add an initial token indicating no constraint
                             # data_items[k] = torch.zeros((1, min(self.cfg.behavior_dim, payload[DataKey.bhvr_vel].size(-1)))) # add an initial token indicating no constraint
                             data_items[DataKey.constraint_time] = torch.zeros(1)
                         else:
@@ -522,7 +526,6 @@ class SpikingDataset(Dataset):
                     if k == DataKey.constraint:
                         constraint = b[k]
                         if self.cfg.sparse_constraints: # sparse and time delimited, check time
-                            breakpoint()
                             if DataKey.constraint_time in b:
                                 constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) & (b[DataKey.constraint_time] >= crop_start[i])
                                 constraint = constraint[constraint_mask]
@@ -557,9 +560,20 @@ class SpikingDataset(Dataset):
                         stack_batch[DataKey.task_reward].append(task_reward)
                     elif k in [DataKey.task_return_time, DataKey.task_reward]:
                         pass # treated above
+                    elif k == DataKey.bhvr_vel:
+                        covariate = b[k]
+                        covariate_time_mask = (b[DataKey.covariate_time] < crop_start[i] + time_budget[i]) & (b[DataKey.covariate_time] >= crop_start[i])
+                        covariate = covariate[covariate_time_mask]
+                        covariate_space = b[DataKey.covariate_space][covariate_time_mask]
+                        covariate_time = b[DataKey.covariate_time][covariate_time_mask] - crop_start[i]
+                        stack_batch[DataKey.covariate_time].append(covariate_time)
+                        stack_batch[DataKey.covariate_space].append(covariate_space)
+                        stack_batch[k].append(covariate)
+                    elif k in [DataKey.covariate_time, DataKey.covariate_space]:
+                        continue # treated above
                     else:
                         item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
-                        if k in [DataKey.time, f'covariate_{DataKey.time}']:
+                        if k in [DataKey.time, DataKey.covariate_time]:
                             item = item - item[0]
                         # if self.cfg.serve_tokenized_flat:
                         if k in [DataKey.spikes, DataKey.time, DataKey.position]:
@@ -586,7 +600,6 @@ class SpikingDataset(Dataset):
                         stack_batch[k].append(b[k])
         lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.spikes]])
         if covariate_key is not None:
-            breakpoint()
             covariate_lengths = torch.tensor([el.size(0) for el in stack_batch[covariate_key]])
             # Covariate channel functionality deprecated
             # covariate_channels = torch.tensor([el.size(1) for el in stack_batch[covariate_key]])

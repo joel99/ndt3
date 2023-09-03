@@ -1134,17 +1134,17 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
         covariates = batch[self.cfg.behavior_target] # Assume B x T x Cov_Dims
-
+        breakpoint()
         # TOKENIZATION (should probably move to dataloader)
         # Tokenized behavior should be B (T Cov_Dims) H=1. Initialize time space before we do this.
-        if f'{self.handle}_{DataKey.time}' not in batch:
+        if DataKey.covariate_time not in batch:
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
                 cov_time = repeat(cov_time, 't -> b (t d)', b=covariates.size(0), d=self.cov_dims)
             else:
                 cov_time = repeat(cov_time, 't -> b t', b=covariates.size(0))
-            batch[f'{self.handle}_{DataKey.time}'] = cov_time
-        if f'{self.handle}_{DataKey.position}' not in batch:
+            batch[DataKey.covariate_time] = cov_time
+        if DataKey.covariate_space not in batch:
             if self.cfg.decode_tokenize_dims: # Here in is the implicit padding for space position, to fix.
                 cov_space = repeat(
                     torch.arange(covariates.size(2), device=covariates.device),
@@ -1152,8 +1152,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 )
             else:
                 # Technically if data arrives as b t* 1, we can still use above if-case circuit
-                cov_space = torch.zeros_like(batch[f'{self.handle}_{DataKey.time}'])
-            batch[f'{self.handle}_{DataKey.position}'] = cov_space
+                cov_space = torch.zeros_like(batch[DataKey.covariate_time])
+            batch[DataKey.covariate_space] = cov_space
         if self.cfg.decode_tokenize_dims and not self.served_tokenized_covariates:
             covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
             if self.cfg.encode_constraints:
@@ -1168,7 +1168,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         shuffle = torch.randperm(covariates.size(1), device=covariates.device)
         if self.cfg.context_prompt_time_thresh:
             shuffle_func = apply_shuffle_2d
-            nonprompt_time = (batch[f'{self.handle}_{DataKey.time}'] > self.cfg.context_prompt_time_thresh) # B x T mask
+            nonprompt_time = (batch[DataKey.covariate_time] > self.cfg.context_prompt_time_thresh) # B x T mask
             shuffle = repeat(shuffle, 't -> b t', b=covariates.size(0))
             nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
             shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
@@ -1183,8 +1183,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     f'{key}_target': shuffled[:, encoder_frac:],
                 })
         for key in [
-            f'{self.handle}_{DataKey.time}',
-            f'{self.handle}_{DataKey.position}',
+            DataKey.covariate_time,
+            DataKey.covariate_space,
             f'{self.handle}_{DataKey.padding}',
         ]:
             shuffle_key(key)
@@ -1215,8 +1215,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             enc = enc + constraint
         return (
             enc,
-            batch[f'{self.handle}_{DataKey.time}'],
-            batch[f'{self.handle}_{DataKey.position}'] + 1, # reserve 0 for trial context
+            batch[DataKey.covariate_time],
+            batch[DataKey.covariate_space] + 1, # reserve 0 for trial context
             batch[f'{self.handle}_{DataKey.padding}']
         )
 
@@ -1245,8 +1245,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     batch_out[Output.pooled_features] = backbone_features.detach()
 
             decode_tokens = batch[f'{self.handle}_query']
-            decode_time = batch[f'{self.handle}_{DataKey.time}_target']
-            decode_space = batch[f'{self.handle}_{DataKey.position}_target']
+            decode_time = batch[f'{DataKey.covariate_time}_target']
+            decode_space = batch[f'{DataKey.covariate_space}_target']
             decode_padding = batch[f'{self.handle}_{DataKey.padding}_target']
             if not self.inject_constraint_tokens and self.cfg.encode_constraints:
                 decode_tokens = decode_tokens + self.encode_constraint(
@@ -1391,7 +1391,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     breakpoint()
                 if len(self.covariate_blacklist_dims) > 0:
                     if self.cfg.decode_tokenize_dims:
-                        positions = batch[f'{self.handle}_{DataKey.position}_target']
+                        positions = batch[f'{DataKey.covariate_space}_target']
                         loss_mask = loss_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
                     else:
                         loss_mask = loss_mask.unsqueeze(-1).repeat(1, 1, loss.size(-1))
@@ -1409,7 +1409,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             if self.cfg.decode_tokenize_dims:
                 # extract the proper subsets according to space (for loop it) - per-dimension R2 is only relevant while dataloading maintains consistent dims (i.e. not for long) but in the meanwhile
                 r2_scores = []
-                positions = batch[f'{self.handle}_{DataKey.position}_target'][r2_mask].flatten().cpu() # flatten as square full batches won't autoflatten B x T but does flatten B x T x 1
+                positions = batch[f'{DataKey.covariate_space}_target'][r2_mask].flatten().cpu() # flatten as square full batches won't autoflatten B x T but does flatten B x T x 1
                 for i in range(self.cov_dims):
                     r2_scores.append(r2_score(valid_tgt[positions == i], valid_bhvr[positions == i]))
                 batch_out[Metric.kinematic_r2] = np.array(r2_scores)

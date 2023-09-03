@@ -71,6 +71,9 @@ class DataKey(Enum):
 
     bhvr_labels = 'bhvr_labels' # For annotating sparse bhvr
 
+    covariate_time = 'covariate_time'
+    covariate_space = 'covariate_space'
+
     # Assist (for BCI exps)
     # Note these are timevarying because control toggles on and off often in historical BCI data (e.g. in trialized exps).
     constraint = 'constraints' # triplet of active, passive, brain control
