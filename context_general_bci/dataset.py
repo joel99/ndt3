@@ -424,7 +424,7 @@ class SpikingDataset(Dataset):
                 elif k == DataKey.bhvr_vel:
                     if k not in payload:
                         data_items[k] = torch.zeros((1, 1)) # null
-                        data_items[DataKey.covariate_time] = torch.zeros(1)
+                        data_items[DataKey.covariate_time] = torch.tensor([self.cfg.pad_time_value])
                         data_items[DataKey.covariate_space] = torch.zeros(1)
                         data_items[DataKey.covariate_labels] = ['null']
                     else:
@@ -451,7 +451,7 @@ class SpikingDataset(Dataset):
                             default_dim = bhvr_dim if self.cfg.tokenize_covariates else self.cfg.behavior_dim
                             data_items[k] = torch.zeros((1, 3, default_dim)) # add an initial token indicating no constraint
                             # data_items[k] = torch.zeros((1, min(self.cfg.behavior_dim, payload[DataKey.bhvr_vel].size(-1)))) # add an initial token indicating no constraint
-                            data_items[DataKey.constraint_time] = torch.zeros(1)
+                            data_items[DataKey.constraint_time] = torch.tensor([self.cfg.pad_time_value])
                         else:
                             # check for change
                             constraint_dense = payload[k]
@@ -476,7 +476,7 @@ class SpikingDataset(Dataset):
                     if k not in payload: # add padding so things compile
                         data_items[DataKey.task_return] = torch.tensor([self.pad_value]).unsqueeze(0)
                         data_items[DataKey.task_reward] = torch.tensor([self.pad_value]).unsqueeze(0)
-                        data_items[DataKey.task_return_time] = torch.tensor([self.pad_value])
+                        data_items[DataKey.task_return_time] = torch.tensor([self.cfg.pad_time_value])
                     else:
                         # Not sure this is legitimate
                         if self.cfg.sparse_rewards:
@@ -629,7 +629,15 @@ class SpikingDataset(Dataset):
                 continue # Just leave it alone, we need to know which dims are which
             elif isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
                 # This padding injects pad values into time/space. The alternate is to assign time/space at collation time, but this is not as flexible, I'd rather individual trials specify their times.
-                stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value if k not in [DataKey.time, DataKey.constraint_time, DataKey.task_return_time] else self.cfg.pad_time_value)
+                stack_batch[k] = pad_sequence(
+                    stack_batch[k],
+                    batch_first=True,
+                    padding_value=self.pad_value if k not in [
+                        DataKey.time,
+                        DataKey.constraint_time,
+                        DataKey.task_return_time,
+                        DataKey.covariate_time
+                    ] else self.cfg.pad_time_value)
             else:
                 stack_batch[k] = torch.stack(stack_batch[k])
         stack_batch[LENGTH_KEY] = lengths
