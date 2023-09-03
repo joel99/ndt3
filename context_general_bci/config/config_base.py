@@ -512,7 +512,7 @@ class DatasetConfig:
     # This will be the # of tokens served; be generous because we will crop in any flat task.
     # ! note that the above is going to be strictly more than amount proc-ed in encoder-decoder encoder -- since things are cropped.
     pad_value: int = 0
-    pad_time_value: int = 100 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
+    pad_time_value: int = 400 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
     pad_spike_value: int = 0 # extra thing just for spikes, which we can typically afford to keep low w/o consequence. Sometimes above pad value (which applies for time/space values) needs to be set higher than 0 to avoid nan attn, typically for co-bps
     # pad_value: int = 20
 

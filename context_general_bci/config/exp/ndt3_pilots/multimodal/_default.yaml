@@ -14,8 +14,11 @@ model:
   neurons_per_token: 32
   causal: True
   task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints]
+    task_weights: [1.0, 1.0] # after a failed set of initial exps, we decide to 10x to bring losses up to O(0.5)
     mask_ratio: 0.2
     covariate_mask_ratio: 0.5
+    encode_constraints: True
   transformer:
     n_layers: 8
   use_full_encode: True
