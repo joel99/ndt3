@@ -4,10 +4,12 @@ import json
 import os
 from pathlib import Path
 from math import ceil
+import itertools
+import logging
+
 from omegaconf import OmegaConf
 from dataclasses import dataclass, field
 from collections import defaultdict
-import logging
 import pandas as pd
 import numpy as np
 import torch
@@ -420,6 +422,7 @@ class SpikingDataset(Dataset):
                         data_items[k] = torch.zeros((1, 1)) # null
                         data_items[DataKey.covariate_time] = torch.zeros(1)
                         data_items[DataKey.covariate_space] = torch.zeros(1)
+                        data_items[DataKey.covariate_labels] = []
                     else:
                         mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
                         if self.z_score and trial[MetaKey.session] in self.z_score:
@@ -434,6 +437,7 @@ class SpikingDataset(Dataset):
                         else:
                             data_items[DataKey.covariate_time] = torch.arange(cov.size(0))
                         data_items[k] = cov
+                        data_items[DataKey.covariate_labels] = payload['covariate_dims'] # TODO bake DataKey down
                 elif k == DataKey.constraint: # T x Constraint_Dim x Bhvr_dim
                     # Current implementation assumes fixed shape
                     if self.cfg.sparse_constraints:
@@ -571,6 +575,8 @@ class SpikingDataset(Dataset):
                         stack_batch[k].append(covariate)
                     elif k in [DataKey.covariate_time, DataKey.covariate_space]:
                         continue # treated above
+                    elif k == DataKey.covariate_labels:
+                        stack_batch[k].append(b[k])
                     else:
                         item = b[k][crop_start[i]:crop_start[i]+time_budget[i]]
                         if k in [DataKey.time, DataKey.covariate_time]:
@@ -613,7 +619,10 @@ class SpikingDataset(Dataset):
         if DataKey.task_return_time in stack_batch:
             task_return_lengths = torch.tensor([el.size(0) for el in stack_batch[DataKey.task_return]])
         for k in stack_batch.keys():
-            if isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
+            if k == DataKey.covariate_labels:
+                # stack_batch[k] = list(itertools.chain.from_iterable(stack_batch[k])) # Just for logging
+                continue # Just leave it alone, we need to know which dims are which
+            elif isinstance(k, DataKey) or (self.cfg.serve_tokenized_flat and k == CHANNEL_KEY):
                 # This padding injects pad values into time/space. The alternate is to assign time/space at collation time, but this is not as flexible, I'd rather individual trials specify their times.
                 stack_batch[k] = pad_sequence(stack_batch[k], batch_first=True, padding_value=self.pad_value if k not in [DataKey.time, DataKey.constraint_time, DataKey.task_return_time] else self.cfg.pad_time_value)
             else:

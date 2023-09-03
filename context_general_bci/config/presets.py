@@ -121,6 +121,8 @@ class FlatEncDecModelConfig(ModelConfig):
     spike_embed_style: EmbedStrat = EmbedStrat.token
     transformer: TransformerConfig = field(default_factory=FlatEncDecTransformerConfig)
     task: TaskConfig = field(default_factory=FlatEncDecTaskConfig)
+    decoder_context_integration: str = 'cross_attn'
+    causal: bool = True
 
 cs.store(group="model", name="flat_enc_dec", node=FlatEncDecModelConfig)
 
@@ -166,6 +168,7 @@ class JointDecodeFlatTaskConfigV2(FlatEncDecTaskConfig):
     tasks: List[ModelTask] = field(default_factory=lambda: [ModelTask.shuffle_infill, ModelTask.kinematic_decoding])
     metrics: List[Metric] = field(default_factory=lambda: [Metric.kinematic_r2])
     task_weights: List[float] = field(default_factory=lambda: [1.0, 0.1])
+    covariate_mask_ratio: float = 0.5
     decode_strategy: EmbedStrat = EmbedStrat.token
     decode_separate: bool = True
 

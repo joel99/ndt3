@@ -3,6 +3,8 @@ defaults:
   - /model:
     - flat_enc_dec
     - scale_history
+  - /model/task:
+    - joint_decode_flat_v2
   - /dataset:
     - flat
     - scale_history
@@ -12,10 +14,12 @@ model:
   neurons_per_token: 32
   causal: True
   task:
-    mask_ratio: 0.5
+    mask_ratio: 0.2
+    covariate_mask_ratio: 0.5
   transformer:
     n_layers: 8
 dataset:
+  tokenize_covariates: True
   behavior_dim: 8
   sparse_constraints: True
   datasets:

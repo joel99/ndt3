@@ -39,7 +39,7 @@ from context_general_bci.task_io import task_modules
 from context_general_bci.utils import enum_backport
 
 logger = logging.getLogger(__name__)
-
+DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy']
 class BrainBertInterface(pl.LightningModule):
     r"""
         I know I'll end up regretting this name.
@@ -774,15 +774,20 @@ class BrainBertInterface(pl.LightningModule):
         return out
 
     # ==================== Optimization ====================
-    def common_log(self, metrics, prefix='', **kwargs):
+    def common_log(
+        self,
+        metrics,
+        prefix='',
+        kinematic_labels=DEFAULT_KIN_LABELS,
+        **kwargs
+    ):
         for m in metrics:
             if not isinstance(m, Metric) and not isinstance(m, Output) and 'update' not in m: # log misc, mostly task losses
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
             if m == Metric.kinematic_r2 or m == Metric.kinematic_r2_thresh:
-                labels = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy']
                 for i, r2 in enumerate(metrics[m]):
-                    self.log(f'{prefix}_{m.value}_{labels[i]}', r2, **kwargs)
+                    self.log(f'{prefix}_{m.value}_{kinematic_labels[i]}', r2, **kwargs)
                 self.log(f'{prefix}_{m.value}', metrics[m].mean(), **kwargs)
             else:
                 self.log(f'{prefix}_{m.value}', metrics[m], **kwargs)
@@ -801,14 +806,19 @@ class BrainBertInterface(pl.LightningModule):
                     token_count_approx = self.all_gather(self.token_seen_approx).sum()
                     self.log('token_seen', token_count_approx, rank_zero_only=True)
 
-        self.common_log(metrics, prefix='train')
+        self.common_log(
+            metrics,
+            prefix='train',
+            kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
+        )
         return metrics['loss']
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         all_metrics = []
-        if getattr(self.cfg, 'val_iters', 1) > 1:
+        if self.cfg.val_iters > 1:
+            assert not self.data_attrs.tokenize_covariates, "We don't know how to combine multiple different R2s at the moment"
             clean = deepcopy(batch) # not intended to be efficient, quick and dirty
-        for i in range(getattr(self.cfg, 'val_iters', 1)):
+        for i in range(self.cfg.val_iters):
             if i > 0:
                 batch = deepcopy(clean)
             all_metrics.append(self._step(batch))
@@ -819,9 +829,13 @@ class BrainBertInterface(pl.LightningModule):
             else:
                 metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
 
-        # if Metric.kinematic_r2 in metrics:
-            # print('Val debug: ', metrics[Metric.kinematic_r2])
-        self.common_log(metrics, prefix='val' if dataloader_idx == 0 else 'eval', sync_dist=True, add_dataloader_idx=False)
+        self.common_log(
+            metrics,
+            prefix='val' if dataloader_idx == 0 else 'eval',
+            sync_dist=True,
+            add_dataloader_idx=False,
+            kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
+        )
         # return None metrics['loss']
         # if dataloader_idx == 0:
             # return metrics['loss']
@@ -831,7 +845,10 @@ class BrainBertInterface(pl.LightningModule):
         r"""
             Note test step isn't capable of returning non-metrics. (use `predict` to get outputs)
         """
-        metrics = self._step(batch, eval_mode=False)
+        metrics = self._step(
+            batch, eval_mode=False,
+            kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
+        )
         # metrics = self._step(batch, eval_mode=True)
         self.common_log(metrics, prefix='test')
         return metrics

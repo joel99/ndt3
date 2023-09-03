@@ -1,6 +1,7 @@
 from typing import Tuple, Dict, List, Optional, Any
 from pathlib import Path
 import abc
+import itertools
 import numpy as np
 import torch
 from torch import nn
@@ -1125,6 +1126,9 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         )
         if self.encodes:
             batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
+        else:
+            batch[f'{self.handle}_query'] = self.injector.make_query(batch[self.cfg.behavior_target])
+
         if self.cfg.decode_strategy != EmbedStrat.token or self.cfg.decode_separate:
             return batch
         logger.warning('Legacy injection path - should this be running?')
@@ -1134,7 +1138,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
         covariates = batch[self.cfg.behavior_target] # Assume B x T x Cov_Dims
-        breakpoint()
         # TOKENIZATION (should probably move to dataloader)
         # Tokenized behavior should be B (T Cov_Dims) H=1. Initialize time space before we do this.
         if DataKey.covariate_time not in batch:
@@ -1401,16 +1404,30 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
         batch_out['loss'] = loss
         if Metric.kinematic_r2 in self.cfg.metrics:
-            if self.served_tokenized_covariates:
-                breakpoint() # TODO reenable R2 given new tokenized
             valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
-            if self.cfg.decode_tokenize_dims:
+            if self.served_tokenized_covariates:
+                # Compute the unique covariate labels, and their repsective position indices.
+                # Then pull R2 accordingly. Lord knows this isn't the most efficient, but...
+                dims_per = torch.tensor([len(i) for i in batch[DataKey.covariate_labels]], device=batch[f'{DataKey.covariate_space}_target'].device).cumsum(0)
+                batch_shifted_positions = batch[f'{DataKey.covariate_space}_target'] + (dims_per - dims_per[0]).unsqueeze(-1)
+                flat_labels = np.array(list(itertools.chain.from_iterable(batch[DataKey.covariate_labels])))
+                unique_labels, label_indices = np.unique(flat_labels, return_inverse=True)
+                range_reference = np.arange(len(flat_labels))
+                r2_scores = []
+                batch_shifted_positions = batch_shifted_positions[r2_mask].flatten().cpu()
+                for i, l in enumerate(unique_labels):
+                    unique_indices = torch.as_tensor(range_reference[label_indices == i])
+                    submask = torch.isin(batch_shifted_positions, unique_indices)
+                    r2_scores.append(r2_score(valid_tgt[submask], valid_bhvr[submask]))
+                batch_out[Metric.kinematic_r2] = np.array(r2_scores)
+                batch[DataKey.covariate_labels] = unique_labels
+            elif self.cfg.decode_tokenize_dims:
                 # extract the proper subsets according to space (for loop it) - per-dimension R2 is only relevant while dataloading maintains consistent dims (i.e. not for long) but in the meanwhile
                 r2_scores = []
                 positions = batch[f'{DataKey.covariate_space}_target'][r2_mask].flatten().cpu() # flatten as square full batches won't autoflatten B x T but does flatten B x T x 1
-                for i in range(self.cov_dims):
+                for i in positions.unique():
                     r2_scores.append(r2_score(valid_tgt[positions == i], valid_bhvr[positions == i]))
                 batch_out[Metric.kinematic_r2] = np.array(r2_scores)
             else:

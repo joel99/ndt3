@@ -3,9 +3,6 @@ defaults:
   - _default
 model:
   task:
-    tasks: [ModelTask.shuffle_infill]
     context_prompt_time_thresh: 100
-# dataset:
-  # sparse_rewards: True
 train:
   batch_size: 16
