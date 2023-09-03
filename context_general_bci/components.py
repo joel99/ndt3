@@ -366,7 +366,6 @@ class SpaceTimeTransformer(nn.Module):
             We assume that the provided trial and temporal context is consistently shaped. i.e. any context provided is provided for all samples.
             (So attention masks do not vary across batch)
         """
-        # print(src.size())
         # breakpoint()
         src = self.dropout_in(src)
         # === Embeddings ===
@@ -403,6 +402,7 @@ class SpaceTimeTransformer(nn.Module):
                 memory_key_padding_mask=memory_padding_mask
             )
             if output.isnan().any():
+                raise ValueError('NaN in output')
                 breakpoint()
         else:
             if padding_mask is not None:

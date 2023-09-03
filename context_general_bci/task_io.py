@@ -1374,7 +1374,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             padding_mask=batch.get(f'{self.handle}_{DataKey.padding}_target', None),
         )
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
-
         loss = self.compute_loss(bhvr, bhvr_tgt)
         if self.cfg.behavior_fit_thresh:
             loss_mask = length_mask & (bhvr_tgt.abs() > self.cfg.behavior_fit_thresh).any(-1)

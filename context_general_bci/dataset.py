@@ -428,6 +428,7 @@ class SpikingDataset(Dataset):
                         data_items[DataKey.covariate_space] = torch.zeros(1, dtype=int)
                         data_items[DataKey.covariate_labels] = ['null']
                     else:
+                        # breakpoint()
                         mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
                         if self.z_score and trial[MetaKey.session] in self.z_score:
                             per_zscore = self.z_score[trial[MetaKey.session]]
@@ -534,22 +535,18 @@ class SpikingDataset(Dataset):
                     if k == DataKey.constraint:
                         constraint = b[k]
                         if self.cfg.sparse_constraints: # sparse and time delimited, check time
-                            if DataKey.constraint_time in b:
-                                constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) & (b[DataKey.constraint_time] >= crop_start[i])
-                                constraint = constraint[constraint_mask]
-                                if DataKey.constraint_space in b:
-                                    constraint_space = b[DataKey.constraint_space][constraint_mask]
-                                    stack_batch[DataKey.constraint_space].append(constraint_space)
-                                constraint_time = b[DataKey.constraint_time][constraint_mask] - crop_start[i]
-                                stack_batch[DataKey.constraint_time].append(constraint_time)
-                            else:
-                                stack_batch[DataKey.constraint_time].append(torch.arange(constraint.size(0))) # assume no crop, non tokenized, or something...
-                                # Don't bother with space in this case, but in general, this path is alarming and shouldn't be hit
-                                breakpoint()
+                            # Assumes constraint time is available
+                            constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) & (b[DataKey.constraint_time] >= crop_start[i])
+                            constraint = constraint[constraint_mask]
+                            if DataKey.constraint_space in b:
+                                constraint_space = b[DataKey.constraint_space][constraint_mask]
+                                stack_batch[DataKey.constraint_space].append(constraint_space)
+                            constraint_time = b[DataKey.constraint_time][constraint_mask] - crop_start[i]
+                            stack_batch[DataKey.constraint_time].append(constraint_time)
                         else:
+                            raise NotImplementedError
                             print("Shouldn't we be subsetting dense constraints according to covariate time")
                             breakpoint()
-                            raise NotImplementedError
                         stack_batch[k].append(constraint)
                     elif k in [DataKey.constraint_time, DataKey.constraint_space]:
                         pass # treated above

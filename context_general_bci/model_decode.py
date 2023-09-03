@@ -422,7 +422,6 @@ class BrainBertInterfaceDecoder(pl.LightningModule):
             position = torch.arange(c, device=spikes.device).unsqueeze(0).unsqueeze(0).expand(b, t, c).flatten(1)
 
         # * Quirk (to fix) of decoding process - context tokens receive flag for encoder but not for decoder...
-        # breakpoint()
         trial_context_with_flag = []
         trial_context_without_flag = []
         if self.session_embed is not None:

@@ -16,7 +16,6 @@ experiment_sets = [
 
 # Get all runs in the project
 runs = api.runs(project_name)
-# breakpoint()
 # Filter runs
 filtered_runs = [
     run for run in runs if 'test' in run.name or run.config.get('experiment_set') in experiment_sets \

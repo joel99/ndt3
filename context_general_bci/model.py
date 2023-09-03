@@ -577,7 +577,6 @@ class BrainBertInterface(pl.LightningModule):
                 stim: B T C H
                 channel_counts: B A (counts per array)
         """
-        # breakpoint()
         batch_out: Dict[str, torch.Tensor] = {}
         if Output.spikes in self.cfg.task.outputs:
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
@@ -789,8 +788,10 @@ class BrainBertInterface(pl.LightningModule):
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
             if m == Metric.kinematic_r2 or m == Metric.kinematic_r2_thresh:
-                for i, r2 in enumerate(metrics[m]):
-                    self.log(f'{prefix}_{m.value}_{kinematic_labels[i]}', r2, **kwargs)
+                if not self.data_attrs.tokenize_covariates: # Heterogeneous, just hangs the DDP procs. Either we maintain the global list and report 0s, or we drop.
+                    # For now, let's just drop.
+                    for i, r2 in enumerate(metrics[m]):
+                        self.log(f'{prefix}_{m.value}_{kinematic_labels[i]}', r2, **kwargs)
                 self.log(f'{prefix}_{m.value}', metrics[m].mean(), **kwargs)
             else:
                 self.log(f'{prefix}_{m.value}', metrics[m], **kwargs)
