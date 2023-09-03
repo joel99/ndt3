@@ -103,6 +103,7 @@ class BrainBertInterface(pl.LightningModule):
                 debug_override_dropout_out=getattr(cfg.transformer, 'debug_override_dropout_io', False),
                 context_integration=getattr(cfg.transformer, 'context_integration', 'in_context'),
                 embed_space=cfg.transformer.embed_space,
+                allow_embed_padding=True,
             )
         self.bind_io()
         self.novel_params: List[str] = [] # for fine-tuning
@@ -530,8 +531,8 @@ class BrainBertInterface(pl.LightningModule):
         times, _ = pack([*pipeline_times, trial_times], 'b *')
         space, _ = pack([*pipeline_space, trial_space], 'b *')
         pipeline_padding, _ = pack([*pipeline_padding, trial_padding], 'b *')
-        if not pipeline_padding.any():
-            breakpoint()
+        # if not pipeline_padding.any():
+            # breakpoint()
 
         outputs: torch.Tensor = self.backbone(
             pipeline_context,

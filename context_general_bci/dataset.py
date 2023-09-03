@@ -424,8 +424,8 @@ class SpikingDataset(Dataset):
                 elif k == DataKey.bhvr_vel:
                     if k not in payload:
                         data_items[k] = torch.zeros((1, 1)) # null
-                        data_items[DataKey.covariate_time] = torch.tensor([self.cfg.pad_time_value])
-                        data_items[DataKey.covariate_space] = torch.zeros(1)
+                        data_items[DataKey.covariate_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
+                        data_items[DataKey.covariate_space] = torch.zeros(1, dtype=int)
                         data_items[DataKey.covariate_labels] = ['null']
                     else:
                         mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
@@ -451,7 +451,7 @@ class SpikingDataset(Dataset):
                             default_dim = bhvr_dim if self.cfg.tokenize_covariates else self.cfg.behavior_dim
                             data_items[k] = torch.zeros((1, 3, default_dim)) # add an initial token indicating no constraint
                             # data_items[k] = torch.zeros((1, min(self.cfg.behavior_dim, payload[DataKey.bhvr_vel].size(-1)))) # add an initial token indicating no constraint
-                            data_items[DataKey.constraint_time] = torch.tensor([self.cfg.pad_time_value])
+                            data_items[DataKey.constraint_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
                         else:
                             # check for change
                             constraint_dense = payload[k]
@@ -476,7 +476,7 @@ class SpikingDataset(Dataset):
                     if k not in payload: # add padding so things compile
                         data_items[DataKey.task_return] = torch.tensor([self.pad_value]).unsqueeze(0)
                         data_items[DataKey.task_reward] = torch.tensor([self.pad_value]).unsqueeze(0)
-                        data_items[DataKey.task_return_time] = torch.tensor([self.cfg.pad_time_value])
+                        data_items[DataKey.task_return_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
                     else:
                         # Not sure this is legitimate
                         if self.cfg.sparse_rewards:
@@ -637,7 +637,7 @@ class SpikingDataset(Dataset):
                         DataKey.constraint_time,
                         DataKey.task_return_time,
                         DataKey.covariate_time
-                    ] else self.cfg.pad_time_value)
+                    ] else self.cfg.max_trial_length)
             else:
                 stack_batch[k] = torch.stack(stack_batch[k])
         stack_batch[LENGTH_KEY] = lengths

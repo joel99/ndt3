@@ -220,7 +220,7 @@ class TransformerConfig:
     learnable_position: bool = False
     scale_sin: bool = False # per https://proceedings.mlr.press/v162/hua22a/hua22a.pdf
 
-    max_trial_length: int = 250 # This is in BINS for the position encoding Ideally we can bind this to DatasetConfig.max_trial_length
+    max_trial_length: int = 250 # This is in BINS for the position encoding, not bound to dataset config for easy transfer
 
     transform_space: bool = False # match ModelConfig.transform_space
     flat_encoder: bool = False # for serve_tokens_flat
@@ -512,7 +512,8 @@ class DatasetConfig:
     # This will be the # of tokens served; be generous because we will crop in any flat task.
     # ! note that the above is going to be strictly more than amount proc-ed in encoder-decoder encoder -- since things are cropped.
     pad_value: int = 0
-    pad_time_value: int = 400 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
+    # pad_time_value defaults to max trial length (in bins)
+    # pad_time_value: int = 400 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
     pad_spike_value: int = 0 # extra thing just for spikes, which we can typically afford to keep low w/o consequence. Sometimes above pad value (which applies for time/space values) needs to be set higher than 0 to avoid nan attn, typically for co-bps
     # pad_value: int = 20
 
@@ -645,6 +646,8 @@ def propagate_config(config: RootConfig):
         This step only needs to happen when we read from a YAML, i.e. wandb should only store propagated versions.
     """
     config.dataset.neurons_per_token = config.model.neurons_per_token
+    assert config.model.transformer.max_trial_length >= config.dataset.max_trial_length, "max_trial_length in model must exceed that served by dataset"
+    # config.model.transformer.max_trial_length = config.dataset.max_trial_length
 
     config.model.transformer.n_state = config.model.hidden_size
     config.model.transformer.dropout = config.model.dropout

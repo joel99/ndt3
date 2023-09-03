@@ -685,6 +685,7 @@ class ShuffleInfill(SpikeBase):
             debug_override_dropout_in=getattr(cfg.transformer, 'debug_override_dropout_io', False),
             context_integration=cfg.transformer.context_integration,
             embed_space=cfg.transformer.embed_space,
+            allow_embed_padding=True,
         )
         self.max_spatial = data_attrs.max_spatial_tokens
         self.causal = cfg.causal
@@ -1055,7 +1056,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             self.cfg.behavior_target if not self.encodes else f'{self.handle}_target',
             force_zero_mask=self.decode_cross_attn and not self.cfg.decode_tokenize_dims
         )
-        self.time_pad = cfg.transformer.max_trial_length
         self.cov_dims = data_attrs.behavior_dim
         self.covariate_blacklist_dims = torch.tensor(self.cfg.covariate_blacklist_dims)
         if self.cfg.decode_separate: # If we need additional cross-attention to decode. Not needed if mask tokens are procssed earlier.

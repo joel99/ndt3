@@ -389,6 +389,8 @@ class SpaceTimeTransformer(nn.Module):
                 memory_mask = repeat(memory_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
             # convert padding masks to float to suppress torch 2 warnings - TODO bake into generation to save op
             if padding_mask is not None:
+                # ! Allow attention if full sequence is padding - no loss will be computed...
+                padding_mask[padding_mask.all(1)] = False
                 padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
             if memory_padding_mask is not None:
                 memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
