@@ -39,7 +39,7 @@ from context_general_bci.task_io import task_modules
 from context_general_bci.utils import enum_backport
 
 logger = logging.getLogger(__name__)
-DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy']
+DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'null']
 class BrainBertInterface(pl.LightningModule):
     r"""
         I know I'll end up regretting this name.
@@ -525,12 +525,14 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_times = [pipeline_times[i] for i in filtered]
         pipeline_space = [pipeline_space[i] for i in filtered]
         pipeline_padding = [pipeline_padding[i] for i in filtered]
-
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
         pipeline_context, ps = pack([*pipeline_context, trial_context], 'b * h')
         times, _ = pack([*pipeline_times, trial_times], 'b *')
         space, _ = pack([*pipeline_space, trial_space], 'b *')
         pipeline_padding, _ = pack([*pipeline_padding, trial_padding], 'b *')
+        if not pipeline_padding.any():
+            breakpoint()
+
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             padding_mask=pipeline_padding,

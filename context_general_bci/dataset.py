@@ -94,6 +94,10 @@ class DataAttrs:
 
     @property
     def max_spatial_tokens(self):
+        return max(self.behavior_dim, self.max_spatial_tokens_neural)
+
+    @property
+    def max_spatial_tokens_neural(self):
         per_array = ceil(self.max_channel_count / self.neurons_per_token)
         if self.serve_tokens:
             return per_array
@@ -422,7 +426,7 @@ class SpikingDataset(Dataset):
                         data_items[k] = torch.zeros((1, 1)) # null
                         data_items[DataKey.covariate_time] = torch.zeros(1)
                         data_items[DataKey.covariate_space] = torch.zeros(1)
-                        data_items[DataKey.covariate_labels] = []
+                        data_items[DataKey.covariate_labels] = ['null']
                     else:
                         mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
                         if self.z_score and trial[MetaKey.session] in self.z_score:
@@ -565,6 +569,7 @@ class SpikingDataset(Dataset):
                     elif k in [DataKey.task_return_time, DataKey.task_reward]:
                         pass # treated above
                     elif k == DataKey.bhvr_vel:
+                        covariate_key = k
                         covariate = b[k]
                         covariate_time_mask = (b[DataKey.covariate_time] < crop_start[i] + time_budget[i]) & (b[DataKey.covariate_time] >= crop_start[i])
                         covariate = covariate[covariate_time_mask]

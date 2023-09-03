@@ -5,4 +5,4 @@ model:
   task:
     context_prompt_time_thresh: 100
 train:
-  batch_size: 16
+  batch_size: 8 # Will use 80G

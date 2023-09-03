@@ -298,6 +298,7 @@ class ConstraintPipeline(ContextPipeline):
         if not self.cfg.decode_tokenize_dims: # already flattened
             padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
             constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
+        # print(f'Constraint Space range: [{space.min()}, {space.max()}]')
         return (
             constraint_embed,
             time,
@@ -543,6 +544,7 @@ class SpikeContext(ContextPipeline):
         time = batch[DataKey.time]
         space = batch[DataKey.position] + 1 # reserve 0 for trial context
         padding = batch[DataKey.padding] # Padding should be made in the `update` step
+        # print(f'Spike Space range: [{space.min()}, {space.max()}]')
         return spikes, time, space, padding
 
     # TODO implement... needed to make sure spikes are encoded now that we've delegated internally
@@ -1216,6 +1218,9 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
             constraint = self.encode_constraint(batch[DataKey.constraint]) # B T H Bhvr_Dim. Straight up not sure how to collapse non-losslessly - we just mean pool for now.
             enc = enc + constraint
+        # if batch[DataKey.covariate_space].max() > 7:
+            # print(f'Space range: [{batch[DataKey.covariate_space].min()}, {batch[DataKey.covariate_space].max()}]')
+            # breakpoint()
         return (
             enc,
             batch[DataKey.covariate_time],
@@ -1420,6 +1425,10 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 for i, l in enumerate(unique_labels):
                     unique_indices = torch.as_tensor(range_reference[label_indices == i])
                     submask = torch.isin(batch_shifted_positions, unique_indices)
+                    if not submask.any(): # Unlucky, shouldn't occur if we predict more.
+                        # breakpoint()
+                        r2_scores.append(0)
+                        continue
                     r2_scores.append(r2_score(valid_tgt[submask], valid_bhvr[submask]))
                 batch_out[Metric.kinematic_r2] = np.array(r2_scores)
                 batch[DataKey.covariate_labels] = unique_labels

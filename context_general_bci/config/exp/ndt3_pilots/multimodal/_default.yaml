@@ -18,9 +18,10 @@ model:
     covariate_mask_ratio: 0.5
   transformer:
     n_layers: 8
+  use_full_encode: True
 dataset:
   tokenize_covariates: True
-  behavior_dim: 8
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
   sparse_constraints: True
   datasets:
   - pitt_return.* # Currently has obs, ortho, fbc, helicopter rescue
@@ -32,5 +33,6 @@ dataset:
   # - DataKey.task_return
 train:
   patience: 50
-  autoscale_batch_size: true
+  autoscale_batch_size: False
   effective_batch_size: 512
+  batch_size: 4 # Huge L - we're bottlenecked by some singularly large behavioral trajs. Need some kind of cropping policy...
