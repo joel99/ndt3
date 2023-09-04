@@ -16,7 +16,7 @@ from einops import rearrange, reduce, repeat
 import logging
 logger = logging.getLogger(__name__)
 
-from context_general_bci.config import DataKey, DatasetConfig, PittConfig
+from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
@@ -365,7 +365,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 covariate_dims = []
                 covariate_reduced = []
                 constraints_reduced = []
-                labels = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f']
+                labels = DEFAULT_KIN_LABELS
                 if covariates is not None:
                     for i, cov in enumerate(covariates.T):
                         if cov.any(): # i.e. nonempty

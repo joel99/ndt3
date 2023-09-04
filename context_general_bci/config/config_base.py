@@ -4,6 +4,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from omegaconf import MISSING
 
+DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null']
 LENGTH = 'length'
 
 # Convention note to self - switching to lowercase, which is more readable and much less risky now that
@@ -500,8 +501,9 @@ class DatasetConfig:
     behavior_dim: int = 2
 
     tokenize_covariates: bool = False # Global preproc req. Should significantly change proc in CovariateReadout
+    # Experimental config to test for signs of life in multimodal case.
     semantic_positions: bool = False # If covariates are tokenize, reserve specific dims for specific semantics (makes most sense in ctx of Pitt only exps)
-    pad_positions: int = 0 # Pad to global number of positions, if >0.
+    pad_positions: bool = False # Pad to global number of positions; for debugging and only pads to explicit DEFAULT_KIN_LABELS
 
     sparse_constraints: bool = False
     sparse_rewards: bool = False

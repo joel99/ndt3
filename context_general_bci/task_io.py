@@ -1043,6 +1043,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             data_attrs=data_attrs
         )
         self.served_tokenized_covariates = data_attrs.tokenize_covariates
+        self.served_semantic_covariates = data_attrs.semantic_covariates
         if self.inject_constraint_tokens: # if they're injected, we don't need these params in kinematic
             if hasattr(self, 'constraint_cls'):
                 del self.constraint_cls
@@ -1411,7 +1412,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
-            if self.served_tokenized_covariates:
+            if self.served_tokenized_covariates and not self.served_semantic_covariates: # If semantic, we don't need to reorganize
                 # Compute the unique covariate labels, and their repsective position indices.
                 # Then pull R2 accordingly. Lord knows this isn't the most efficient, but...
                 dims_per = torch.tensor([len(i) for i in batch[DataKey.covariate_labels]], device=batch[f'{DataKey.covariate_space}_target'].device).cumsum(0)

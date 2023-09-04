@@ -24,6 +24,7 @@ from context_general_bci.config import (
     DataKey,
     MetaKey,
     Architecture,
+    DEFAULT_KIN_LABELS
 )
 
 from context_general_bci.dataset import DataAttrs, LENGTH_KEY, CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
@@ -39,7 +40,6 @@ from context_general_bci.task_io import task_modules
 from context_general_bci.utils import enum_backport
 
 logger = logging.getLogger(__name__)
-DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'null']
 class BrainBertInterface(pl.LightningModule):
     r"""
         I know I'll end up regretting this name.

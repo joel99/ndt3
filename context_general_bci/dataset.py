@@ -20,7 +20,7 @@ from einops import rearrange, repeat
 
 import lightning.pytorch as pl
 
-from context_general_bci.config import DatasetConfig, MetaKey, DataKey
+from context_general_bci.config import DatasetConfig, MetaKey, DataKey, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectArrayRegistry
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.tasks import ExperimentalTask
@@ -91,6 +91,7 @@ class DataAttrs:
     sparse_constraints: bool = False
     sparse_rewards: bool = False # also counts for return
     tokenize_covariates: bool = False
+    semantic_covariates: bool = False
 
     @property
     def max_spatial_tokens(self):
@@ -423,12 +424,29 @@ class SpikingDataset(Dataset):
                     data_items[k] = torch.full(list(self.cfg.heldout_key_spoof_shape), fill_value=self.pad_value)
                 elif k == DataKey.bhvr_vel:
                     if k not in payload:
-                        data_items[k] = torch.zeros((1, 1)) # null
-                        data_items[DataKey.covariate_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
-                        data_items[DataKey.covariate_space] = torch.zeros(1, dtype=int)
-                        data_items[DataKey.covariate_labels] = ['null']
+                        if self.cfg.tokenize_covariates:
+                            if self.cfg.pad_positions:
+                                data_items[k] = torch.zeros(len(DEFAULT_KIN_LABELS), 1)
+                                data_items[DataKey.covariate_time] = torch.tensor([self.cfg.max_trial_length] * len(DEFAULT_KIN_LABELS), dtype=int)
+                                data_items[DataKey.covariate_space] = torch.arange(len(DEFAULT_KIN_LABELS))
+                                data_items[DataKey.covariate_labels] = DEFAULT_KIN_LABELS
+                            else:
+                                data_items[k] = torch.zeros((1, 1)) # null
+                                data_items[DataKey.covariate_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
+                                if self.cfg.semantic_positions:
+                                    cov_space = torch.tensor([DEFAULT_KIN_LABELS.index('null')], dtype=int)
+                                    cov_labels = ['null']
+                                else:
+                                    cov_space = torch.zeros(1, dtype=int)
+                                    cov_labels = ['null']
+                                data_items[DataKey.covariate_space] = cov_space
+                                data_items[DataKey.covariate_labels] = cov_labels
+                        else:
+                            data_items[k] = torch.zeros((1, self.cfg.behavior_dim))
+                            data_items[DataKey.covariate_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
                     else:
                         # breakpoint()
+                        cov_labels = payload[DataKey.covariate_labels] if DataKey.covariate_labels in payload else payload['covariate_dims'] # TODO deprecate 'covariate_dims'
                         mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
                         if self.z_score and trial[MetaKey.session] in self.z_score:
                             per_zscore = self.z_score[trial[MetaKey.session]]
@@ -436,14 +454,21 @@ class SpikingDataset(Dataset):
                             std = per_zscore['std']
                         cov = (payload[k] - mean) / std
                         if self.cfg.tokenize_covariates:
-                            data_items[DataKey.covariate_space] = repeat(torch.arange(cov.size(1)), 'b -> (t b)', t=cov.size(0))
+                            # breakpoint()
+                            base_space = torch.tensor([DEFAULT_KIN_LABELS.index(i) for i in cov_labels], dtype=int) if self.cfg.semantic_positions else torch.arange(cov.size(1))
+                            if self.cfg.pad_positions:
+                                # Add space, change data itself, add base labels
+                                other_space = torch.tensor([i for i in range(len(DEFAULT_KIN_LABELS)) if i not in base_space], dtype=int)
+                                base_space = torch.cat([base_space, other_space])
+                                cov_labels = [*cov_labels, *[DEFAULT_KIN_LABELS[i] for i in other_space]]
+                                cov = F.pad(cov, (0, len(other_space)), value=self.pad_value)
+                            data_items[DataKey.covariate_space] = repeat(base_space, 'b -> (t b)', t=cov.size(0))
                             data_items[DataKey.covariate_time] = repeat(torch.arange(cov.size(0)), 't -> (t b)', b=cov.size(1))
                             cov = rearrange(cov, 't b -> (t b) 1')
                         else:
                             data_items[DataKey.covariate_time] = torch.arange(cov.size(0))
                         data_items[k] = cov
-                        # data_items[DataKey.covariate_labels] = payload[DataKey.covariate_labels]
-                        data_items[DataKey.covariate_labels] = payload['covariate_dims'] # TODO bake DataKey down
+                        data_items[DataKey.covariate_labels] = cov_labels
                 elif k == DataKey.constraint: # T x Constraint_Dim x Bhvr_dim
                     # Current implementation assumes fixed shape
                     if self.cfg.sparse_constraints:
@@ -731,6 +756,7 @@ class SpikingDataset(Dataset):
             sparse_constraints=self.cfg.sparse_constraints,
             sparse_rewards=self.cfg.sparse_rewards,
             tokenize_covariates=self.cfg.tokenize_covariates,
+            semantic_covariates=self.cfg.semantic_positions,
         )
 
     # ==================== Data splitters ====================
