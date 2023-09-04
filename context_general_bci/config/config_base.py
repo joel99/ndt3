@@ -500,6 +500,9 @@ class DatasetConfig:
     behavior_dim: int = 2
 
     tokenize_covariates: bool = False # Global preproc req. Should significantly change proc in CovariateReadout
+    semantic_positions: bool = False # If covariates are tokenize, reserve specific dims for specific semantics (makes most sense in ctx of Pitt only exps)
+    pad_positions: int = 0 # Pad to global number of positions, if >0.
+
     sparse_constraints: bool = False
     sparse_rewards: bool = False
     return_horizon_s: float = 10. # lookahead for return computation

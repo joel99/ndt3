@@ -442,6 +442,7 @@ class SpikingDataset(Dataset):
                         else:
                             data_items[DataKey.covariate_time] = torch.arange(cov.size(0))
                         data_items[k] = cov
+                        # data_items[DataKey.covariate_labels] = payload[DataKey.covariate_labels]
                         data_items[DataKey.covariate_labels] = payload['covariate_dims'] # TODO bake DataKey down
                 elif k == DataKey.constraint: # T x Constraint_Dim x Bhvr_dim
                     # Current implementation assumes fixed shape

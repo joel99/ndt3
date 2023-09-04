@@ -272,9 +272,15 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Force
             if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
+                # This needs a repull - it's got weird, incorrect values.
                 # breakpoint()
                 # I do believe force velocity is still a helpful, used concept? For more symmetry with other dimensions
                 # Just minimize smoothing
+                if (payload['force'][~payload['force'].isnan()] != 0).sum() > 10: # Some small number of non-zero, not interesting enough.
+                    # Heuristic to identify interesting variability.
+                    breakpoint()
+                else:
+                    print('dud force')
                 covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
@@ -383,7 +389,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 global_args['cov_min'] = payload['cov_min']
                 global_args['cov_max'] = payload['cov_max']
             if cfg.tokenize_covariates:
-                global_args['covariate_dims'] = covariate_dims
+                global_args[DataKey.covariate_labels] = covariate_dims
 
 
             for i, trial_spikes in enumerate(spikes):

@@ -1,0 +1,18 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - pitt_return.* # Currently has obs, ortho, fbc, helicopter rescue
+  sparse_rewards: True
+  data_keys:
+  - DataKey.spikes
+  - DataKey.constraint
+  # - DataKey.bhvr_vel
+  - DataKey.task_return
+model:
+  task:
+    context_prompt_time_thresh: 100
+    tasks: [ModelTask.shuffle_infill, ModelTask.constraints, ModelTask.return_context]
+# train:
+  # batch_size: 16

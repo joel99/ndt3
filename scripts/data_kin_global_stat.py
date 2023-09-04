@@ -26,7 +26,6 @@ from context_general_bci.utils import wandb_query_latest
 # _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 cfg = ScaleHistoryDatasetConfig()
 cfg.datasets = ['pitt_test_.*']
-
 cfg.odoherty_rtt.include_sorted = False
 cfg.odoherty_rtt.arrays = ['Indy-M1', 'Loco-M1']
 # cfg.datasets = ['odoherty_rtt.*']
@@ -51,6 +50,8 @@ session_stats = defaultdict(list)
 for t in range(len(dataset)):
     print(dataset.meta_df.iloc[t][MetaKey.unique])
     session_stats[dataset.meta_df.iloc[t][MetaKey.session]].append(dataset[t][DataKey.bhvr_vel])
+    print(dataset[t][DataKey.bhvr_vel].shape)
+    break
 for session in session_stats:
     session_stats[session] = torch.cat(session_stats[session], 0)
 
