@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    task_weights: [1.0]
+    tasks: [ModelTask.kinematic_decoding, ModelTask.constraints]
+train:
+  batch_size: 4
+inherit_tag: multi

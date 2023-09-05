@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  sparse_rewards: True
+  data_keys:
+  - DataKey.spikes
+  - DataKey.constraint
+  - DataKey.bhvr_vel
+  - DataKey.task_return
+model:
+  task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints, ModelTask.return_context]
+train:
+  batch_size: 4
+inherit_tag: multi
