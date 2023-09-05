@@ -13,7 +13,6 @@ import functools
 from .context_info import (
     ContextInfo,
     ReachingContextInfo,
-    PassiveICMSContextInfo,
     RTTContextInfo,
     DyerCOContextInfo,
     GallegoCOContextInfo,

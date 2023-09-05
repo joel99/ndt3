@@ -21,7 +21,7 @@ from context_general_bci.config import DataKey, DatasetConfig
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
-
+RTT_DEFAULT_KIN_LABELS = ['y', 'z']
 
 @ExperimentalTaskRegistry.register
 class ODohertyRTTLoader(ExperimentalTaskLoader):
@@ -145,16 +145,28 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
              ) # Trial x C x chop_size (time)
 
         full_spikes = compress_vector(spike_arr)
+        global_args = {}
         if cfg.odoherty_rtt.load_covariates:
-            for bhvr in bhvr_vars:
+            for bhvr in [DataKey.bhvr_vel]:
+            # for bhvr in bhvr_vars:
                 bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr])
+        if cfg.odoherty_rtt.minmax: # Note we apply after chop, which also includes binning
+            global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
+            global_args['cov_min'] = bhvr_vars[bhvr].flatten(end_dim=-2).min(0).values
+            global_args['cov_max'] = bhvr_vars[bhvr].flatten(end_dim=-2).max(0).values
+            rescale = global_args['cov_max'] - global_args['cov_min']
+            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+            bhvr_vars[bhvr] = (bhvr_vars[bhvr] - global_args['cov_mean']) / rescale
+
+        if cfg.tokenize_covariates:
+            global_args[DataKey.covariate_labels] = RTT_DEFAULT_KIN_LABELS
         meta_payload = {}
         meta_payload['path'] = []
-
         for t in range(full_spikes.size(0)):
             single_payload = {
                 DataKey.spikes: create_spike_payload(full_spikes[t], context_arrays),
                 DataKey.bhvr_vel: bhvr_vars[DataKey.bhvr_vel][t].clone(),
+                **global_args
             }
             single_path = cache_root / f'{t}.pth'
             meta_payload['path'].append(single_path)

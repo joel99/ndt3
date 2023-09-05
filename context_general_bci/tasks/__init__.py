@@ -9,7 +9,6 @@ r"""
         -  i.e. loader names must be defined in enum rather than enum pulling from loader
 """
 class ExperimentalTask(OrderedEnum):
-    passive_icms = "passive_icms"
     nlb_maze = "nlb_maze"
     nlb_rtt = "nlb_rtt"
     churchland_maze = "churchland_maze"
@@ -30,7 +29,6 @@ class ExperimentalTask(OrderedEnum):
 
 from .task_registry import ExperimentalTaskRegistry, ExperimentalTaskLoader
 # Exports
-from .passive_icms import ICMSLoader
 from .nlb import MazeLoader, RTTLoader
 from .rtt import ODohertyRTTLoader
 from .maze import ChurchlandMazeLoader

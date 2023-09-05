@@ -4,6 +4,7 @@ defaults:
 dataset:
   datasets:
   - pitt_test.* # Currently has obs, ortho, fbc, helicopter rescue
+  - odoherty_rtt.*
   sparse_rewards: True
   data_keys:
   - DataKey.spikes

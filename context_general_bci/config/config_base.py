@@ -370,6 +370,7 @@ class ExperimentalConfig:
     """
     arrays: List[str] = field(default_factory=lambda: []) # Empty list means don't filter
     firing_hz_floor: float = 0.5
+    minmax: bool = True # rescale kinematics to -1, 1
 
     def reproc_dict(self) -> Dict[str, List[str]]:
         r"""
@@ -425,7 +426,7 @@ class PittConfig(ExperimentalConfig):
     closed_loop_intention_estimation: str = ""
     limit_kin_dims: int = 8 # First 8 dims are taken (historically idx 6 is grasp velocity, 7 is grasp force)
     # clip_kinematics: float = 10.0 # we don't expect values outside this range. Something abberant is happening if we do, clip these.
-    minmax: bool = True # rescale to -1, 1
+
 
 @dataclass
 class DatasetConfig:
@@ -527,7 +528,6 @@ class DatasetConfig:
     # from `data_attrs`. Tasks may be specified to e.g. load specific subsets of targets rather than full data
     # and so Dataset must know about this; and probably better to propagate this to ModelConfig than to have
     # to track it in two places.
-    passive_icms: ExperimentalConfig = field(default_factory=ExperimentalConfig)
     nlb_maze: NLBConfig = field(default_factory=NLBConfig)
     nlb_rtt: NLBConfig = field(default_factory=NLBConfig)
     churchland_maze: MazeConfig = field(default_factory=MazeConfig)

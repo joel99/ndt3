@@ -1,4 +1,5 @@
 #%%
+# ! Not updated for NDT3 processing (with tokenized covariates etc) due to low volume.
 r"""
 A handful of clearly sorted ~700 trials from MYOW
 https://github.com/nerdslab/myow-neuro
