@@ -458,7 +458,7 @@ class SpikingDataset(Dataset):
                             bhvr_dim = payload[DataKey.bhvr_vel].size(-1) if DataKey.bhvr_vel in payload else 1
                             default_dim = bhvr_dim if self.cfg.tokenize_covariates else self.cfg.behavior_dim
                             data_items[k] = torch.zeros((1, 3, default_dim)) # add an initial token indicating no constraint
-                            data_items[DataKey.constraint_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
+                            data_items[DataKey.constraint_time] = torch.tensor([0], dtype=int) # Constraint kicks things off, not vice versa.
                         else:
                             # check for change
                             constraint_dense = payload[k]
@@ -534,6 +534,12 @@ class SpikingDataset(Dataset):
                         if self.cfg.sparse_constraints: # sparse and time delimited, check time
                             # Assumes constraint time is available
                             constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) & (b[DataKey.constraint_time] >= crop_start[i])
+                            if not constraint_mask.any():
+                                constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) # There should always be one, since there's always a constraint specified at start of trial.
+                                # Get the latest timestep specified
+                                last_valid = b[DataKey.constraint_time][constraint_mask].max()
+                                constraint_mask = (b[DataKey.constraint_time] == last_valid)
+                                b[DataKey.constraint_time][constraint_mask] = crop_start[i] # Bump up to start of crop
                             constraint = constraint[constraint_mask]
                             if DataKey.constraint_space in b:
                                 constraint_space = b[DataKey.constraint_space][constraint_mask]
@@ -566,6 +572,8 @@ class SpikingDataset(Dataset):
                         covariate_key = k
                         covariate = b[k]
                         covariate_time_mask = (b[DataKey.covariate_time] < crop_start[i] + time_budget[i]) & (b[DataKey.covariate_time] >= crop_start[i])
+                        if not covariate_time_mask.any():
+                            covariate_time_mask[-1] = True # ensure we have at least one timestep, even if OOB (optimization should more or less ignore)
                         covariate = covariate[covariate_time_mask]
                         covariate_space = b[DataKey.covariate_space][covariate_time_mask]
                         covariate_time = b[DataKey.covariate_time][covariate_time_mask] - crop_start[i]

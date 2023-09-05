@@ -148,7 +148,6 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
         if cfg.odoherty_rtt.load_covariates:
             for bhvr in bhvr_vars:
                 bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr])
-
         meta_payload = {}
         meta_payload['path'] = []
 

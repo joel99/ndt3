@@ -295,7 +295,7 @@ class ConstraintPipeline(ContextPipeline):
             shuffle_key='',
             multiplicity=bhvr_attr_factor if self.cfg.decode_tokenize_dims else 1,
         ) # Make it before constraint is flattened
-        if not self.cfg.decode_tokenize_dims: # already flattened
+        if not self.cfg.decode_tokenize_dims: # if not already flattened
             padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
             constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
         # print(f'Constraint Space range: [{space.min()}, {space.max()}]')
@@ -730,7 +730,7 @@ class ShuffleInfill(SpikeBase):
             shuffle = torch.randperm(spikes.size(1), device=spikes.device) # T mask
             shuffle_func = apply_shuffle
         # Mask ratio becomes a comment on the remainder of the data
-        encoder_frac = int((1 - mask_ratio) * spikes.size(1))
+        encoder_frac = round((1 - mask_ratio) * spikes.size(1))
         # shuffle_spikes = spikes.gather(1, shuffle.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, spikes.size(2), spikes.size(3)))
         for key in [DataKey.time, DataKey.position, DataKey.padding, CHANNEL_KEY]:
             if key in batch:
@@ -1180,7 +1180,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
         else:
             shuffle_func = apply_shuffle
-        encoder_frac = int((1 - mask_ratio) * covariates.size(1))
+        encoder_frac = round((1 - mask_ratio) * covariates.size(1))
         def shuffle_key(key):
             if key in batch:
                 shuffled = shuffle_func(batch[key], shuffle)
@@ -1293,6 +1293,9 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 decode_time = torch.cat([backbone_times, decode_time], dim=1)
                 decode_space = torch.cat([backbone_space, decode_space], dim=1)
                 other_kwargs = {}
+            # breakpoint()
+            # print('Src stream: ', decode_tokens.shape, decode_padding.shape, decode_time.shape, decode_space.shape)
+            # print('Cross stream:', other_kwargs['memory'].shape, other_kwargs['memory_padding_mask'].shape, other_kwargs['memory_times'].shape)
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=decode_padding,

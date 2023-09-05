@@ -279,7 +279,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # Just minimize smoothing
                 if (payload['force'][~payload['force'].isnan()] != 0).sum() > 10: # Some small number of non-zero, not interesting enough.
                     # Heuristic to identify interesting variability.
-                    breakpoint()
+                    # breakpoint()
+                    pass
                 else:
                     print('dud force')
                 covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))
