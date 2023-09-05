@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+- _default
+dataset:
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 30000
+model:
+  transformer:
+    max_trial_length: 1500
+  session_embed_strategy: EmbedStrat.none

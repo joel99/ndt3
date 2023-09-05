@@ -144,6 +144,8 @@ class SpikingDataset(Dataset):
             eval_contexts = self.list_alias_to_contexts(self.cfg.eval_datasets)
             exclude_contexts = [c for c in exclude_contexts if c not in eval_contexts]
             contexts = [c for c in contexts if c not in exclude_contexts]
+            if not contexts:
+                raise Exception(f"No contexts {self.cfg.datasets} left in dataset.")
             self.meta_df = pd.concat([self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]).reset_index(drop=True)
             # self.meta_df = pd.concat([self.load_single_session(c) for c in contexts]).reset_index(drop=True)
             if 'split' in self.meta_df.columns and len(self.meta_df['split'].unique()) > 1:
@@ -519,7 +521,7 @@ class SpikingDataset(Dataset):
             batch: list of dicts
         """
         stack_batch = defaultdict(list)
-        space_lengths = torch.tensor([b[DataKey.position].max() for b in batch])
+        space_lengths = torch.tensor([b[DataKey.position].max() + 1 for b in batch]) # unique space (guaranteed to be asending range)
         time_budget = (self.cfg.max_tokens // space_lengths)
         if self.max_bins:
             time_budget = time_budget.min(torch.tensor(self.max_bins))

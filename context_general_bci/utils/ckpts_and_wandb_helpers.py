@@ -51,11 +51,10 @@ def get_best_ckpt_in_dir(ckpt_dir: Path, tag="val_loss", higher_is_better=False)
         return res[np.argmin(values)]
     return res[-1] # default to newest
 
-# TODO update these
 def wandb_query_latest(
     name_kw,
     wandb_user='joelye9',
-    wandb_project='context_general_bci',
+    wandb_project='ndt3',
     exact=False,
     allow_running=False,
     use_display=False, # use exact name
@@ -106,7 +105,7 @@ def get_best_ckpt_from_wandb_id(
     ckpt_dir = Path('./data/runs/') / wandb_project / wandb_id / "checkpoints" # curious, something about checkpoint dumping isn't right
     return get_best_ckpt_in_dir(ckpt_dir, tag=tag)
 
-def get_wandb_run(wandb_id, wandb_project='context_general_bci', wandb_user="joelye9"):
+def get_wandb_run(wandb_id, wandb_project='ndt3', wandb_user="joelye9"):
     wandb_id = wandb_id.split('-')[-1]
     api = wandb.Api()
     return api.run(f"{wandb_user}/{wandb_project}/{wandb_id}")

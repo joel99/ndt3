@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from omegaconf import MISSING
 
 DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null']
+REACH_DEFAULT_KIN_LABELS = ['y', 'z']
 LENGTH = 'length'
 
 # Convention note to self - switching to lowercase, which is more readable and much less risky now that
@@ -332,7 +333,7 @@ class ModelConfig:
     max_neuron_count: int = 21 # pretty safe upper bound on number of neurons that can be embedded. Must be > data.pad_value
     max_return: int = 20 # max reward expected to embed or decode
 
-    causal: bool = False # Set this for fine-tuning
+    causal: bool = True
 
     log_backbone_norm: int = 0 # 1 for basic, 2 or higher not implemented
     log_token_seen_throughput: bool = False # for flat models - log post-crop non-padding tokens
@@ -651,7 +652,8 @@ def propagate_config(config: RootConfig):
         This step only needs to happen when we read from a YAML, i.e. wandb should only store propagated versions.
     """
     config.dataset.neurons_per_token = config.model.neurons_per_token
-    assert config.model.transformer.max_trial_length >= config.dataset.max_trial_length, "max_trial_length in model must exceed that served by dataset"
+    assert config.model.transformer.max_trial_length >= config.dataset.max_trial_length, \
+        f"max_trial_length {config.model.transformer.max_trial_length} in model must exceed that served by dataset {config.dataset.max_trial_length}"
     # config.model.transformer.max_trial_length = config.dataset.max_trial_length
 
     config.model.transformer.n_state = config.model.hidden_size

@@ -3,8 +3,10 @@ defaults:
   - _default
 dataset:
   datasets:
-  - pitt_test.* # Currently has obs, ortho, fbc, helicopter rescue
-  - odoherty_rtt.*
+  # - pitt_test.* # Currently has obs, ortho, fbc, helicopter rescue
+  # - odoherty_rtt.*
+  # - gallego.*
+  - churchland_maze.*
   sparse_rewards: True
   data_keys:
   - DataKey.spikes

@@ -15,6 +15,16 @@ import lightning.pytorch as pl
 
 
 #%%
+test = pd.read_pickle('debug.df')
+# print(test.vel.values)
+valid_vel = np.concatenate(test.vel.values)
+valid_vel = valid_vel[np.isfinite(valid_vel).any(axis=1)]
+print(valid_vel.shape)
+# sns.histplot(valid_vel.flatten())
+print(np.quantile(valid_vel, 0.99, axis=0))
+print(np.quantile(valid_vel, 0.01))
+
+#%%
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from context_general_bci.dataset import SpikingDataset, DataAttrs

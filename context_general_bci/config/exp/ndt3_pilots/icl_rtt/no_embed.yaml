@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+- _default
+model:
+  session_embed_strategy: EmbedStrat.none
+train:
+  batch_size: 64 # 4 GPU to accelerate
+  autoscale_batch_size: False

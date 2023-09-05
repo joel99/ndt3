@@ -13,6 +13,9 @@ This loader requires the PyalData package
 https://github.com/NeuralAnalysis/PyalData
 (and likely mat73)
 `pip install mat73`
+
+Notes:
+- about 4s trials, 200 trials a session.
 """
 from typing import List
 from pathlib import Path
@@ -30,7 +33,7 @@ except:
 from einops import reduce
 from scipy.signal import decimate
 
-from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
@@ -70,17 +73,37 @@ class GallegoCOLoader(ExperimentalTaskLoader):
 
         meta_payload = {}
         meta_payload['path'] = []
+        global_args = {}
+        if cfg.tokenize_covariates:
+            global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
+        if cfg.gallego_co.minmax:
+            # Aggregate velocities and get min/max
+            global_vel = np.concatenate(df.vel.values, 0)
+            # drop nans
+            global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
+            global_vel = torch.as_tensor(global_vel, dtype=torch.float)
+            global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
+            global_args['cov_min'] = torch.quantile(global_vel, 0.01, dim=0) # sufficient in a quick notebook check.
+            global_args['cov_max'] = torch.quantile(global_vel, 0.99, dim=0)
+            rescale = global_args['cov_max'] - global_args['cov_min']
+            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
 
         arrays_to_use = context_arrays
+        print(f"Global args: {global_args}")
         for trial_id in range(len(df)):
             spike_payload = {}
             for array in arrays_to_use:
                 if f'{SubjectInfo.unwrap_array(array)}_spikes' in df.columns:
                     spike_payload[array] = torch.tensor(df[f'{SubjectInfo.unwrap_array(array)}_spikes'][trial_id], dtype=torch.uint8)
                     spike_payload[array] = compress_spikes(spike_payload[array])
+            vel = compress_vel(df.vel[trial_id])
+            if cfg.gallego_co.minmax:
+                vel = (vel - global_args['cov_mean']) / rescale
+                vel = torch.clamp(vel, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
             single_payload = {
                 DataKey.spikes: spike_payload,
-                DataKey.bhvr_vel: compress_vel(df.vel[trial_id]), # T x H
+                DataKey.bhvr_vel: vel, # T x H
+                **global_args,
             }
             single_path = cache_root / f'{trial_id}.pth'
             meta_payload['path'].append(single_path)

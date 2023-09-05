@@ -499,6 +499,8 @@ class BrainBertInterface(pl.LightningModule):
         _add_context(session, getattr(self, 'session_flag', None), self.cfg.session_embed_strategy)
         _add_context(subject, getattr(self, 'subject_flag', None), self.cfg.subject_embed_strategy)
         _add_context(task, getattr(self, 'task_flag', None), self.cfg.task_embed_strategy)
+        if not static_context:
+            return [], [], [], []
         metadata_context = pack(static_context, 'b * h')[0]
         return (
             metadata_context,
@@ -520,6 +522,10 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
+        pipeline_context = [*pipeline_context, trial_context] # tuples
+        pipeline_times = [*pipeline_times, trial_times]
+        pipeline_space = [*pipeline_space, trial_space]
+        pipeline_padding = [*pipeline_padding, trial_padding]
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
         tks = [tks[i] for i in filtered]
         pipeline_context = [pipeline_context[i] for i in filtered]
@@ -527,12 +533,10 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_space = [pipeline_space[i] for i in filtered]
         pipeline_padding = [pipeline_padding[i] for i in filtered]
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
-        pipeline_context, ps = pack([*pipeline_context, trial_context], 'b * h')
-        times, _ = pack([*pipeline_times, trial_times], 'b *')
-        space, _ = pack([*pipeline_space, trial_space], 'b *')
-        pipeline_padding, _ = pack([*pipeline_padding, trial_padding], 'b *')
-        # if not pipeline_padding.any():
-            # breakpoint()
+        pipeline_context, ps = pack(pipeline_context, 'b * h')
+        times, _ = pack(pipeline_times, 'b *')
+        space, _ = pack(pipeline_space, 'b *')
+        pipeline_padding, _ = pack(pipeline_padding, 'b *')
 
         outputs: torch.Tensor = self.backbone(
             pipeline_context,

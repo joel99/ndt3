@@ -17,11 +17,9 @@ try:
 except:
     logger.info("h5py not installed, please install with `conda install -c anaconda h5py`")
 
-from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-
-RTT_DEFAULT_KIN_LABELS = ['y', 'z']
 
 @ExperimentalTaskRegistry.register
 class ODohertyRTTLoader(ExperimentalTaskLoader):
@@ -159,7 +157,7 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
             bhvr_vars[bhvr] = (bhvr_vars[bhvr] - global_args['cov_mean']) / rescale
 
         if cfg.tokenize_covariates:
-            global_args[DataKey.covariate_labels] = RTT_DEFAULT_KIN_LABELS
+            global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
         meta_payload = {}
         meta_payload['path'] = []
         for t in range(full_spikes.size(0)):

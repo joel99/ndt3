@@ -700,9 +700,9 @@ class ShuffleInfill(SpikeBase):
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         super().update_batch(batch, eval_mode=eval_mode)
-        return self.shuffle_crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode)
+        return self.crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode, shuffle=True)
 
-    def shuffle_crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False, shuffle=True):
         r"""
             Shuffle inputs, keep only what we need for evaluation
         """
@@ -711,7 +711,6 @@ class ShuffleInfill(SpikeBase):
         if eval_mode:
             # manipulate keys so that we predict for all steps regardless of masking status (definitely hacky)
             batch.update({
-                f'{self.handle}_{SHUFFLE_KEY}': torch.arange(spikes.size(1), device=spikes.device),
                 f'{self.handle}_target': target,
                 f'{self.handle}_encoder_frac': spikes.size(1),
                 # f'{DataKey.time}_target': batch[DataKey.time],
@@ -719,15 +718,17 @@ class ShuffleInfill(SpikeBase):
             })
             return batch
         # spikes: B T H (no array support)
-        # TODO (low-pri) also support spacetime shuffle
+        if shuffle:
+            shuffle = torch.randperm(spikes.size(1), device=spikes.device) # T mask
+        else:
+            shuffle = torch.arange(spikes.size(1), device=spikes.device)
         if self.cfg.context_prompt_time_thresh:
             shuffle_func = apply_shuffle_2d
             nonprompt_time = (batch[DataKey.time] > self.cfg.context_prompt_time_thresh) # B x T mask
-            shuffle = torch.randperm(spikes.size(1), device=spikes.device).unsqueeze(0).repeat(spikes.size(0), 1)
+            shuffle = shuffle.unsqueeze(0).repeat(spikes.size(0), 1)
             nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
             shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
         else:
-            shuffle = torch.randperm(spikes.size(1), device=spikes.device) # T mask
             shuffle_func = apply_shuffle
         # Mask ratio becomes a comment on the remainder of the data
         encoder_frac = round((1 - mask_ratio) * spikes.size(1))
@@ -1139,7 +1140,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         self.injector.inject(batch, in_place=True)
         return batch
 
-    def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False, shuffle=True):
         covariates = batch[self.cfg.behavior_target] # Assume B x T x Cov_Dims
         # TOKENIZATION (should probably move to dataloader)
         # Tokenized behavior should be B (T Cov_Dims) H=1. Initialize time space before we do this.
@@ -1171,7 +1172,10 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 f'{self.handle}_target': covariates,
                 f'{self.handle}_encoder_frac': covariates.size(1),
             })
-        shuffle = torch.randperm(covariates.size(1), device=covariates.device)
+        if shuffle:
+            shuffle = torch.randperm(covariates.size(1), device=covariates.device)
+        else:
+            shuffle = torch.arange(covariates.size(1), device=covariates.device)
         if self.cfg.context_prompt_time_thresh:
             shuffle_func = apply_shuffle_2d
             nonprompt_time = (batch[DataKey.covariate_time] > self.cfg.context_prompt_time_thresh) # B x T mask

@@ -178,7 +178,8 @@ cs.store(group='model/task', name='joint_decode_flat_v2', node=JointDecodeFlatTa
 class JointDecodeFlatTaskConfigV2(FlatEncDecTaskConfig):
     tasks: List[ModelTask] = field(default_factory=lambda: [ModelTask.spike_context, ModelTask.kinematic_decoding])
     metrics: List[Metric] = field(default_factory=lambda: [Metric.kinematic_r2])
-    task_weights: List[float] = field(default_factory=lambda: [0., 0.1])
+    task_weights: List[float] = field(default_factory=lambda: [0., 1.0])
+    # task_weights: List[float] = field(default_factory=lambda: [0., 0.1])
     decode_strategy: EmbedStrat = EmbedStrat.token
     decode_separate: bool = True
 
@@ -254,10 +255,12 @@ class BaseDataConfig(DatasetConfig):
         MetaKey.unique, MetaKey.array, MetaKey.subject, MetaKey.session, MetaKey.task
     ])
     odoherty_rtt: RTTConfig = field(default_factory=lambda: RTTConfig(
-        arrays=['Indy-M1_all', 'Loco-M1_all'],
-        # arrays=['Indy-M1', 'Loco-M1'],
-        include_sorted=True,
+        # arrays=['Indy-M1_all', 'Loco-M1_all'],
+        # include_sorted=True,
+        arrays=['Indy-M1', 'Loco-M1'], # Changed after decoding results in NDT2
+        include_sorted=False,
     ))
+
     gallego_co: ExperimentalConfig = field(default_factory=lambda: ExperimentalConfig(
         arrays=['Chewie-M1', 'Mihi-M1']
     ))
@@ -387,10 +390,18 @@ class ScaleHistoryDatasetConfig(FlatDataConfig):
         chop_size_ms=10000,
     ))
     odoherty_rtt: RTTConfig = field(default_factory=lambda: RTTConfig(
-        arrays=['Indy-M1_all', 'Loco-M1_all'],
+        arrays=['Indy-M1', 'Loco-M1'],
         include_sorted=False,
         chop_size_ms=10000,
     ))
+    churchland_maze: MazeConfig = field(default_factory=lambda: MazeConfig(
+        chop_size_ms=10000,
+        max_length_ms=10000,
+        load_covariates=False, # Just not worth implementing, probably
+        pretrial_time_s=0.5,
+    ))
+
+
 
 cs.store(group="dataset", name="scale_history", node=ScaleHistoryDatasetConfig)
 
@@ -401,7 +412,6 @@ class ScaleHistoryModelConfig(FlatEncDecModelConfig):
     ))
 
 cs.store(group="model", name="scale_history", node=ScaleHistoryModelConfig)
-
 
 r"""
     Some experiment specific presets
@@ -421,3 +431,11 @@ class Trial100TuneConfigExp2(TrainConfig):
     batch_size: int = 32
 
 cs.store(group="train", name="trial100_tune_exp2", node=Trial100TuneConfigExp2)
+
+@dataclass
+class MidscaleTrainConfig(TrainConfig):
+    patience: int = 50
+    effective_batch_size: int = 512
+    max_batch_size: int = 512
+
+cs.store(group="train", name="midscale", node=MidscaleTrainConfig)

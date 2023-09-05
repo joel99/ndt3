@@ -1,0 +1,44 @@
+# @package _global_
+
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+  - /model/task:
+    - decode_flat_v2
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - midscale
+dataset:
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+
+  datasets:
+  - odoherty_rtt-Indy.*
+  - odoherty_rtt-Loco.*
+  exclude_datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02 # Last indy session
+  tokenize_covariates: True
+model:
+  neurons_per_token: 32
+  decoder_context_integration: 'cross_attn'
+  task:
+    decode_time_pool: ""
+    covariate_mask_ratio: 0.9 # 27s -> 3s
+    context_prompt_time_thresh: 1350 # 27s * 50Hz
+    encode_constraints: True
+  lr_ramp_steps: 50
+  transformer:
+    n_layers: 6
+  use_full_encode: True
+notes: "RTT pretraining to evaluate in-context learning"
+train:
+  autoscale_batch_size: True
+inherit_exp: ndt3_pilots/icl_rtt

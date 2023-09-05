@@ -14,10 +14,9 @@ try:
 except:
     logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
-from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-
 
 
 BLACKLIST_UNITS = [1]
@@ -25,6 +24,7 @@ BLACKLIST_UNITS = [1]
 class ChurchlandMazeLoader(ExperimentalTaskLoader):
     name = ExperimentalTask.churchland_maze
     r"""
+    # Reaches appear about 1s
     Churchland/Kaufman reaching data.
     # https://dandiarchive.org/dandiset/000070/draft/files
 
@@ -48,7 +48,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
         if cfg.churchland_maze.chop_size_ms > 0:
             assert cfg.churchland_maze.chop_size_ms % cfg.bin_size_ms == 0, "Chop size must be a multiple of bin size"
             # if 0, no chop, just send in full lengths
-        assert cfg.churchland_maze.load_covariates == False, "Covariates not supported yet"
+        assert cfg.churchland_maze.load_covariates == False, "Covariates not supported yet" # I have no idea where kinematics are stored based on columns
 
         with NWBHDF5IO(datapath, 'r') as io:
             nwbfile = io.read()
@@ -140,6 +140,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             single_payload = {
                 DataKey.spikes: create_spike_payload(trial_spikes, arrays_to_use, cfg=cfg),
             }
+            # breakpoint() # TODO are there any covariates to mine?
             single_path = cache_root / f'{t}.pth'
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)
