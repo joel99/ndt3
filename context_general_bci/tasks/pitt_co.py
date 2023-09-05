@@ -99,8 +99,9 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['position'] = torch.from_numpy(payload['Kinematics']['ActualPos'][:,:limit_dims]) # index 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
         elif 'pos' in payload:
             out['position'] = torch.from_numpy(payload['pos'][:,:limit_dims]) # 1 is y, 2 is X. Col 6 is click, src: Jeff Weiss
+        if 'position' in out:
+            assert len(out['position']) == len(out['trial_num']), "Position and trial num should be same length"
 
-        assert len(out['position']) == len(out['trial_num']), "Position and trial num should be same length"
         if 'target' in payload:
             out['target'] = torch.from_numpy(payload['target'][:limit_dims])
         if 'force' in payload:
@@ -284,7 +285,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
-            if exp_task_cfg.minmax: # T x C
+            if exp_task_cfg.minmax and covariates is not None: # T x C
                 payload['cov_mean'] = covariates.mean(0)
                 payload['cov_min'] = covariates.min(0).values
                 payload['cov_max'] = covariates.max(0).values
@@ -292,6 +293,10 @@ class PittCOLoader(ExperimentalTaskLoader):
                 rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
                 covariates = (covariates - payload['cov_mean']) / rescale # Think this rescales to a bit less than 1
                 # TODO we should really sanitize for severely abberant values in a more robust way... or checking for outlier effects
+            else:
+                payload['cov_mean'] = None
+                payload['cov_min'] = None
+                payload['cov_max'] = None
 
 
             # * Constraints
