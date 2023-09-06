@@ -36,7 +36,7 @@ model:
   decoder_context_integration: 'cross_attn'
   task:
     decode_time_pool: ""
-    covariate_mask_ratio: 0.9 # 27s -> 3s
+    covariate_mask_ratio: 0.1 # 27s -> 3s
     context_prompt_time_thresh: 1350 # 27s * 50Hz
     encode_constraints: False # No constraints to serve, also something broken about synthetic constraints
     # tasks: [ModelTask.spike_context]
@@ -47,5 +47,6 @@ model:
   use_full_encode: True
 notes: "RTT pretraining to evaluate in-context learning"
 train:
+  batch_size: 4 # 40G
   autoscale_batch_size: True
 inherit_exp: ndt3_pilots/icl_rtt

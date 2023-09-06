@@ -745,14 +745,9 @@ class ShuffleInfill(SpikeBase):
         batch.update({
             DataKey.spikes: shuffle_func(spikes, shuffle)[:,:encoder_frac],
             f'{self.handle}_target': target,
-            f'{self.handle}_encoder_frac': encoder_frac,
-            # f'{self.handle}_{SHUFFLE_KEY}': shuffle, # seems good to keep around...
+            # f'{self.handle}_encoder_frac': encoder_frac, # ! Deprecating
         })
-        b, t, *_ = target.size() # reference should already be tokenized to desired res
-        batch[f'{self.handle}_query'] = repeat(self.injector.cls_token, 'h -> b t h', b=b, t=t)
-        # batch[f'{DataKey.covariate_time}_target'] = batch[f'{DataKey.covariate_time}']
-        # batch[f'{DataKey.covariate_space}_target'] = batch[f'{DataKey.covariate_space}']
-        # batch[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}']
+        batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
 
     def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor, padding_mask: torch.Tensor | None = None):
@@ -763,6 +758,7 @@ class ShuffleInfill(SpikeBase):
         if padding_mask is not None:
             loss_mask = loss_mask & ~padding_mask.unsqueeze(-1)
         else:
+            assert False, 'Deprecated encoder_frac dependent path'
             length_mask = ~create_token_padding_mask(None, batch, length_key=LENGTH_KEY, shuffle_key=f'{self.handle}_{SHUFFLE_KEY}')
             if LENGTH_KEY in batch:
                 length_mask = length_mask[..., batch[f'{self.handle}_encoder_frac']:]
@@ -1055,10 +1051,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 del self.constraint_dims
         assert self.cfg.decode_strategy == EmbedStrat.token, 'Non-token decoding deprecated'
         self.decode_cross_attn = cfg.decoder_context_integration == 'cross_attn'
+        self.reference_cov = self.cfg.behavior_target
         self.injector = TemporalTokenInjector(
             cfg,
             data_attrs,
-            self.cfg.behavior_target if not self.encodes else f'{self.handle}_target',
+            None, # deprecating reference while trying ot clean up terminology # self.cfg.behavior_target if not self.encodes else f'{self.handle}_target',
             force_zero_mask=self.decode_cross_attn and not self.cfg.decode_tokenize_dims
         )
         self.cov_dims = data_attrs.behavior_dim
@@ -1169,15 +1166,15 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 breakpoint()
                 batch.update({
                     f'{self.handle}_target': covariates,
-                    f'{self.handle}_encoder_frac': covariates.size(1),
                 })
             if shuffle:
                 shuffle = torch.randperm(covariates.size(1), device=covariates.device)
             else:
                 shuffle = torch.arange(covariates.size(1), device=covariates.device)
+            # breakpoint()
             if self.cfg.context_prompt_time_thresh:
                 shuffle_func = apply_shuffle_2d
-                nonprompt_time = (batch[DataKey.covariate_time] > self.cfg.context_prompt_time_thresh) # B x T mask
+                nonprompt_time = (batch[DataKey.covariate_time] >= self.cfg.context_prompt_time_thresh) # B x T mask
                 shuffle = repeat(shuffle, 't -> b t', b=covariates.size(0))
                 nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
                 shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
@@ -1210,7 +1207,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 f'{self.handle}_target': target,
                 f'{self.handle}_encoder_frac': encoder_frac,
             })
-        batch[f'{self.handle}_query'] = self.injector.make_query(target)
+        # breakpoint()
+        batch[f'{self.handle}_query'] = self.injector.make_query(self.get_target(batch))
         return batch
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
@@ -1258,6 +1256,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             decode_tokens = batch[f'{self.handle}_query']
             decode_time = batch[f'{DataKey.covariate_time}_target']
             decode_space = batch[f'{DataKey.covariate_space}_target']
+            # breakpoint()
             decode_padding = batch[f'{self.handle}_{DataKey.padding}_target']
             if not self.inject_constraint_tokens and self.cfg.encode_constraints:
                 decode_tokens = decode_tokens + self.encode_constraint(
@@ -1301,7 +1300,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=decode_padding,
-                # trial_context=self.extract_trial_context(batch, detach=True), # TODO removed for now, bring back in a test where we explore decoder inputs?
                 times=decode_time,
                 positions=decode_space,
                 causal=self.causal,
@@ -1371,6 +1369,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             return batch_out
 
         # Compute loss
+        # breakpoint()
         bhvr_tgt = self.get_target(batch)
 
         _, length_mask, _ = self.get_masks(

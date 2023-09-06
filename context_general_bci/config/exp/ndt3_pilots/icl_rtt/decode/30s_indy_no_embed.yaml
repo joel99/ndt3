@@ -14,6 +14,6 @@ model:
   session_embed_strategy: EmbedStrat.none
 train:
   autoscale_batch_size: False
-  batch_size: 8
+  # batch_size: 8
   effective_batch_size: 128
 inherit_tag: '30s_no_embed'
