@@ -748,7 +748,11 @@ class ShuffleInfill(SpikeBase):
             f'{self.handle}_encoder_frac': encoder_frac,
             # f'{self.handle}_{SHUFFLE_KEY}': shuffle, # seems good to keep around...
         })
-        batch[f'{self.handle}_query'] = self.injector.make_query(target)
+        b, t, *_ = target.size() # reference should already be tokenized to desired res
+        batch[f'{self.handle}_query'] = repeat(self.injector.cls_token, 'h -> b t h', b=b, t=t)
+        # batch[f'{DataKey.covariate_time}_target'] = batch[f'{DataKey.covariate_time}']
+        # batch[f'{DataKey.covariate_space}_target'] = batch[f'{DataKey.covariate_space}']
+        # batch[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}']
         return batch
 
     def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor, padding_mask: torch.Tensor | None = None):
@@ -816,7 +820,6 @@ class ShuffleInfill(SpikeBase):
         decode_features: torch.Tensor = self.decoder(
             decode_tokens,
             padding_mask=decode_padding,
-            # trial_context=self.extract_trial_context(batch=batch), # TODO removed for now, bring back in decoder tests?. Actually, superseded by in unified stream codde.
             times=decode_time,
             positions=decode_space,
             causal=self.causal,
@@ -1128,22 +1131,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             length_key=f'{self.handle}_{LENGTH_KEY}',
             shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
         )
-        if self.encodes:
-            batch = self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
-        else:
-            batch[f'{self.handle}_query'] = self.injector.make_query(batch[self.cfg.behavior_target])
-
-        if self.cfg.decode_strategy != EmbedStrat.token or self.cfg.decode_separate:
-            return batch
-        logger.warning('Legacy injection path - should this be running?')
-        breakpoint()
-        self.injector.inject(batch, in_place=True)
-        return batch
+        return self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False, shuffle=True):
-        covariates = batch[self.cfg.behavior_target] # Assume B x T x Cov_Dims
-        # TOKENIZATION (should probably move to dataloader)
-        # Tokenized behavior should be B (T Cov_Dims) H=1. Initialize time space before we do this.
+        covariates = batch[self.cfg.behavior_target] # B (T Cov_Dims) 1 if tokenized, else  B x T x Cov_Dims,
+
         if DataKey.covariate_time not in batch:
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
@@ -1161,58 +1153,63 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 # Technically if data arrives as b t* 1, we can still use above if-case circuit
                 cov_space = torch.zeros_like(batch[DataKey.covariate_time])
             batch[DataKey.covariate_space] = cov_space
-        if self.cfg.decode_tokenize_dims and not self.served_tokenized_covariates:
-            covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
-            if self.cfg.encode_constraints:
-                batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t constraint bhvr_dim -> b (t bhvr_dim) constraint')
-            batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
-        if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
-            breakpoint()
-            batch.update({
-                f'{self.handle}_target': covariates,
-                f'{self.handle}_encoder_frac': covariates.size(1),
-            })
-        if shuffle:
-            shuffle = torch.randperm(covariates.size(1), device=covariates.device)
+
+        if not self.encodes: # Just make targets, exit
+            assert self.cfg.decode_tokenize_dims, "Non tokenized decode path got lost in refactor"
+            batch[f'{DataKey.covariate_time}_target'] = batch[DataKey.covariate_time]
+            batch[f'{DataKey.covariate_space}_target'] = batch[DataKey.covariate_space]
+            batch[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}']
         else:
-            shuffle = torch.arange(covariates.size(1), device=covariates.device)
-        if self.cfg.context_prompt_time_thresh:
-            shuffle_func = apply_shuffle_2d
-            nonprompt_time = (batch[DataKey.covariate_time] > self.cfg.context_prompt_time_thresh) # B x T mask
-            shuffle = repeat(shuffle, 't -> b t', b=covariates.size(0))
-            nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
-            shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
-        else:
-            shuffle_func = apply_shuffle
-        encoder_frac = round((1 - mask_ratio) * covariates.size(1))
-        def shuffle_key(key):
-            if key in batch:
-                shuffled = shuffle_func(batch[key], shuffle)
+            if self.cfg.decode_tokenize_dims and not self.served_tokenized_covariates:
+                covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
+                if self.cfg.encode_constraints:
+                    batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t constraint bhvr_dim -> b (t bhvr_dim) constraint')
+                batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
+            if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
+                breakpoint()
                 batch.update({
-                    key: shuffled[:, :encoder_frac],
-                    f'{key}_target': shuffled[:, encoder_frac:],
+                    f'{self.handle}_target': covariates,
+                    f'{self.handle}_encoder_frac': covariates.size(1),
                 })
-        breakpoint()
-        for key in [
-            DataKey.covariate_time,
-            DataKey.covariate_space,
-            f'{self.handle}_{DataKey.padding}',
-        ]:
-            shuffle_key(key)
-        if self.cfg.encode_constraints and not self.inject_constraint_tokens:
+            if shuffle:
+                shuffle = torch.randperm(covariates.size(1), device=covariates.device)
+            else:
+                shuffle = torch.arange(covariates.size(1), device=covariates.device)
+            if self.cfg.context_prompt_time_thresh:
+                shuffle_func = apply_shuffle_2d
+                nonprompt_time = (batch[DataKey.covariate_time] > self.cfg.context_prompt_time_thresh) # B x T mask
+                shuffle = repeat(shuffle, 't -> b t', b=covariates.size(0))
+                nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
+                shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
+            else:
+                shuffle_func = apply_shuffle
+            encoder_frac = round((1 - mask_ratio) * covariates.size(1))
+            def shuffle_key(key):
+                if key in batch:
+                    shuffled = shuffle_func(batch[key], shuffle)
+                    batch.update({
+                        key: shuffled[:, :encoder_frac],
+                        f'{key}_target': shuffled[:, encoder_frac:],
+                    })
             for key in [
-                DataKey.constraint,
-                DataKey.constraint_time
+                DataKey.covariate_time,
+                DataKey.covariate_space,
+                f'{self.handle}_{DataKey.padding}',
             ]:
                 shuffle_key(key)
+            if self.cfg.encode_constraints and not self.inject_constraint_tokens:
+                for key in [
+                    DataKey.constraint,
+                    DataKey.constraint_time
+                ]:
+                    shuffle_key(key)
 
-        enc, target = torch.split(shuffle_func(covariates, shuffle), [encoder_frac, covariates.size(1) - encoder_frac], dim=1)
-        batch.update({
-            self.cfg.behavior_target: enc,
-            f'{self.handle}_target': target,
-            f'{self.handle}_encoder_frac': encoder_frac,
-            # f'{self.handle}_{SHUFFLE_KEY}': shuffle,
-        })
+            enc, target = torch.split(shuffle_func(covariates, shuffle), [encoder_frac, covariates.size(1) - encoder_frac], dim=1)
+            batch.update({
+                self.cfg.behavior_target: enc,
+                f'{self.handle}_target': target,
+                f'{self.handle}_encoder_frac': encoder_frac,
+            })
         batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
 
