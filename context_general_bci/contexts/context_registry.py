@@ -97,7 +97,7 @@ class ContextRegistry:
         if not isinstance(datapath, Path):
             datapath = Path(datapath)
         found = self.search_index[self.search_index.datapath == datapath.resolve()]
-        assert len(found) == 1
+        assert len(found) == 1, f"Found {len(found)} matches for {datapath}"
         return self._registry[found.iloc[0]['id']]
 
     def query_by_id(self, id: str) -> ContextInfo:

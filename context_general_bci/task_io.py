@@ -1192,6 +1192,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     key: shuffled[:, :encoder_frac],
                     f'{key}_target': shuffled[:, encoder_frac:],
                 })
+        breakpoint()
         for key in [
             DataKey.covariate_time,
             DataKey.covariate_space,
@@ -1343,6 +1344,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         eval_mode=False
     ) -> torch.Tensor:
         batch_out = {}
+        # breakpoint()
         bhvr = self.get_cov_pred(
             batch,
             backbone_features,
@@ -1351,7 +1353,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             backbone_padding,
             eval_mode=eval_mode,
             batch_out=batch_out
-        ) # Comes out flat (B T D)
+        ) # * flat (B T D)
         # bhvr is still shuffled and tokenized..
 
         # At this point (computation and beyond) it is easiest to just restack tokenized targets, merge into regular API

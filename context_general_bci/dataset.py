@@ -188,6 +188,7 @@ class SpikingDataset(Dataset):
             'tokenize_covariates': self.cfg.tokenize_covariates,
             'return_horizon_s': self.cfg.return_horizon_s,
         }
+        # breakpoint()
         task_cfg = getattr(self.cfg, task.value)
         # version.update(task_cfg.reproc_dict())
         # Extremely hacky, IDK how to get cfg class methods working,
@@ -507,7 +508,6 @@ class SpikingDataset(Dataset):
             **data_items,
             **meta_items,
         }
-
         if len(self) <= self.cfg.auto_in_memory_thresh and trial.path not in self.cache:
             self.cache[trial.path] = out
         return out

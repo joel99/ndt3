@@ -15,7 +15,7 @@ dataset:
   data_keys:
   - DataKey.spikes
   - DataKey.bhvr_vel
-
+  # - DataKey.constraint
   datasets:
   - odoherty_rtt-Indy.*
   - odoherty_rtt-Loco.*
@@ -26,17 +26,24 @@ dataset:
   - odoherty_rtt-Indy-20161026_03
   - odoherty_rtt-Indy-20170131_02 # Last indy session
   tokenize_covariates: True
+  # sparse_constraints: True
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 30000
 model:
+  session_embed_strategy: EmbedStrat.none
   neurons_per_token: 32
   decoder_context_integration: 'cross_attn'
   task:
     decode_time_pool: ""
     covariate_mask_ratio: 0.9 # 27s -> 3s
     context_prompt_time_thresh: 1350 # 27s * 50Hz
-    encode_constraints: True
+    encode_constraints: False # No constraints to serve, also something broken about synthetic constraints
+    # tasks: [ModelTask.spike_context]
   lr_ramp_steps: 50
   transformer:
     n_layers: 6
+    max_trial_length: 1500
   use_full_encode: True
 notes: "RTT pretraining to evaluate in-context learning"
 train:

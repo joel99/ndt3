@@ -61,7 +61,6 @@ def compute_icl_eval(data_id, context_s=27, probe_s=3, stride_s=3, batch_size=16
     stride_tokens = stride_s * BINS_PER_S
     assert probe_tokens == stride_tokens, "Stride must be equal to probe for now"
     # Following predict only makes sense for an infilling model.
-    print(context_tokens + probe_tokens)
     scan_payload = {
         k: v.unfold(0, context_tokens + probe_tokens, stride_tokens) for k, v in full_payload.items()
     } # Intra-fold time is last, pseudo-trial is first.

@@ -1,0 +1,77 @@
+# @package _global_
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+  - /model/task:
+    - decode_flat_v2
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - midscale
+model:
+  session_embed_token_count: 1 # Keep it low for maybe easier FT?
+  neurons_per_token: 32
+  causal: True
+  task:
+    mask_ratio: 0.5
+  lr_ramp_steps: 50
+  transformer:
+    n_layers: 6
+  use_full_encode: True
+dataset:
+  sparse_constraints: True
+  behavior_dim: 8
+  datasets:
+  # From GB's tests:
+  # https://pitt-my.sharepoint.com/:x:/r/personal/ghb14_pitt_edu/_layouts/15/Doc.aspx?sourcedoc=%7BEFCBDF63-B37B-4C60-A578-0A51AEE4157B%7D&file=U01%20Testing%20Dates.xlsx
+  - pitt_broad_pitt_co_CRS02bLab_1761
+  - pitt_broad_pitt_co_CRS02bLab_1767
+  - pitt_broad_pitt_co_CRS02bLab_1769
+  # - pitt_broad_pitt_co_CRS02bLab_1773 # ! Not found
+  - pitt_broad_pitt_co_CRS02bLab_1775
+  - pitt_broad_pitt_co_CRS02bLab_1790
+  - pitt_broad_pitt_co_CRS02bLab_1776
+  - pitt_broad_pitt_co_CRS02bLab_1778
+  - pitt_broad_pitt_co_CRS02bLab_1780
+  - pitt_broad_pitt_co_CRS02bLab_1798
+  - pitt_broad_pitt_co_CRS02bLab_1787
+  - pitt_broad_pitt_co_CRS02bLab_1789
+  - pitt_broad_pitt_co_CRS02bLab_1885
+  - pitt_broad_pitt_co_CRS02bLab_1829
+  - pitt_broad_pitt_co_CRS02bLab_1837
+  - pitt_broad_pitt_co_CRS02bLab_1855
+  - pitt_broad_pitt_co_CRS02bLab_1869
+  # Eval set.
+  # - pitt_broad_pitt_co_CRS02bLab_1899
+  # - pitt_broad_pitt_co_CRS02bLab_1900
+  # - pitt_broad_pitt_co_CRS02bLab_1907
+  # - pitt_broad_pitt_co_CRS02bLab_1918
+  # - pitt_broad_pitt_co_CRS02bLab_1965
+  # - pitt_broad_pitt_co_CRS02bLab_1993
+  # - pitt_broad_pitt_co_CRS02bLab_2004
+  # - pitt_broad_pitt_co_CRS02bLab_2011
+  - pitt_broad_pitt_co_CRS07Home_32
+  - pitt_broad_pitt_co_CRS07Home_33
+  - pitt_broad_pitt_co_CRS07Home_34
+  - pitt_broad_pitt_co_CRS07Home_35
+  - pitt_broad_pitt_co_CRS07Lab_52
+  - pitt_broad_pitt_co_CRS07Home_53
+  - pitt_broad_pitt_co_CRS07Home_49
+  # - pitt_broad_pitt_co_CRS07Home_57 # ! Not found
+  - pitt_broad_pitt_co_CRS07Home_69
+  - pitt_broad_pitt_co_CRS07Home_71
+  - pitt_broad_pitt_co_CRS07Home_83
+  - pitt_broad_pitt_co_CRS07Home_88
+  - pitt_broad_pitt_co_CRS07Home_61
+  - pitt_broad_pitt_co_CRS07Home_108
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+  - DataKey.constraint
+  tokenize_covariates: True
+train:
+  patience: 50
+  autoscale_batch_size: true
+  effective_batch_size: 512

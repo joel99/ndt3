@@ -10,8 +10,9 @@ dataset:
 model:
   transformer:
     max_trial_length: 1500
-  session_embed_strategy: EmbedStrat.none
+  # session_embed_strategy: EmbedStrat.none
 train:
   autoscale_batch_size: False
-  batch_size: 16
+  batch_size: 8
   effective_batch_size: 128
+notes: "Just for comparison"

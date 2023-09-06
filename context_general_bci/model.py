@@ -522,6 +522,8 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
+        tks.append('trial')
+        # breakpoint()
         pipeline_context = [*pipeline_context, trial_context] # tuples
         pipeline_times = [*pipeline_times, trial_times]
         pipeline_space = [*pipeline_space, trial_space]
