@@ -13,6 +13,7 @@ model:
     max_trial_length: 1500
   # session_embed_strategy: EmbedStrat.none
 train:
+  patience: 300
   autoscale_batch_size: False
   # batch_size: 8
   effective_batch_size: 128

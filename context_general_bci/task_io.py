@@ -1241,7 +1241,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         r"""
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
         """
-        breakpoint()
+        # breakpoint()
         if self.cfg.decode_separate:
             if self.cfg.decode_time_pool: # B T H -> B T H
                 assert False, "Deprecated, currently would pool across modalities... but time is available if you still wanna try"
@@ -1400,7 +1400,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 if loss[loss_mask].mean().isnan().any():
                     breakpoint()
                 if len(self.covariate_blacklist_dims) > 0:
-                    breakpoint()
+                    # breakpoint()
                     if self.cfg.decode_tokenize_dims:
                         positions = batch[f'{DataKey.covariate_space}_target']
                         loss_mask = loss_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
