@@ -254,7 +254,7 @@ class ConstraintPipeline(ContextPipeline):
             cfg=cfg,
             data_attrs=data_attrs
         )
-        self.inject_constraint_tokens = data_attrs.sparse_constraints and self.cfg.encode_constraints # Injects as timevarying context
+        self.inject_constraint_tokens = data_attrs.sparse_constraints and self.cfg.encode_constraints # Injects as dimvarying context
         if self.cfg.encode_constraints:
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 # Not obvious we actually need yet _another_ identifying cls if we're also encoding others, but can we afford a zero token if no constraints are active...?
@@ -269,19 +269,18 @@ class ConstraintPipeline(ContextPipeline):
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint d, constraint h -> b t h d')
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h 1')
-            if not self.inject_constraint_tokens: # reduce
+            if not self.inject_constraint_tokens: # reduce (pretty crude - we can't tell which dim is constrained like thus)
                 constraint_embed = constraint_embed.mean(-1) # B T H
         else:
             constraint_embed = einsum(constraint, self.constraint_dims, 'b t constraint, constraint h -> b t h')
             if self.inject_constraint_tokens and self.cfg.use_constraint_cls:
                 constraint_embed = constraint_embed + rearrange(self.constraint_cls, 'h -> 1 1 h')
         return constraint_embed
-        # return self.norm(constraint_embed.permute(0,1,3,2)).permute(0,1,3,2)
+
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
         constraint = batch[DataKey.constraint]
-        # breakpoint()
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time]
@@ -920,7 +919,6 @@ class TemporalTokenInjector(nn.Module):
         else:
             self.cls_token = nn.Parameter(torch.randn(cfg.hidden_size)) # This class token indicates bhvr, specific order of bhvr (in tokenized case) is indicated by space
 
-        self.decode_dims = data_attrs.behavior_dim
         if self.cfg.decode_tokenize_dims:
             # this logic is for covariate decode, not heldout neurons
             assert reference != DataKey.spikes, "Decode tokenization should not run for spikes, this is for covariate exps"
@@ -996,7 +994,6 @@ class ReturnContext(ContextPipeline):
         reward_embed = self.reward_enc(batch[DataKey.task_reward])
         times = batch[DataKey.task_return_time]
         space = torch.zeros_like(times)
-        # breakpoint()
         padding = create_token_padding_mask(
             return_embed, batch, length_key=RETURN_LENGTH_KEY
         ) # Don't need a separate update step unless we need the retrieve padding at later time.
@@ -1132,7 +1129,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False, shuffle=True):
         covariates = batch[self.cfg.behavior_target] # B (T Cov_Dims) 1 if tokenized, else  B x T x Cov_Dims,
-
+        # breakpoint()
         if DataKey.covariate_time not in batch:
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
@@ -1152,7 +1149,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             batch[DataKey.covariate_space] = cov_space
 
         if not self.encodes: # Just make targets, exit
-            assert self.cfg.decode_tokenize_dims, "Non tokenized decode path got lost in refactor"
             batch[f'{DataKey.covariate_time}_target'] = batch[DataKey.covariate_time]
             batch[f'{DataKey.covariate_space}_target'] = batch[DataKey.covariate_space]
             batch[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}']
@@ -1207,7 +1203,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 f'{self.handle}_target': target,
                 f'{self.handle}_encoder_frac': encoder_frac,
             })
-        # breakpoint()
         batch[f'{self.handle}_query'] = self.injector.make_query(self.get_target(batch))
         return batch
 
@@ -1246,6 +1241,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         r"""
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
         """
+        breakpoint()
         if self.cfg.decode_separate:
             if self.cfg.decode_time_pool: # B T H -> B T H
                 assert False, "Deprecated, currently would pool across modalities... but time is available if you still wanna try"
@@ -1297,6 +1293,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             # breakpoint()
             # print('Src stream: ', decode_tokens.shape, decode_padding.shape, decode_time.shape, decode_space.shape)
             # print('Cross stream:', other_kwargs['memory'].shape, other_kwargs['memory_padding_mask'].shape, other_kwargs['memory_times'].shape)
+            # print(backbone_space.max(), decode_space.max())
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=decode_padding,
@@ -1403,6 +1400,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 if loss[loss_mask].mean().isnan().any():
                     breakpoint()
                 if len(self.covariate_blacklist_dims) > 0:
+                    breakpoint()
                     if self.cfg.decode_tokenize_dims:
                         positions = batch[f'{DataKey.covariate_space}_target']
                         loss_mask = loss_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))

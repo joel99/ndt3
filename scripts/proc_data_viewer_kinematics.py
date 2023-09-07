@@ -1,76 +1,100 @@
 #%%
 import numpy as np
 import pandas as pd
-import h5py
 import torch
 
 import logging
 from matplotlib import pyplot as plt
 import seaborn as sns
-from omegaconf import OmegaConf
 
 from context_general_bci.contexts import context_registry
 from context_general_bci.config import DatasetConfig, DataKey, MetaKey
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.tasks import ExperimentalTask
 
-from context_general_bci.analyze_utils import prep_plt, wandb_query_latest, load_wandb_run
+from context_general_bci.analyze_utils import prep_plt, load_wandb_run
+from context_general_bci.utils import wandb_query_latest
 
 mode = 'rtt'
 # mode = 'pitt'
 if mode == 'rtt':
     ctxs = context_registry.query(task=ExperimentalTask.odoherty_rtt)
 else:
-    ctxs = context_registry.query(task=ExperimentalTask.observation)
+    ctxs = context_registry.query(task=ExperimentalTask.pitt_co)
 
 context = ctxs[0]
-# context = context_registry.query(alias='mc_rtt')
+context = context_registry.query(alias='odoherty_rtt-Loco')[0]
 print(context)
 # datapath = './data/odoherty_rtt/indy_20160407_02.mat'
 # context = context_registry.query_by_datapath(datapath)
 
-sample_query = 'human_test' # just pull the latest run
-# sample_query = 'pt_parity'
+sample_query = 'base' # just pull the latest run to ensure we're keeping its preproc config
+sample_query = '10s_regression'
 
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 default_cfg = cfg.dataset
-# default_cfg: DatasetConfig = OmegaConf.create(DatasetConfig())
-# default_cfg.data_keys = [DataKey.spikes]
-default_cfg.data_keys = [DataKey.spikes, DataKey.bhvr_vel]
-default_cfg.bin_size_ms = 20
-# default_cfg.datasets = [context.alias]
-default_cfg.max_arrays = min(max(1, len(context.array)), 2)
-# default_cfg.max_channels = 250
 dataset = SpikingDataset(default_cfg)
 dataset.build_context_index()
 dataset.subset_split()
 
-# import torch
-# lengths = []
-# for t in range(1000):
-#     lengths.append(dataset[t][DataKey.spikes].size(0))
-# print(torch.tensor(lengths).max(), torch.tensor(lengths).min())
 print(len(dataset))
 #%%
-# trial = 0
-trial = 10
-# trial = 30
+trial = 0
 # trial = 10
-trial_vel = dataset[trial][DataKey.bhvr_vel]
+trial = 4000
+trial = 3000
+trial = 3500
+# trial = 3200
+# trial = 3100
+# trial = 3050
+# trial = 3007
 
-# Show kinematic trace by integrating trial_vel
-print(trial_vel.shape)
-trial_pos = trial_vel.cumsum(0)
-trial_pos = trial_pos - trial_pos[0]
-# # Plot
-fig, ax = plt.subplots(2, 1, sharex=True)
-ax[0].plot(trial_vel)
-ax[0].set_title('Velocity')
-ax[1].plot(trial_pos)
-ax[1].set_title('Position')
+trial_name = dataset.meta_df.iloc[trial][MetaKey.unique]
+test = torch.load(dataset.meta_df.iloc[trial]['path'])
+print(test['cov_mean'], test['cov_min'], test['cov_max'])
 
+trial_cov = dataset[trial][DataKey.bhvr_vel]
+print(f'Covariate shape: {trial_cov.shape}')
+cov_dims = dataset[trial][DataKey.covariate_labels]
+cov_space = dataset[trial].get(DataKey.covariate_space, None)
+
+if DataKey.constraint in dataset[trial]:
+    constraints = dataset[trial][DataKey.constraint]
+    print(f'Constraint shape: {constraints.shape}')
+    f, axes = plt.subplots(2, 1, sharex=True)
+else:
+    f, axes = plt.subplots(1, 1)
+    axes = [axes]
+
+def plot_covs(ax, cov, cov_dims, cov_space: torch.Tensor | None =None):
+    ax = prep_plt(ax=ax, big=True)
+    if cov_space is None:
+        for cov, label in zip(trial_cov.T, cov_dims):
+            if cov_dims != 'f':
+                cov_pos = cov.cumsum(0)
+            else:
+                cov_pos = cov
+            cov_pos = cov_pos - cov_pos[0]
+            ax.plot(cov_pos, label=label)
+    else:
+        for unique_space in cov_space.unique():
+            cov_pos = cov[cov_space == unique_space].cumsum(0)
+            cov_pos = cov_pos - cov_pos[0]
+            ax.plot(cov_pos, label=cov_dims[unique_space])
+    ax.legend()
+    ax.set_ylabel('Position')
+
+def plot_constraints(ax):
+    ax = prep_plt(ax=ax, big=True)
+    ax.plot(constraints)
+    ax.set_title('Constraints')
+
+plot_covs(axes[0], trial_cov, cov_dims, cov_space)
+if DataKey.constraint in dataset[trial]:
+    plot_constraints(axes[1])
+axes[0].set_title(trial_name)
 #%%
 # iterate through trials and print min and max bhvr_vel
 min_vel = 0

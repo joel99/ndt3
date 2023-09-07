@@ -4,7 +4,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from omegaconf import MISSING
 
-DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null']
+DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null'] # Null dimension only used for padding in tokenized case
 REACH_DEFAULT_KIN_LABELS = ['y', 'z']
 LENGTH = 'length'
 

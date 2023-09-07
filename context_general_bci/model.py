@@ -529,6 +529,7 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_space = [*pipeline_space, trial_space]
         pipeline_padding = [*pipeline_padding, trial_padding]
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
+        # breakpoint()
         tks = [tks[i] for i in filtered]
         pipeline_context = [pipeline_context[i] for i in filtered]
         pipeline_times = [pipeline_times[i] for i in filtered]
@@ -547,7 +548,7 @@ class BrainBertInterface(pl.LightningModule):
             times=times,
             positions=space,
         ) # B x Token x H (flat)
-        if getattr(self.cfg, 'use_full_encode', False):
+        if self.cfg.use_full_encode:
             return outputs, times, space, pipeline_padding
         else:
             outputs = unpack(outputs, ps, 'b * h')

@@ -7,14 +7,13 @@ dataset:
   max_trial_length: 1500
   odoherty_rtt:
     chop_size_ms: 30000
-  datasets: [odoherty_rtt-Indy.*]
 model:
   transformer:
     max_trial_length: 1500
-  # session_embed_strategy: EmbedStrat.none
+  session_embed_strategy: EmbedStrat.none
 train:
   autoscale_batch_size: False
-  # batch_size: 8
-  effective_batch_size: 128
-notes: "Just for comparison"
-inherit_tag: '30s'
+  batch_size: 4 # 40G
+  effective_batch_size: 512
+inherit_exp: ""
+init_from_id: 3s_indy_regression-3w1o141c

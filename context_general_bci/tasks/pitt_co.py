@@ -141,6 +141,17 @@ class PittCOLoader(ExperimentalTaskLoader):
     name = ExperimentalTask.pitt_co
 
     @staticmethod
+    def smooth(position, kernel=np.ones((int(200 / 20), 1))/ (200 / 20)):
+        # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
+        # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
+        # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
+        int_position = pd.Series(position.flatten()).interpolate()
+        position = torch.tensor(int_position).view(-1, position.shape[-1])
+        position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
+        position[position.isnan()] = 0 # extra call to deal with edge values
+        return position
+
+    @staticmethod
     def get_velocity(position, kernel=np.ones((int(200 / 20), 1))/ (200 / 20)):
     # def get_velocity(position, kernel=np.ones((int(500 / 20), 1))/ (500 / 20)):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
@@ -283,7 +294,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                     pass
                 else:
                     print('dud force')
-                covariate_force = PittCOLoader.get_velocity(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20))
+                covariate_force = PittCOLoader.smooth(payload['force'], kernel=np.ones((int(100 / 20), 1))/ (100 / 20)) # TODO get GB's smoothing params
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
             if exp_task_cfg.minmax and covariates is not None: # T x C
@@ -360,7 +371,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                     chop_vector(passive_assist),
                 ], 2)
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
-
+                # ! If we ever extend beyond 9 dims, the other force dimensions all belong to the grasp domain: src - Jeff Weiss
 
             if reward_dense is not None:
                 reward_dense = chop_vector(reward_dense)

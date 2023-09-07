@@ -429,9 +429,9 @@ class SpikingDataset(Dataset):
                         else:
                             data_items[k] = torch.zeros((1, self.cfg.behavior_dim))
                             data_items[DataKey.covariate_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
+                            data_items[DataKey.covariate_space] = torch.tensor([0], dtype=int)
                     else:
                         # breakpoint()
-                        cov_labels = payload[DataKey.covariate_labels] if DataKey.covariate_labels in payload else payload['covariate_dims'] # TODO deprecate 'covariate_dims'
                         mean, std = self.cfg.z_score_default_mean, self.cfg.z_score_default_std
                         if self.z_score and trial[MetaKey.session] in self.z_score:
                             per_zscore = self.z_score[trial[MetaKey.session]]
@@ -439,6 +439,7 @@ class SpikingDataset(Dataset):
                             std = per_zscore['std']
                         cov = (payload[k] - mean) / std
                         if self.cfg.tokenize_covariates:
+                            cov_labels = payload[DataKey.covariate_labels] if DataKey.covariate_labels in payload else payload['covariate_dims'] # TODO deprecate 'covariate_dims'
                             # breakpoint()
                             base_space = torch.tensor([DEFAULT_KIN_LABELS.index(i) for i in cov_labels], dtype=int) if self.cfg.semantic_positions else torch.arange(cov.size(1))
                             if self.cfg.pad_positions:
@@ -450,10 +451,11 @@ class SpikingDataset(Dataset):
                             data_items[DataKey.covariate_space] = repeat(base_space, 'b -> (t b)', t=cov.size(0))
                             data_items[DataKey.covariate_time] = repeat(torch.arange(cov.size(0)), 't -> (t b)', b=cov.size(1))
                             cov = rearrange(cov, 't b -> (t b) 1')
+                            data_items[DataKey.covariate_labels] = cov_labels
                         else:
                             data_items[DataKey.covariate_time] = torch.arange(cov.size(0))
+                            data_items[DataKey.covariate_space] = torch.zeros(cov.size(0), dtype=int)
                         data_items[k] = cov
-                        data_items[DataKey.covariate_labels] = cov_labels
                 elif k == DataKey.constraint: # T x Constraint_Dim x Bhvr_dim
                     # Current implementation assumes fixed shape
                     if self.cfg.sparse_constraints:

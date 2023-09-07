@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+- _default
+dataset:
+  max_length_ms: 3000
+  # max_length_ms: 30000
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 3000
+    # chop_size_ms: 30000
+  datasets:
+  - odoherty_rtt-Indy.*
+  tokenize_covariates: True
+model:
+  transformer:
+    max_trial_length: 1500
+  session_embed_strategy: EmbedStrat.none
+  task:
+    covariate_mask_ratio: 1.0 # Straight regression
+    context_prompt_time_thresh: 0
+train:
+  autoscale_batch_size: True
+  # batch_size: 8
+  effective_batch_size: 512
+inherit_tag: 30s
+notes: "Remove ICL aspect, for sake of regression testing, and for sake of turning into straight regression problem."
