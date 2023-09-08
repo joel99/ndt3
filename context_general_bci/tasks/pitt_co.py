@@ -155,28 +155,27 @@ class PittCOLoader(ExperimentalTaskLoader):
     name = ExperimentalTask.pitt_co
 
     @staticmethod
-    def smooth(position, kernel=np.ones((int(200 / 20), 1))/ (200 / 20)):
+    def smooth(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
         position = interpolate_nan(position)
-        position = position - position[0] # zero out initial position
-        position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
-        position[position.isnan()] = 0 # extra call to deal with edge values
-        return position
+        # position = position - position[0] # zero out initial position
+        # Manually pad with edge values
+        # OK to pad because this is beginning and end of _set_ where we expect little derivative (but possibly lack of centering)
+        assert kernel.shape[0] % 2 == 1, "Kernel must be odd (for convenience)"
+        pad_left, pad_right = int(kernel.shape[0] / 2), int(kernel.shape[0] / 2)
+        position = F.pad(position.T, (pad_left, pad_right), 'replicate')
+        return F.conv1d(position.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1))[:,0].T
 
     @staticmethod
-    def get_velocity(position, kernel=np.ones((int(200 / 20), 1))/ (200 / 20)):
+    def get_velocity(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
     # def get_velocity(position, kernel=np.ones((int(500 / 20), 1))/ (500 / 20)):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
-        position = interpolate_nan(position)
-        position = position - position[0] # zero out initial position
-        position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
-        vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
-        vel = interpolate_nan(vel) # extra call to deal with edge values
-        return vel
+        position = PittCOLoader.smooth(position, kernel=kernel)
+        return torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
 
     @staticmethod
     def ReFIT(positions: torch.Tensor, goals: torch.Tensor, reaction_lag_ms=100, bin_ms=20, oracle_blend=0.25) -> torch.Tensor:
@@ -303,22 +302,21 @@ class PittCOLoader(ExperimentalTaskLoader):
             # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
             if covariates is not None:
                 payload['cov_mean'] = covariates.mean(0)
-                # breakpoint()
+                payload['cov_min'] = torch.quantile(covariates, 0.01, dim=0)
+                payload['cov_max'] = torch.quantile(covariates, 0.99, dim=0)
                 covariates = covariates - covariates.mean(0)
-                covariates[:, (covariates.abs() < 1e-2).all(0)] = 0
+                covariates[:, (payload['cov_max'] - payload['cov_min']) < 0.01] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
             else:
                 payload['cov_mean'] = None
+                payload['cov_min'] = None
+                payload['cov_max'] = None
 
             if exp_task_cfg.minmax and covariates is not None: # T x C
-                payload['cov_min'] = covariates.min(0).values
-                payload['cov_max'] = covariates.max(0).values
                 rescale = payload['cov_max'] - payload['cov_min']
                 rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
                 covariates = covariates / rescale # Think this rescales to a bit less than 1
+                covariates = torch.clamp(covariates, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
                 # TODO we should really sanitize for severely abberant values in a more robust way... or checking for outlier effects
-            else:
-                payload['cov_min'] = None
-                payload['cov_max'] = None
 
 
             # * Constraints

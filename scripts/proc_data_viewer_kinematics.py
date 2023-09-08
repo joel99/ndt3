@@ -28,7 +28,10 @@ wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 run_cfg = cfg.dataset
 run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_13.*']
-# run_cfg.pitt_co.chop_size_ms = 12000
+# run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1965.*']
+# run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1789_2.*']
+# run_cfg.datasets = ['pitt_broad_pitt_co_CRS07Home_53_4.*']
+run_cfg.pitt_co.chop_size_ms = 12000
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
 dataset.subset_split()
@@ -62,6 +65,7 @@ trial = 0
 # trial = 1
 # trial = 2
 # trial = 10
+# trial = 100
 # trial = 4000
 # trial = 3000
 # trial = 3500
@@ -130,28 +134,42 @@ axes[0].set_title(trial_name)
 #%%
 # Pull the raw file, if you can
 from pathlib import Path
-from context_general_bci.tasks.pitt_co import load_trial, PittCOLoader
+from context_general_bci.tasks.pitt_co import load_trial, PittCOLoader, interpolate_nan
+from torch.nn import functional as F
 datapath = Path('data') / '/'.join(Path(dataset.meta_df.iloc[trial]['path']).parts[2:-1])
 print(datapath, datapath.exists())
 payload = load_trial(datapath, key='thin_data', limit_dims=run_cfg.pitt_co.limit_kin_dims)
 
-print(payload['force'].shape)
-print(payload['position'].shape)
+def mock_velocity(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
+    position = interpolate_nan(position)
+    position = position - position[0] # zero out initial position
+    position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
+    vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
+    vel = interpolate_nan(vel) # extra call to deal with edge values
+    return vel
+# print(payload['force'].shape)
+# print(payload['position'].shape)
 # plt.plot(payload['force'], label='f')
+position = payload['position'][:500,:1]
+# plt.plot(position[:, 0], label='x')
+kernel = np.ones((int(180 / 20), 1))/ (180 / 20)
+position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
 # plt.plot(payload['position'][:, 0], label='x')
+# plt.plot(position[:, 0], label='x smth')
+
+# plt.plot(np.gradient(payload['position'][:, 0]), label='x')
+# plt.plot(payload['position'][:, 1], label='y')
+# plt.plot(PittCOLoader.smooth(payload['position'][:, 2:3]), label='z')
+plt.legend()
 # plt.plot(payload['position'][:, 0], label='ry')
 # plt.plot(payload['position'][:, 6], label='gx')
 # print(payload['position'][:, 0].max(), payload['position'][:, 0].min())
 # print(payload['position'][:, 6].max(), payload['position'][:, 6].min())
 
-position = payload['position'][:, :2].T # Tranpose so we have row major interpolation
-int_position = pd.Series(position.flatten()).interpolate()
-position = torch.tensor(int_position).view(-1, position.shape[-1]).T
-# plt.plot(position[:, 0], label='x')
-
-covariates = PittCOLoader.get_velocity(position)
-print(covariates[:,0].max(), covariates[:,0].min())
-print(covariates[:,0].argmax(), covariates[:,0].min())
-plt.plot(covariates[:, 0], label='vx')
+covariates = PittCOLoader.get_velocity(payload['position'])
+# print(covariates[:,2].max(), covariates[:,2].min())
+# plt.plot(covariates[:, 2], label='vz')
+# plt.plot(covariates[:, 6], label='vgx')
 # plt.plot(payload['position'][3150:3200, 0], label='x')
-# plt.plot(covariates[3150:3200, 0], label='vx')
+plt.plot(covariates[:, 0], label='vx')
+# %%
