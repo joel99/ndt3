@@ -1,0 +1,27 @@
+# @package _global_
+
+defaults:
+- _default
+dataset:
+  max_length_ms: 30000
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 20000
+  datasets:
+  - odoherty_rtt-Indy.*
+model:
+  transformer:
+    max_trial_length: 1500
+  session_embed_strategy: EmbedStrat.none
+  # task:
+  #   covariate_mask_ratio: 1.0 # Straight regression
+  #   context_prompt_time_thresh: 0
+train:
+  autoscale_batch_size: False
+  batch_size: 8
+  effective_batch_size: 256
+  patience: 150
+inherit_tag: 30s
+# Trying to override to test if curricula helps
+# inherit_exp: ""
+# init_from_id: 3s_indy_regression-3w1o141c

@@ -52,9 +52,11 @@ for session in dataset.meta_df[MetaKey.session].unique():
 # print(has_brain_control)
 # print(dimensions)
 # print those without brain control
+#%%
 for session in has_brain_control:
     if not has_brain_control[session]:
         print(session)
+
 #%%
 trial = 0
 # trial = 10

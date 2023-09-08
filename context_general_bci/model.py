@@ -97,6 +97,7 @@ class BrainBertInterface(pl.LightningModule):
             self.backbone = nn.Identity()
             self.backbone.out_size = self.cfg.hidden_size
         else:
+            # breakpoint()
             self.backbone = SpaceTimeTransformer(
                 self.cfg.transformer,
                 max_spatial_tokens=data_attrs.max_spatial_tokens,
@@ -540,7 +541,7 @@ class BrainBertInterface(pl.LightningModule):
         times, _ = pack(pipeline_times, 'b *')
         space, _ = pack(pipeline_space, 'b *')
         pipeline_padding, _ = pack(pipeline_padding, 'b *')
-
+        # breakpoint()
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             padding_mask=pipeline_padding,

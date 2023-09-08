@@ -1407,7 +1407,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     else:
                         loss_mask = loss_mask.unsqueeze(-1).repeat(1, 1, loss.size(-1))
                         loss_mask[..., self.covariate_blacklist_dims] = False
-                loss = loss[loss_mask].mean()
+                if not loss_mask.any():
+                    loss = torch.zeros_like(loss).mean()
+                    logger.warning('No dims survive loss mask, kinematic loss is zero')
+                else:
+                    loss = loss[loss_mask].mean()
         r2_mask = length_mask
 
         batch_out['loss'] = loss

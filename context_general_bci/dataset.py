@@ -539,6 +539,7 @@ class SpikingDataset(Dataset):
                             # Assumes constraint time is available
                             constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) & (b[DataKey.constraint_time] >= crop_start[i])
                             if not constraint_mask.any():
+                                # breakpoint()
                                 constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) # There should always be one, since there's always a constraint specified at start of trial.
                                 # Get the latest timestep specified
                                 last_valid = b[DataKey.constraint_time][constraint_mask].max()

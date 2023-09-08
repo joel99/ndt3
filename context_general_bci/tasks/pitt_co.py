@@ -345,6 +345,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 return_dense = None
 
             spikes = chop_vector(spikes)
+            # breakpoint()
             if brain_control is None or covariates is None:
                 chopped_constraints = None
             else:
