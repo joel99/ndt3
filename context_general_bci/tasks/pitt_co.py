@@ -133,6 +133,20 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
                 out[k] = payload[k]
     return out
 
+
+def interpolate_nan(arr: np.ndarray | torch.Tensor):
+    if isinstance(arr, torch.Tensor):
+        arr = arr.numpy()
+    out = np.zeros_like(arr)
+    for i in range(arr.shape[1]):
+        x = arr[:, i]
+        nans = np.isnan(x)
+        non_nans = ~nans
+        x_interp = np.interp(np.flatnonzero(nans), np.flatnonzero(non_nans), x[non_nans])
+        x[nans] = x_interp
+        out[:, i] = x
+    return torch.as_tensor(out)
+
 @ExperimentalTaskRegistry.register
 class PittCOLoader(ExperimentalTaskLoader):
     r"""
@@ -145,8 +159,8 @@ class PittCOLoader(ExperimentalTaskLoader):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
-        int_position = pd.Series(position.flatten()).interpolate()
-        position = torch.tensor(int_position).view(-1, position.shape[-1])
+        position = interpolate_nan(position)
+        position = position - position[0] # zero out initial position
         position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
         position[position.isnan()] = 0 # extra call to deal with edge values
         return position
@@ -157,18 +171,11 @@ class PittCOLoader(ExperimentalTaskLoader):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
-        int_position = pd.Series(position.flatten()).interpolate()
-        position = torch.tensor(int_position).view(-1, position.shape[-1])
+        position = interpolate_nan(position)
         position = position - position[0] # zero out initial position
         position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
         vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
-
-        # position = pd.Series(position.flatten()).interpolate().to_numpy().reshape(-1, 2) # remove intermediate nans
-        # position = convolve(position, kernel, mode='same')
-        # vel = torch.tensor(np.gradient(position, axis=0)).float()
-        # position = convolve(position, kernel, mode='same') # Nope. this applies along both dimensions. Facepalm.
-
-        vel[vel.isnan()] = 0 # extra call to deal with edge values
+        vel = interpolate_nan(vel) # extra call to deal with edge values
         return vel
 
     @staticmethod

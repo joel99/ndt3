@@ -27,7 +27,7 @@ wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 run_cfg = cfg.dataset
-run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_1.*']
+run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_13.*']
 # run_cfg.pitt_co.chop_size_ms = 12000
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
@@ -139,10 +139,19 @@ print(payload['force'].shape)
 print(payload['position'].shape)
 # plt.plot(payload['force'], label='f')
 # plt.plot(payload['position'][:, 0], label='x')
+# plt.plot(payload['position'][:, 0], label='ry')
 # plt.plot(payload['position'][:, 6], label='gx')
-print(payload['position'][:, 0].max(), payload['position'][:, 0].min())
-print(payload['position'][:, 6].max(), payload['position'][:, 6].min())
+# print(payload['position'][:, 0].max(), payload['position'][:, 0].min())
+# print(payload['position'][:, 6].max(), payload['position'][:, 6].min())
 
-covariates = PittCOLoader.get_velocity(payload['position'])
-# print(covariates[:,0].max(), covariates[:-1,0].min())
-# plt.plot(covariates[:, 0], label='vx')
+position = payload['position'][:, :2].T # Tranpose so we have row major interpolation
+int_position = pd.Series(position.flatten()).interpolate()
+position = torch.tensor(int_position).view(-1, position.shape[-1]).T
+# plt.plot(position[:, 0], label='x')
+
+covariates = PittCOLoader.get_velocity(position)
+print(covariates[:,0].max(), covariates[:,0].min())
+print(covariates[:,0].argmax(), covariates[:,0].min())
+plt.plot(covariates[:, 0], label='vx')
+# plt.plot(payload['position'][3150:3200, 0], label='x')
+# plt.plot(covariates[3150:3200, 0], label='vx')
