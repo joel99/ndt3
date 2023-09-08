@@ -159,6 +159,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
         int_position = pd.Series(position.flatten()).interpolate()
         position = torch.tensor(int_position).view(-1, position.shape[-1])
+        position = position - position[0] # zero out initial position
         position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
         vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
 
@@ -295,6 +296,7 @@ class PittCOLoader(ExperimentalTaskLoader):
             # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
             if covariates is not None:
                 payload['cov_mean'] = covariates.mean(0)
+                # breakpoint()
                 covariates = covariates - covariates.mean(0)
                 covariates[:, (covariates.abs() < 1e-2).all(0)] = 0
             else:

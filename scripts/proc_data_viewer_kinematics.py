@@ -27,8 +27,8 @@ wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 run_cfg = cfg.dataset
-# run_cfg.datasets = []
-# default_cfg.pitt_co.chop_size_ms = 10000
+run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_1.*']
+# run_cfg.pitt_co.chop_size_ms = 12000
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
 dataset.subset_split()
@@ -50,20 +50,17 @@ for session in dataset.meta_df[MetaKey.session].unique():
     # all_constraints = torch.cat(all_constraints, dim=0)
     # print(f'Session {session}: {all_constraints.shape}')
     # has_brain_control[session] = (all_constraints[:, 0] < 1).any()
-#%%
 from pprint import pprint
 # print(has_brain_control)
 pprint(dimensions)
-# print those without brain control
-#%%
-for session in has_brain_control:
-    if not has_brain_control[session]:
-        print(session)
+# for session in has_brain_control:
+#     if not has_brain_control[session]:
+#         print(session)
 
 #%%
 trial = 0
-trial = 1
-trial = 2
+# trial = 1
+# trial = 2
 # trial = 10
 # trial = 4000
 # trial = 3000
@@ -133,10 +130,19 @@ axes[0].set_title(trial_name)
 #%%
 # Pull the raw file, if you can
 from pathlib import Path
-from context_general_bci.tasks.pitt_co import load_trial
+from context_general_bci.tasks.pitt_co import load_trial, PittCOLoader
 datapath = Path('data') / '/'.join(Path(dataset.meta_df.iloc[trial]['path']).parts[2:-1])
 print(datapath, datapath.exists())
 payload = load_trial(datapath, key='thin_data', limit_dims=run_cfg.pitt_co.limit_kin_dims)
 
 print(payload['force'].shape)
-plt.plot(payload['force'])
+print(payload['position'].shape)
+# plt.plot(payload['force'], label='f')
+# plt.plot(payload['position'][:, 0], label='x')
+# plt.plot(payload['position'][:, 6], label='gx')
+print(payload['position'][:, 0].max(), payload['position'][:, 0].min())
+print(payload['position'][:, 6].max(), payload['position'][:, 6].min())
+
+covariates = PittCOLoader.get_velocity(payload['position'])
+# print(covariates[:,0].max(), covariates[:-1,0].min())
+# plt.plot(covariates[:, 0], label='vx')
