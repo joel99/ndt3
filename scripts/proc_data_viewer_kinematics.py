@@ -15,10 +15,10 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest
 
-context = context_registry.query(alias='odoherty_rtt-Loco')[0]
-print(context)
+# context = context_registry.query(alias='odoherty_rtt-Loco')[0]
 # datapath = './data/odoherty_rtt/indy_20160407_02.mat'
 # context = context_registry.query_by_datapath(datapath)
+# print(context)
 
 sample_query = 'base' # just pull the latest run to ensure we're keeping its preproc config
 # sample_query = '10s_regression'
@@ -26,9 +26,10 @@ sample_query = 'base' # just pull the latest run to ensure we're keeping its pre
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
-default_cfg = cfg.dataset
-default_cfg.pitt_co.chop_size_ms = 10000
-dataset = SpikingDataset(default_cfg)
+run_cfg = cfg.dataset
+# run_cfg.datasets = []
+# default_cfg.pitt_co.chop_size_ms = 10000
+dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
 dataset.subset_split()
 
@@ -45,12 +46,14 @@ for session in dataset.meta_df[MetaKey.session].unique():
             all_constraints.append(constraints)
         if session not in dimensions:
             dimensions[session] = dataset[trial][DataKey.covariate_labels]
-    all_constraints = torch.cat(all_constraints, dim=0)
+            break
+    # all_constraints = torch.cat(all_constraints, dim=0)
     # print(f'Session {session}: {all_constraints.shape}')
-    has_brain_control[session] = (all_constraints[:, 0] < 1).any()
-
+    # has_brain_control[session] = (all_constraints[:, 0] < 1).any()
+#%%
+from pprint import pprint
 # print(has_brain_control)
-# print(dimensions)
+pprint(dimensions)
 # print those without brain control
 #%%
 for session in has_brain_control:
@@ -59,6 +62,8 @@ for session in has_brain_control:
 
 #%%
 trial = 0
+trial = 1
+trial = 2
 # trial = 10
 # trial = 4000
 # trial = 3000
@@ -70,7 +75,10 @@ trial = 0
 
 trial_name = dataset.meta_df.iloc[trial][MetaKey.unique]
 test = torch.load(dataset.meta_df.iloc[trial]['path'])
-print(test['cov_mean'], test['cov_min'], test['cov_max'])
+print(dataset.meta_df.iloc[trial]['path'])
+print('Mean: ', test['cov_mean'])
+print('Min: ', test['cov_min'])
+print('Max: ', test['cov_max'])
 
 trial_cov = dataset[trial][DataKey.bhvr_vel]
 print(f'Covariate shape: {trial_cov.shape}')
@@ -102,7 +110,7 @@ def plot_covs(ax, cov, cov_dims, cov_space: torch.Tensor | None =None):
             cov_pos = cov[cov_space == unique_space]
             if label != 'f':
                 cov_pos = cov_pos.cumsum(0)
-            cov_pos = cov_pos - cov_pos[0]
+            # cov_pos = cov_pos - cov_pos[0]
             ax.plot(cov_pos, label=cov_dims[i])
     # plot legend off side
     ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
@@ -121,12 +129,14 @@ plot_covs(axes[0], trial_cov, cov_dims, cov_space)
 if use_constraint:
     plot_constraints(axes[1])
 axes[0].set_title(trial_name)
+
 #%%
-# iterate through trials and print min and max bhvr_vel
-min_vel = 0
-max_vel = 0
-for trial in range(len(dataset)):
-    trial_vel = dataset[trial][DataKey.bhvr_vel]
-    min_vel = min(min_vel, trial_vel.min())
-    max_vel = max(max_vel, trial_vel.max())
-print(min_vel, max_vel)
+# Pull the raw file, if you can
+from pathlib import Path
+from context_general_bci.tasks.pitt_co import load_trial
+datapath = Path('data') / '/'.join(Path(dataset.meta_df.iloc[trial]['path']).parts[2:-1])
+print(datapath, datapath.exists())
+payload = load_trial(datapath, key='thin_data', limit_dims=run_cfg.pitt_co.limit_kin_dims)
+
+print(payload['force'].shape)
+plt.plot(payload['force'])

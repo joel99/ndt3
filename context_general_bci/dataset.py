@@ -257,6 +257,9 @@ class SpikingDataset(Dataset):
             self.checksum_diff(hash_dir / 'preprocess_version.json', context_meta.task):
             # TODO consider filtering meta df to be more lightweight (we don't bother right now because some nonessential attrs can be useful for analysis)
             os.makedirs(hash_dir, exist_ok=True)
+            # Clear out the dir, we're regenerating
+            for f in os.listdir(hash_dir):
+                os.remove(hash_dir / f)
             meta = context_meta.load(self.cfg, hash_dir)
             if meta is None:
                 logger.info('No metadata loaded, assuming debug mode. Continuing...')
@@ -439,7 +442,9 @@ class SpikingDataset(Dataset):
                             std = per_zscore['std']
                         cov = (payload[k] - mean) / std
                         if self.cfg.tokenize_covariates:
-                            cov_labels = payload[DataKey.covariate_labels] if DataKey.covariate_labels in payload else payload['covariate_dims'] # TODO deprecate 'covariate_dims'
+                            cov_labels = payload[DataKey.covariate_labels] # if DataKey.covariate_labels in payload else payload['covariate_dims'] # TODO deprecate 'covariate_dims'
+                            if 'f' not in cov_labels:
+                                breakpoint()
                             # breakpoint()
                             base_space = torch.tensor([DEFAULT_KIN_LABELS.index(i) for i in cov_labels], dtype=int) if self.cfg.semantic_positions else torch.arange(cov.size(1))
                             if self.cfg.pad_positions:

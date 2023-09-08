@@ -263,8 +263,6 @@ class PittCOLoader(ExperimentalTaskLoader):
             for u, c in zip(unique, counts):
                 if u >= CLAMP_MAX:
                     spikes[spikes == u] = CLAMP_MAX # clip
-                # if u >= 15 or c / elements < 1e-5: # anomalous, suppress to max. (Some bins randomly report impossibly high counts like 90 (in 20ms))
-                    # spikes[spikes == u] = 0
 
             # Iterate by trial, assumes continuity so we grab velocity outside
             exp_task_cfg: PittConfig = getattr(cfg, task.value)
@@ -284,40 +282,32 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # * Force
             if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
-
-                # This needs a repull - it's got weird, incorrect values.
-                # breakpoint()
-                # I do believe force velocity is still a helpful, used concept? For more symmetry with other dimensions
-                # Just minimize smoothing
-                if (payload['force'][~payload['force'].isnan()] != 0).sum() > 10: # Some small number of non-zero, not interesting enough.
-                    # Heuristic to identify interesting variability.
-                    # breakpoint()
-                    pass
-                else:
+                if not (payload['force'][~payload['force'].isnan()] != 0).sum() > 10: # Some small number of non-zero, not interesting enough.
                     print('dud force')
-                covariate_force = PittCOLoader.smooth(payload['force'])
+                covariate_force = PittCOLoader.smooth(payload['force']) # Gary doesn't compute velocity, just absolute. We follow suit.
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
-                # These are mostly Gary's - skip the initial 1s, which has the hand adjust but the participant isn't really paying attn
+                # These are mostly Gary's data - skip the initial 1s, which has the hand adjust but the participant isn't really paying attn
                 spikes = spikes[int(1000 / cfg.bin_size_ms):]
                 covariates = covariates[int(1000 / cfg.bin_size_ms):]
-
+            # breakpoint()
             # Apply a policy before normalization - if there's minor variance; these values are supposed to be relatively interpretable
             # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
             if covariates is not None:
+                payload['cov_mean'] = covariates.mean(0)
                 covariates = covariates - covariates.mean(0)
                 covariates[:, (covariates.abs() < 1e-2).all(0)] = 0
+            else:
+                payload['cov_mean'] = None
 
             if exp_task_cfg.minmax and covariates is not None: # T x C
-                payload['cov_mean'] = covariates.mean(0)
                 payload['cov_min'] = covariates.min(0).values
                 payload['cov_max'] = covariates.max(0).values
                 rescale = payload['cov_max'] - payload['cov_min']
                 rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
-                covariates = (covariates - payload['cov_mean']) / rescale # Think this rescales to a bit less than 1
+                covariates = covariates / rescale # Think this rescales to a bit less than 1
                 # TODO we should really sanitize for severely abberant values in a more robust way... or checking for outlier effects
             else:
-                payload['cov_mean'] = None
                 payload['cov_min'] = None
                 payload['cov_max'] = None
 

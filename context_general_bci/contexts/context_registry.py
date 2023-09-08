@@ -34,6 +34,11 @@ r"""
     JY's current view of  ideal dependency tree is
     Consumer (e.g. model training loop) -- depends -- > ContextRegistry --> Task -> Subject Registry
     - (But currently consumer will dive into some task-specific details, loader could be refactored..)
+
+    Querying examples:
+    # context = context_registry.query(alias='odoherty_rtt-Loco')[0] (see formatting of alias in `context_info` defns)
+    # datapath = './data/odoherty_rtt/indy_20160407_02.mat'
+    # context = context_registry.query_by_datapath(datapath)
 """
 
 r"""
