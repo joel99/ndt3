@@ -365,7 +365,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     # === Train ===
     num_workers = min(len(os.sched_getaffinity(0)), 16) # If this is set too high, the dataloader may crash.
-    num_workers = 0 # for testing
+    # num_workers = 0 # for testing
     if num_workers == 0:
         logger.warning("Num workers is 0, DEBUGGING.")
     logger.info("Preparing to fit...")

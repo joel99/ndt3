@@ -1,4 +1,5 @@
 #%%
+r""" What does raw data look like? (Preprocessing devbook) """
 import numpy as np
 import pandas as pd
 import torch
@@ -27,11 +28,11 @@ wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 run_cfg = cfg.dataset
-run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_13.*']
+# run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_13.*']
 # run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1965.*']
 # run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1789_2.*']
 # run_cfg.datasets = ['pitt_broad_pitt_co_CRS07Home_53_4.*']
-run_cfg.pitt_co.chop_size_ms = 12000
+# run_cfg.pitt_co.chop_size_ms = 12000
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
 dataset.subset_split()

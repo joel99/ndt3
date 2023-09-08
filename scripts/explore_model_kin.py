@@ -1,4 +1,7 @@
 #%%
+r"""
+    What do model behavioral predictions look like? (Devbook)
+"""
 import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
@@ -8,7 +11,6 @@ import numpy as np
 import seaborn as sns
 import torch
 from torch.utils.data import DataLoader
-# import lightning.pytorch as pl
 import lightning.pytorch as pl
 from einops import rearrange
 
@@ -26,24 +28,7 @@ from context_general_bci.utils import get_wandb_run, wandb_query_latest
 mode = 'train'
 # mode = 'test'
 
-# query = "human-sweep-simpler_lr_sweep-dgnx7mn9"
-# query = "human_only-5a62oz96"
-# query = 'session_cross_noctx-wc24ulkl'
-
-# query = 'human_sum_contrast-3inx20gs'
-# query = 'human_sum_contrast-l2zg9sju'
-# query = 'human_sum_contrast-lheohfzn'
-# query = 'sup_3200-frag-odoherty_rtt-Indy-20160627_01-sweep-simpler_lr_sweep-iy1xf1bc'
-query = 'human_obs_m5_lr1e5-2ixlx1c9'
-# query = 'human_aug-nxy3te61'
-query = 'online_obs_tune-nr2b51yd'
-# query = 'online_obs_tune-0ee5xlel'
-
-query = 'human_crs08_tune-mip3powm'
-# query = 'online_human_pt-5ytq361d'
-query = 'online_human_pt-cfzx5heb'
-query = 'online_human_pt-w3rnnpj4'
-query = 'human_regression-rl2e5tw5'
+query = 'base'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -54,17 +39,8 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.metrics = [Metric.kinematic_r2]
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
-# Joint transfer exp
-pipeline_model = ""
-
-if pipeline_model:
-    pipeline_model = load_wandb_run(wandb_query_latest(pipeline_model, allow_running=True, use_display=True)[0], tag='val_loss')[0]
-    cfg.model.task = pipeline_model.cfg.task
-
-# target_dataset = 'observation_CRS02bLab_session_1827.*'
-# target_dataset = 'observation_CRS02bLab_session_1922_set_6'
-target_dataset = 'observation_CRS02bLab_1925_3' # 0.97 click acc
-target_dataset = 'observation_CRS02bLab_1923_7' # 0.95 click acc
+target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
+target_dataset = 'pitt_broad_CRS02bLab_1923_7' # 0.95 click acc
 
 
 
