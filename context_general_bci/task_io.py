@@ -1421,9 +1421,14 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         batch_out['loss'] = loss
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
+            if len(self.covariate_blacklist_dims) > 0:
+                assert self.cfg.decode_tokenize_dims, "blacklist dims not implemented for non tokenized R2"
+                positions: torch.Tensor = batch[f'{DataKey.covariate_space}_target']
+                r2_mask = r2_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
             if self.served_tokenized_covariates and not self.served_semantic_covariates: # If semantic, we don't need to reorganize
+                assert len(self.covariate_blacklist_dims) == 0, "blacklist dims not implemented for non semantic R2"
                 # Compute the unique covariate labels, and their repsective position indices.
                 # Then pull R2 accordingly. Lord knows this isn't the most efficient, but...
                 dims_per = torch.tensor([len(i) for i in batch[DataKey.covariate_labels]], device=batch[f'{DataKey.covariate_space}_target'].device).cumsum(0)
@@ -1451,6 +1456,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     r2_scores.append(r2_score(valid_tgt[positions == i], valid_bhvr[positions == i]))
                 batch_out[Metric.kinematic_r2] = np.array(r2_scores)
             else:
+                assert len(self.covariate_blacklist_dims) == 0, "blacklist dims not implemented for non tokenized R2"
                 batch_out[Metric.kinematic_r2] = r2_score(valid_tgt, valid_bhvr, multioutput='raw_values')
             if batch_out[Metric.kinematic_r2].mean() < -100:
                 batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])# .mean() # mute, some erratic result from near zero target skewing plots

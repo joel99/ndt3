@@ -44,7 +44,7 @@ cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 # target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
 target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
-
+target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1965'
 
 
 dataset = SpikingDataset(cfg.dataset)

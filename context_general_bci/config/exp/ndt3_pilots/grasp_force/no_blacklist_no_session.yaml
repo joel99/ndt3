@@ -1,0 +1,25 @@
+# @package _global_
+defaults:
+- _default
+
+dataset:
+  max_length_ms: 20000
+  max_trial_length: 1000 # up to 20s
+  pitt_co:
+    chop_size_ms: 15000 # 15s
+    # chop_size_ms: 12000 # 12s
+  tokenize_covariates: True
+  semantic_positions: True # Kept around for now, for evaluation convenience
+  # datasets: ['pitt_broad_pitt_co_CRS02bLab_1776_1.*'] # Trying to understand non-reproc.
+model:
+  session_embed_strategy: EmbedStrat.none
+  transformer:
+    max_trial_length: 1000 # up to 20s
+  # task:
+    # covariate_blacklist_dims: [0, 1, 2, 3, 4, 5, 6, 7]
+train:
+  autoscale_batch_size: true
+  batch_size: 8 # 40G for 15s
+  # batch_size: 16 # 80G
+  # batch_size: 256 # 80G
+  effective_batch_size: 512 # ~3K example for 15s
