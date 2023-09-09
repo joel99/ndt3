@@ -522,7 +522,6 @@ class SpikingDataset(Dataset):
     def __len__(self):
         return len(self.meta_df)
 
-    @staticmethod
     def tokenized_collater(self, batch):
         r"""
             batch: list of dicts
@@ -560,7 +559,8 @@ class SpikingDataset(Dataset):
                             raise NotImplementedError
                             print("Shouldn't we be subsetting dense constraints according to covariate time")
                             breakpoint()
-                        stack_batch[k].append(constraint)
+                        stack_batch[k].append(constraint.float()) # Cast explicitly, prediction function complains
+                        # stack_batch[k].append(constraint)
                     elif k in [DataKey.constraint_time, DataKey.constraint_space]:
                         continue # treated above
                     elif k == DataKey.task_return:
@@ -859,8 +859,10 @@ class SpikingDataModule(pl.LightningDataModule):
         self.train = train
         if not isinstance(val, list):
             val = [val]
-        self.val = val
-        self.test = test
+        if not isinstance(test, list):
+            test = [test]
+        self.val: List[SpikingDataset] = val
+        self.test: List[SpikingDataset] = test
         self.num_workers = num_workers
 
     def setup(self, stage: str=""):
@@ -872,7 +874,8 @@ class SpikingDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
-            collate_fn=functools.partial(self.train.tokenized_collater, self.train),
+            collate_fn=self.train.tokenized_collater,
+            # collate_fn=functools.partial(self.train.tokenized_collater, self.train),
         )
 
     def val_dataloader(self):
@@ -882,7 +885,8 @@ class SpikingDataModule(pl.LightningDataModule):
                 batch_size=self.batch_size,
                 num_workers=self.num_workers,
                 persistent_workers=self.num_workers > 0,
-                collate_fn=functools.partial(dataset.tokenized_collater, dataset),
+                collate_fn=dataset.tokenized_collater,
+                # collate_fn=functools.partial(dataset.tokenized_collater, dataset),
             ) for dataset in self.val]
 
     def test_dataloader(self):
@@ -893,6 +897,7 @@ class SpikingDataModule(pl.LightningDataModule):
             batch_size=self.batch_size,
             num_workers=self.num_workers,
             persistent_workers=self.num_workers > 0,
-            collate_fn=functools.partial(dataset.tokenized_collater, dataset),
+            collate_fn=dataset.tokenized_collater,
+            # collate_fn=functools.partial(dataset.tokenized_collater, dataset),
         ) for dataset in self.test]
 

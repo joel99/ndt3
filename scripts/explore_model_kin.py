@@ -2,6 +2,9 @@
 r"""
     What do model behavioral predictions look like? (Devbook)
 """
+# restrict cuda to gpu 1
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
@@ -28,7 +31,7 @@ from context_general_bci.utils import get_wandb_run, wandb_query_latest
 mode = 'train'
 # mode = 'test'
 
-query = 'base'
+query = 'base-i9ix8t7q'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -39,8 +42,8 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.metrics = [Metric.kinematic_r2]
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
-target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
-target_dataset = 'pitt_broad_CRS02bLab_1923_7' # 0.95 click acc
+# target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
+target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
 
 
 
@@ -65,15 +68,8 @@ print("Subset length: ", len(dataset))
 
 data_attrs = dataset.get_data_attrs()
 print(data_attrs)
-cfg.model.task.tasks = [ModelTask.kinematic_decoding]
 
 model = transfer_model(src_model, cfg.model, data_attrs)
-
-if pipeline_model:
-    pipeline_model = transfer_model(pipeline_model, cfg.model, data_attrs)
-    model.task_pipelines[ModelTask.kinematic_decoding.value] = pipeline_model.task_pipelines[ModelTask.kinematic_decoding.value]
-    # model.transfer_io(pipeline_model)
-
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=300, num_workers=1, **kwargs) -> DataLoader:
@@ -82,42 +78,43 @@ def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwar
         batch_size=batch_size,
         num_workers=num_workers,
         persistent_workers=num_workers > 0,
-        collate_fn=dataset.collater_factory()
+        collate_fn=dataset.tokenized_collater
     )
 
 dataloader = get_dataloader(dataset)
-heldin_metrics = stack_batch(trainer.test(model, dataloader))
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+heldin_metrics = stack_batch(trainer.test(model, dataloader))
 # A note on fullbatch R2 calculation - in my experience by bsz 128 the minibatch R2 ~ fullbatch R2 (within 0.01); for convenience we use minibatch R2
 
-offset_bins = model.task_pipelines[ModelTask.kinematic_decoding.value].bhvr_lag_bins
-breakpoint()
-
 #%%
+from context_general_bci.config import DEFAULT_KIN_LABELS
 pred = heldin_outputs[Output.behavior_pred]
-pred = [p[offset_bins:] for p in pred]
 true = heldin_outputs[Output.behavior]
-true = [t[offset_bins:] for t in true]
-# for trial_true in true:
-#     print(trial_true.any(0))
 
 print(pred[0].shape)
 print(true[0].shape)
-flat_pred = np.concatenate(pred) if isinstance(pred, list) else pred.flatten()
-flat_true = np.concatenate(true) if isinstance(true, list) else true.flatten()
-flat_pred = flat_pred[(flat_true != model.data_attrs.pad_token).any(-1)]
-flat_true = flat_true[(flat_true != model.data_attrs.pad_token).any(-1)]
+print(heldin_outputs[f'{DataKey.covariate_space}_target'].shape)
+#%%
+def flatten(arr):
+    return np.concatenate(arr) if isinstance(arr, list) else arr.flatten()
+flat_pred = flatten(pred)
+flat_true = flatten(true)
+flat_space = flatten(heldin_outputs[f'{DataKey.covariate_space}_target'])
+flat_padding = flatten(heldin_outputs[f'covariate_{DataKey.padding}_target'])
+flat_pred = flat_pred[~flat_padding]
+flat_true = flat_true[~flat_padding]
+flat_space = flat_space[~flat_padding]
 
-coords = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy']
-coords_arr = np.stack([flat_pred.shape[0] * [i] for i in coords], axis=1)
+assert dataset.cfg.semantic_positions, 'Need to specify semantic covariates to plot kinematics (covariate_label path not implemented)'
+
 df = pd.DataFrame({
     'pred': flat_pred.flatten(),
     'true': flat_true.flatten(),
-    'coord': coords_arr.flatten(),
+    'coord': [DEFAULT_KIN_LABELS[i] for i in flat_space],
 })
 # plot marginals
 subdf = df
-subdf = df[df['coord'].isin(['y'])]
+# subdf = df[df['coord'].isin(['y'])]
 
 g = sns.jointplot(x='true', y='pred', hue='coord', data=subdf, s=3, alpha=0.4)
 
@@ -125,36 +122,48 @@ g = sns.jointplot(x='true', y='pred', hue='coord', data=subdf, s=3, alpha=0.4)
 g.fig.suptitle(f'{query} {mode} {target_dataset} Velocity R2: {heldin_metrics["test_kinematic_r2"]:.2f}')
 #%%
 f = plt.figure(figsize=(10, 10))
-ax = prep_plt(f.gca())
-trials = range(4)
-# trials = range(2)
-# trials = torch.arange(0, 12, 2)
+ax = prep_plt(f.gca(), big=True)
+trials = 4
+trials = min(trials, len(heldin_outputs[Output.behavior_pred]))
+trials = range(trials)
 
 colors = sns.color_palette('colorblind', len(trials))
 def plot_trial(trial, ax, color, label=False):
-    vel_true = heldin_outputs[Output.behavior][trial][offset_bins:]
-    vel_pred = heldin_outputs[Output.behavior_pred][trial][offset_bins:]
-    # remove padding
-    pad_index = np.where(vel_true[:,0] == 5)[0]
-    if len(pad_index) > 0:
-        # assume sequential
-        vel_pred = vel_pred[:pad_index[0]]
-        vel_true = vel_true[:pad_index[0]]
+    vel_true = heldin_outputs[Output.behavior][trial]
+    vel_pred = heldin_outputs[Output.behavior_pred][trial]
+    dims = heldin_outputs[f'{DataKey.covariate_space}_target'][trial]
+    pad = heldin_outputs[f'covariate_{DataKey.padding}_target'][trial]
+    vel_true = vel_true[~pad]
+    vel_pred = vel_pred[~pad]
+    dims = dims[~pad]
+    for i, dim in enumerate(dims.unique()):
+        dim_mask = dims == dim
+        true_dim = vel_true[dim_mask]
+        pred_dim = vel_pred[dim_mask]
+        dim_label = DEFAULT_KIN_LABELS[dim]
+        if dim_label != 'f':
+            true_dim = true_dim.cumsum(0)
+            pred_dim = pred_dim.cumsum(0)
+        ax.plot(true_dim, label=f'{dim_label} true' if label else None, linestyle='-', color=color)
+        ax.plot(pred_dim, label=f'{dim_label} pred' if label else None, linestyle='--', color=color)
 
-    pos_true = vel_true.cumsum(0)
-    pos_pred = vel_pred.cumsum(0)
-    ax.plot(pos_true[:,0], pos_true[:,1], label='true' if label else '', linestyle='-', color=color)
-    ax.plot(pos_pred[:,0], pos_pred[:,1], label='pred' if label else '', linestyle='--', color=color)
-    ax.set_xlabel('X-pos')
-    ax.set_ylabel('Y-pos')
+    # ax.plot(pos_true[:,0], pos_true[:,1], label='true' if label else '', linestyle='-', color=color)
+    # ax.plot(pos_pred[:,0], pos_pred[:,1], label='pred' if label else '', linestyle='--', color=color)
+    # ax.set_xlabel('X-pos')
+    # ax.set_ylabel('Y-pos')
     # make limits square
-    ax.set_aspect('equal', 'box')
+    # ax.set_aspect('equal', 'box')
 
 
 for i, trial in enumerate(trials):
-    plot_trial(trial, ax, colors[i], label=i == 0)
+    plot_trial(trial, ax, colors[i], label=i==0)
 ax.legend()
 ax.set_title(f'{mode} {target_dataset} Trajectories')
+ax.set_ylabel(f'Force (minmax normalized)')
+# xticks - 1 bin is 20ms. Express in seconds
+ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms / 1000)
+# express in seconds
+ax.set_xlabel('Time (s)')
 
 #%%
 # print(heldin_outputs[Output.rates].max(), heldin_outputs[Output.rates].mean())

@@ -534,7 +534,7 @@ class SpikeContext(ContextPipeline):
         batch[DataKey.padding] = create_token_padding_mask(
             spikes, batch,
             length_key=LENGTH_KEY, # Use the right key, if there's no shuffle # TODO fix dataloader to load LENGTH_KEY as SPIKE_LENGTH_KEY (make spikes less special)
-            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}', # This is actually pre-shuffle, no need!
+            # shuffle_key=f'{self.handle}_{SHUFFLE_KEY}', # This is actually pre-shuffle, no need!
         )
         return batch
 
@@ -1123,7 +1123,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
             batch[self.cfg.behavior_target], batch,
             length_key=f'{self.handle}_{LENGTH_KEY}',
-            shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
+            # shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
         )
         return self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
 
@@ -1355,13 +1355,16 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             bhvr = bhvr[..., :-self.bhvr_lag_bins, :]
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
 
-        # TODO these outputs are currently useless in shuffle or tokenized path
+        # * Doesn't unshuffle or do any formatting
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
+            batch_out[f'{DataKey.covariate_space}_target'] = batch[f'{DataKey.covariate_space}_target']
+            batch_out[f'{DataKey.covariate_time}_target'] = batch[f'{DataKey.covariate_time}_target']
+            batch_out[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}_target']
             batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr)
             if self.bhvr_mean is not None:
                 batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
         if Output.behavior in self.cfg.outputs:
-            batch_out[Output.behavior] = batch[self.cfg.behavior_target]
+            batch_out[Output.behavior] = self.get_target(batch)
         if not compute_metrics:
             return batch_out
 
@@ -1570,7 +1573,7 @@ def create_token_padding_mask(
     reference: torch.Tensor | None,
     batch: Dict[str, torch.Tensor],
     length_key: str = LENGTH_KEY,
-    shuffle_key: str = SHUFFLE_KEY,
+    shuffle_key: str = '',
     multiplicity: int = 1, # if reference has extra time dimensions flattened
 ) -> torch.Tensor:
     r"""
@@ -1580,6 +1583,8 @@ def create_token_padding_mask(
 
         out: b x t
     """
+    if shuffle_key != '':
+        assert False, "Deprecated"
     if length_key not in batch: # No plausible padding, everything is square
         return torch.zeros(reference.size()[:2], device=reference.device, dtype=torch.bool)
     if shuffle_key in batch:

@@ -585,7 +585,7 @@ class BrainBertInterface(pl.LightningModule):
                 stim: B T C H
                 channel_counts: B A (counts per array)
         """
-        # breakpoint()
+
         batch_out: Dict[str, torch.Tensor] = {}
         if Output.spikes in self.cfg.task.outputs:
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
@@ -634,12 +634,10 @@ class BrainBertInterface(pl.LightningModule):
             batch should provide info needed by model. (responsibility of user)
             Output is always batched (for now)
         """
-        # breakpoint()
-        if self.data_attrs.serve_tokens and not self.data_attrs.serve_tokens_flat:
-            raise NotImplementedError
+        assert self.data_attrs.serve_tokens_flat, "Not implemented"
         # there are data keys and meta keys, that might be coming in unbatched
         batch_shapes = {
-            DataKey.spikes: '* t token_chan h' if self.data_attrs.serve_tokens else '* t a c h',
+            DataKey.spikes: '* t token_chan h',
             DataKey.heldout_spikes: '* t c h',
             DataKey.stim: '* t c h', # TODO review
             DataKey.bhvr_vel: '* t h',
@@ -653,10 +651,19 @@ class BrainBertInterface(pl.LightningModule):
             CHANNEL_KEY: '* a', # or '* token'
             DataKey.time: '* t',
             DataKey.position: '* t',
+            DataKey.covariate_time: '* t',
+            DataKey.covariate_space: '* t',
+            DataKey.covariate_labels: '*',
+            DataKey.constraint_space: '* t',
+            DataKey.constraint_time: '* t',
+            'constraint_length': '*',
+            DataKey.constraint: '* t constraint_dim',
         }
-
         pack_info = {}
+        # breakpoint()
         for k in batch:
+            if k == DataKey.covariate_labels:
+                continue
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
         batch_out: Dict[str, torch.Tensor] = {}
         # auto-debug
@@ -667,19 +674,24 @@ class BrainBertInterface(pl.LightningModule):
             assert self.data_attrs.serve_tokens_flat or not self.data_attrs.serve_tokens, "Not implemented, needs assembling"
             if self.data_attrs.serve_tokens_flat:
                 batch_out[Output.spikes] = unflatten(batch[DataKey.spikes], batch[DataKey.time], batch[DataKey.position])
-                batch_out['time'] = batch[DataKey.time].clone() # pre mask
-                batch_out['position'] = batch[DataKey.position].clone() # pre mask
+                batch_out[DataKey.time] = batch[DataKey.time].clone() # pre mask
+                batch_out[DataKey.position] = batch[DataKey.position].clone() # pre mask
             else:
                 batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         if mask:
             for k in self.cfg.task.tasks:
                 self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
-        features = self(batch)
+
+        # breakpoint()
+        features, times, space, padding = self(batch)
         task_order = self.cfg.task.tasks
         for task in task_order:
             update = self.task_pipelines[task.value](
                 batch,
                 features,
+                times,
+                space,
+                padding,
                 compute_metrics=False,
                 eval_mode=eval_mode
             )
@@ -793,7 +805,8 @@ class BrainBertInterface(pl.LightningModule):
         **kwargs
     ):
         for m in metrics:
-            if not isinstance(m, Metric) and not isinstance(m, Output) and 'update' not in m: # log misc, mostly task losses
+            if 'loss' in str(m):
+            # if not isinstance(m, Metric) and not isinstance(m, Output) and 'update' not in m: # log misc, mostly task losses
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
             if m == Metric.kinematic_r2 or m == Metric.kinematic_r2_thresh:
@@ -858,10 +871,10 @@ class BrainBertInterface(pl.LightningModule):
         r"""
             Note test step isn't capable of returning non-metrics. (use `predict` to get outputs)
         """
-        metrics = self._step(
-            batch, eval_mode=False,
-            kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
-        )
+
+        metrics = self._step(batch, eval_mode=False)
+            # kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
+        # )
         # metrics = self._step(batch, eval_mode=True)
         self.common_log(metrics, prefix='test')
         return metrics

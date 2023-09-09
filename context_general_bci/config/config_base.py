@@ -57,6 +57,7 @@ class Output(Enum):
 
     behavior = 'behavior'
     behavior_pred = 'behavior_pred'
+    behavior_query_mask = 'behavior_query_mask' # Which ones were actual predictions vs inputs?
 
     # Debug
     pooled_features = 'pooled_features'
