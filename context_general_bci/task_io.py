@@ -1360,6 +1360,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             batch_out[f'{DataKey.covariate_space}_target'] = batch[f'{DataKey.covariate_space}_target']
             batch_out[f'{DataKey.covariate_time}_target'] = batch[f'{DataKey.covariate_time}_target']
             batch_out[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}_target']
+            if DataKey.covariate_labels in batch:
+                batch_out[DataKey.covariate_labels] = batch[DataKey.covariate_labels]
             batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr)
             if self.bhvr_mean is not None:
                 batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean

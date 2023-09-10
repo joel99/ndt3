@@ -443,8 +443,8 @@ class SpikingDataset(Dataset):
                         cov = (payload[k] - mean) / std
                         if self.cfg.tokenize_covariates:
                             cov_labels = payload[DataKey.covariate_labels] # if DataKey.covariate_labels in payload else payload['covariate_dims'] # TODO deprecate 'covariate_dims'
-                            if 'f' not in cov_labels:
-                                breakpoint()
+                            # if 'f' not in cov_labels:
+                                # breakpoint()
                             # breakpoint()
                             base_space = torch.tensor([DEFAULT_KIN_LABELS.index(i) for i in cov_labels], dtype=int) if self.cfg.semantic_positions else torch.arange(cov.size(1))
                             if self.cfg.pad_positions:

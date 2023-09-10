@@ -4,9 +4,10 @@ r"""
 """
 # restrict cuda to gpu 1
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="0"
 import logging
 import sys
+import itertools
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
 from matplotlib import pyplot as plt
 import pandas as pd
@@ -18,8 +19,8 @@ import lightning.pytorch as pl
 from einops import rearrange
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
-from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.config import ModelTask, Metric, Output, DataKey, MetaKey
+from context_general_bci.dataset import SpikingDataset
 from context_general_bci.model import transfer_model, logger
 from context_general_bci.contexts import context_registry
 
@@ -32,6 +33,9 @@ mode = 'train'
 # mode = 'test'
 
 query = 'base-i9ix8t7q'
+query = 'no_blacklist_no_session-xn7zeqpo'
+query = 'no_sem-73nhkuba'
+# query = 'grasp_icl-0rrikpqe'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -44,7 +48,8 @@ cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 # target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
 target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
-target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1965'
+# target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1965'
+# target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1993'
 
 
 dataset = SpikingDataset(cfg.dataset)
@@ -90,27 +95,36 @@ heldin_metrics = stack_batch(trainer.test(model, dataloader))
 from context_general_bci.config import DEFAULT_KIN_LABELS
 pred = heldin_outputs[Output.behavior_pred]
 true = heldin_outputs[Output.behavior]
+positions = heldin_outputs[f'{DataKey.covariate_space}_target']
+padding = heldin_outputs[f'covariate_{DataKey.padding}_target']
 
 print(pred[0].shape)
 print(true[0].shape)
 print(heldin_outputs[f'{DataKey.covariate_space}_target'].shape)
-#%%
+print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
+# print(heldin_outputs[DataKey.covariate_labels])
+
 def flatten(arr):
     return np.concatenate(arr) if isinstance(arr, list) else arr.flatten()
-flat_pred = flatten(pred)
-flat_true = flatten(true)
-flat_space = flatten(heldin_outputs[f'{DataKey.covariate_space}_target'])
-flat_padding = flatten(heldin_outputs[f'covariate_{DataKey.padding}_target'])
-flat_pred = flat_pred[~flat_padding]
-flat_true = flat_true[~flat_padding]
-flat_space = flat_space[~flat_padding]
+flat_padding = flatten(padding)
 
-assert dataset.cfg.semantic_positions, 'Need to specify semantic covariates to plot kinematics (covariate_label path not implemented)'
+if model.data_attrs.semantic_covariates:
+    flat_space = flatten(positions)
+    flat_space = flat_space[~flat_padding]
+    coords = [DEFAULT_KIN_LABELS[i] for i in flat_space]
+else:
+    # remap position to global space
+    coords = []
+    labels = heldin_outputs[DataKey.covariate_labels]
+    for i, trial_position in enumerate(positions):
+        coords.extend(np.array(labels[i])[trial_position])
+    coords = np.array(coords)
+    coords = coords[~flat_padding]
 
 df = pd.DataFrame({
-    'pred': flat_pred.flatten(),
-    'true': flat_true.flatten(),
-    'coord': [DEFAULT_KIN_LABELS[i] for i in flat_space],
+    'pred': flatten(pred)[~flat_padding],
+    'true': flatten(true)[~flat_padding],
+    'coord': coords,
 })
 # plot marginals
 subdf = df
@@ -140,7 +154,7 @@ def plot_trial(trial, ax, color, label=False):
         dim_mask = dims == dim
         true_dim = vel_true[dim_mask]
         pred_dim = vel_pred[dim_mask]
-        dim_label = DEFAULT_KIN_LABELS[dim]
+        dim_label = DEFAULT_KIN_LABELS[dim] if model.data_attrs.semantic_covariates else heldin_outputs[DataKey.covariate_labels][trial][dim]
         if dim_label != 'f':
             true_dim = true_dim.cumsum(0)
             pred_dim = pred_dim.cumsum(0)

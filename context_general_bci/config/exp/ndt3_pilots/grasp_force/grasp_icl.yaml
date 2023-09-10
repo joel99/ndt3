@@ -1,0 +1,74 @@
+# @package _global_
+defaults:
+- _default
+
+dataset:
+  max_length_ms: 20000
+  max_trial_length: 1000 # up to 20s
+  pitt_co:
+    chop_size_ms: 15000 # 15s
+    # chop_size_ms: 12000 # 12s
+  tokenize_covariates: True
+  semantic_positions: False
+  # datasets: ['pitt_broad_pitt_co_CRS02bLab_1776_1.*'] # Trying to understand non-reproc.
+  datasets:
+  # From GB's tests:
+  # https://pitt-my.sharepoint.com/:x:/r/personal/ghb14_pitt_edu/_layouts/15/Doc.aspx?sourcedoc=%7BEFCBDF63-B37B-4C60-A578-0A51AEE4157B%7D&file=U01%20Testing%20Dates.xlsx
+  - pitt_broad_pitt_co_CRS02bLab_1761
+  - pitt_broad_pitt_co_CRS02bLab_1767
+  - pitt_broad_pitt_co_CRS02bLab_1769
+  # - pitt_broad_pitt_co_CRS02bLab_1773 # ! Not found
+  - pitt_broad_pitt_co_CRS02bLab_1775
+  - pitt_broad_pitt_co_CRS02bLab_1790
+  - pitt_broad_pitt_co_CRS02bLab_1776
+  - pitt_broad_pitt_co_CRS02bLab_1778
+  - pitt_broad_pitt_co_CRS02bLab_1780
+  - pitt_broad_pitt_co_CRS02bLab_1798
+  - pitt_broad_pitt_co_CRS02bLab_1787
+  - pitt_broad_pitt_co_CRS02bLab_1789
+  # - pitt_broad_pitt_co_CRS02bLab_1885 # Failed, no force data
+  - pitt_broad_pitt_co_CRS02bLab_1829
+  - pitt_broad_pitt_co_CRS02bLab_1837
+  - pitt_broad_pitt_co_CRS02bLab_1855
+  - pitt_broad_pitt_co_CRS02bLab_1869
+  # Eval set.
+  - pitt_broad_pitt_co_CRS02bLab_1899
+  - pitt_broad_pitt_co_CRS02bLab_1900
+  - pitt_broad_pitt_co_CRS02bLab_1907
+  - pitt_broad_pitt_co_CRS02bLab_1918
+  - pitt_broad_pitt_co_CRS02bLab_1965
+  - pitt_broad_pitt_co_CRS02bLab_1993
+  - pitt_broad_pitt_co_CRS02bLab_2004
+  - pitt_broad_pitt_co_CRS02bLab_2011
+
+  - pitt_broad_pitt_co_CRS07Home_32
+  - pitt_broad_pitt_co_CRS07Home_33
+  - pitt_broad_pitt_co_CRS07Home_34
+  - pitt_broad_pitt_co_CRS07Home_35
+  - pitt_broad_pitt_co_CRS07Home_52 # mislabel
+  # - pitt_broad_pitt_co_CRS07Lab_52
+  - pitt_broad_pitt_co_CRS07Home_53
+  - pitt_broad_pitt_co_CRS07Home_49
+  # - pitt_broad_pitt_co_CRS07Home_57 # ! Not found
+  - pitt_broad_pitt_co_CRS07Home_69
+  - pitt_broad_pitt_co_CRS07Home_71
+  - pitt_broad_pitt_co_CRS07Home_83
+  - pitt_broad_pitt_co_CRS07Home_88
+  - pitt_broad_pitt_co_CRS07Home_61
+  - pitt_broad_pitt_co_CRS07Home_108
+model:
+  session_embed_strategy: EmbedStrat.none
+  transformer:
+    max_trial_length: 1000 # up to 20s
+  # task:
+    # covariate_blacklist_dims: [0, 1, 2, 3, 4, 5, 6, 7]
+  task:
+    covariate_mask_ratio: 0.2 # 15s -> 3s
+    context_prompt_time_thresh: 600 # 12s * 50Hz
+train:
+  autoscale_batch_size: true
+  batch_size: 8 # 40G for 15s
+  # batch_size: 16 # 80G
+  # batch_size: 256 # 80G
+  effective_batch_size: 512 # ~3K example for 15s
+notes: "Add two translation sets, 2004, 2011 + closed loop, 1993. (no return here.). Testing robustness of multimodal."

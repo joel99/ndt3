@@ -21,7 +21,7 @@ from dacite import from_dict
 from context_general_bci.utils import get_best_ckpt_from_wandb_id
 from context_general_bci.model import BrainBertInterface, load_from_checkpoint
 from context_general_bci.dataset import DataAttrs, SpikingDataset
-from context_general_bci.config import RootConfig
+from context_general_bci.config import RootConfig, DataKey
 
 WandbRun = Any
 import seaborn as sns
@@ -110,6 +110,8 @@ def stack_batch(batch_out: List[Dict[str, torch.Tensor]]):
                 out[k] = torch.stack(v)
             else:
                 out[k] = v
+        elif k in [DataKey.covariate_labels]:
+            out[k] = v # Don't stack, return as list of lists
         else:
             out[k] = torch.tensor(v).mean() # some metric
     return out
