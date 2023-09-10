@@ -400,6 +400,8 @@ class ScaleHistoryDatasetConfig(FlatDataConfig):
         load_covariates=False, # Just not worth implementing, probably
         pretrial_time_s=0.5,
     ))
+    tokenize_covariates: bool = True
+    sparse_constraints: bool = True
 
 
 

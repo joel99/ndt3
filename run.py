@@ -408,6 +408,8 @@ def run_exp(cfg : RootConfig) -> None:
         if is_distributed:
             replicas = cfg.nodes * torch.cuda.device_count()
             logger.info(f"Running on {replicas} replicas")
+            if data_module.batch_size * replicas > cfg.train.effective_batch_size:
+                raise ValueError(f"Effective batch size {cfg.train.effective_batch_size} must be larger than (probably autoscaled) batch size {data_module.batch_size * replicas}")
             cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / (data_module.batch_size * replicas))
         else:
             cfg.train.batch_size = data_module.batch_size

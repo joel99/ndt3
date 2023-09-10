@@ -22,7 +22,7 @@ from context_general_bci.utils import wandb_query_latest
 # print(context)
 
 sample_query = 'base' # just pull the latest run to ensure we're keeping its preproc config
-# sample_query = '10s_regression'
+sample_query = '10s_loco_regression'
 
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)

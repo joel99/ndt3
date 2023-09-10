@@ -32,7 +32,8 @@ from context_general_bci.analyze_utils import prep_plt
 ## Load dataset
 
 dataset_name = 'odoherty_rtt-Loco-20170215_02'
-dataset_name = 'odoherty_rtt-Indy-20161005_06'
+dataset_name = 'odoherty_rtt-Loco-20170213_02'
+# dataset_name = 'odoherty_rtt-Indy-20161005_06'
 context = context_registry.query(alias=dataset_name)
 datapath = context.datapath
 # Use modes to alternate through a few different codepaths
@@ -87,7 +88,7 @@ def load_bhvr_from_rtt(datapath, sample_strat=None):
     return bhvr_vars
 
 def load_bhvr_from_pitt(datapath, sample_strat=None):
-    from tasks.pitt_co import load_trial
+    from context_general_bci.tasks.pitt_co import load_trial
     trial_paths = list(datapath.glob("*.mat"))
     payloads = [load_trial(trial_path) for trial_path in trial_paths]
     return payloads

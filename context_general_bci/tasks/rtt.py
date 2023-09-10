@@ -146,15 +146,15 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
         global_args = {}
         if cfg.odoherty_rtt.load_covariates:
             for bhvr in [DataKey.bhvr_vel]:
-            # for bhvr in bhvr_vars:
                 bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr])
         if cfg.odoherty_rtt.minmax: # Note we apply after chop, which also includes binning
             global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
-            global_args['cov_min'] = bhvr_vars[bhvr].flatten(end_dim=-2).min(0).values
-            global_args['cov_max'] = bhvr_vars[bhvr].flatten(end_dim=-2).max(0).values
+            global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.01, dim=0)
+            global_args['cov_max'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.99, dim=0)
             rescale = global_args['cov_max'] - global_args['cov_min']
             rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
             bhvr_vars[bhvr] = (bhvr_vars[bhvr] - global_args['cov_mean']) / rescale
+            bhvr_vars[bhvr] = torch.clamp(bhvr_vars[bhvr], -1, 1)
 
         if cfg.tokenize_covariates:
             global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS

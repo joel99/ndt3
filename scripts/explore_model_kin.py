@@ -37,13 +37,16 @@ query = 'no_blacklist_no_session-xn7zeqpo'
 query = 'no_sem-73nhkuba'
 # query = 'grasp_icl-0rrikpqe'
 
+query = '10s_loco_regression'
+# query = '10s_indy_regression'
+
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 
-cfg.model.task.metrics = [Metric.kinematic_r2]
+# cfg.model.task.metrics = [Metric.kinematic_r2]
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 # target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
@@ -51,12 +54,16 @@ target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
 # target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1965'
 # target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1993'
 
+target_dataset = 'odoherty_rtt-Loco-20170210_03'
+target_dataset = 'odoherty_rtt-Loco-20170213_02'
+# target_dataset = 'odoherty_rtt-Indy-20161026_03'
+# target_dataset = None
 
 dataset = SpikingDataset(cfg.dataset)
 print("Original length: ", len(dataset))
-ctx = dataset.list_alias_to_contexts([target_dataset])[0]
-# dataset.subset_by_key([ctx.id], MetaKey.session)
-# print(len(dataset))
+if target_dataset:
+    ctx = dataset.list_alias_to_contexts([target_dataset])[0]
+
 if cfg.dataset.eval_datasets and mode == 'test':
     dataset.subset_split(splits=['eval'])
 else:
@@ -66,9 +73,9 @@ else:
     dataset = train
     dataset = val
 
-
-dataset.subset_by_key([ctx.id], MetaKey.session)
-print("Subset length: ", len(dataset))
+if target_dataset:
+    dataset.subset_by_key([ctx.id], MetaKey.session)
+    print("Subset length: ", len(dataset))
 
 
 data_attrs = dataset.get_data_attrs()
@@ -138,6 +145,7 @@ g.fig.suptitle(f'{query} {mode} {target_dataset} Velocity R2: {heldin_metrics["t
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
 trials = 4
+trials = 1
 trials = min(trials, len(heldin_outputs[Output.behavior_pred]))
 trials = range(trials)
 
@@ -180,109 +188,27 @@ ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms / 1000)
 ax.set_xlabel('Time (s)')
 
 #%%
-# print(heldin_outputs[Output.rates].max(), heldin_outputs[Output.rates].mean())
-# test = heldin_outputs[Output.heldout_rates]
-rates = heldin_outputs[Output.rates] # b t c
-
-
-spikes = [rearrange(x, 't a c -> t (a c)') for x in heldin_outputs[Output.spikes]]
+# Look for the raw data
+mins = []
+maxes = []
+for i in dataset.meta_df[MetaKey.session].unique():
+    # sample a trial
+    trial = dataset.meta_df[dataset.meta_df[MetaKey.session] == i].iloc[0]
+    print(trial.path)
+    # Open the processed payload, print minmax
+    payload = torch.load(trial.path)
+    print(payload['cov_min'])
+    print(payload['cov_max'])
+    # append and plot
+    mins.extend(payload['cov_min'].numpy())
+    maxes.extend(payload['cov_max'].numpy())
+    # open the original payload
+    # og_path = trial.path.parent.parent / 'original' / trial.path.name
 ax = prep_plt()
-
-num = 20
-# channel = 5
-# channel = 10
-# channel = 18
-# channel = 19
-# channel = 20
-# channel = 80
-
-colors = sns.color_palette("husl", num)
-
-# for trial in range(num):
-#     ax.plot(rates[trial][:,channel], color=colors[trial])
-
-y_lim = ax.get_ylim()[1]
-# plot spike raster
-# for trial in range(num):
-#     spike_times = spikes[trial,:,channel].nonzero()
-#     y_height = y_lim * (trial+1) / num
-#     ax.scatter(spike_times, torch.ones_like(spike_times)*y_height, color=colors[trial], s=10, marker='|')
-
-trial = 10
-trial = 15
-# trial = 17
-# trial = 18
-# trial = 80
-# trial = 85
-for channel in range(num):
-    # ax.scatter(np.arange(test.shape[1]), test[0,:,channel], color=colors[channel], s=1)
-    ax.plot(rates[trial][:,channel * 2], color=colors[channel])
-    # ax.plot(rates[trial][:,channel * 3], color=colors[channel])
-
-    # smooth the signal with a gaussian kernel
-
-# from scipy import signal
-# peaks, _ = signal.find_peaks(test[trial,:,2], distance=4)
-# print(peaks)
-# print(len(peaks))
-# for p in peaks:
-#     ax.axvline(p, color='k', linestyle='--')
-
-
-
-ax.set_ylabel('FR (Hz)')
-ax.set_yticklabels((ax.get_yticks() * 1000 / cfg.dataset.bin_size_ms).round())
-# relabel xtick unit from 5ms to ms
-ax.set_xlim(0, 50)
-ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms)
-ax.set_xlabel('Time (ms)')
-# plt.plot(test[0,:,0])
-ax.set_title(f'FR Inference: {query}')
-
-#%%
-# Debugging (for mc_maze dataset)
-pl.seed_everything(0)
-example_batch = next(iter(dataloader))
-print(example_batch[DataKey.spikes].size())
-print(example_batch[DataKey.spikes].sum())
-# print(example_batch[DataKey.spikes][0,:,0,:,0].nonzero())
-# First 10 timesteps, channel 8 fires 3x
-print(example_batch[DataKey.spikes][0,:,0,:,0][:10, 8])
-# Now, do masking manually
-
-# No masking
-backbone_feats = model(example_batch)
-example_out = model.task_pipelines[ModelTask.infill.value](example_batch, backbone_feats, compute_metrics=False)
-print(example_out[Output.logrates].size())
-print(example_out[Output.logrates][0, :, 0, :][:10, 8]) # extremely spiky prediction
-
-# # With masking
-# example_batch[DataKey.spikes][0, :, 0, :, 0][:10] = 0
-# backbone_feats = model(example_batch)
-# example_out = model.task_pipelines[ModelTask.infill.value](example_batch, backbone_feats, compute_metrics=False)
-# print(example_out[Output.logrates].size())
-# print(example_out[Output.logrates][0, :, 0, :][:10, 8]) # unspiked prediction.
-# OK - well if true mask occurs, model appropriately doesn't predict high spike.
-
-# Key symptom - whether or not a spike occurs at a timestep is affecting its own prediction
-# example_batch[DataKey.spikes][0, :, 0, :, 0][1] = 0
-# backbone_feats = model(example_batch)
-# example_out = model.task_pipelines[ModelTask.infill.value](example_batch, backbone_feats, compute_metrics=False)
-# print(example_out[Output.logrates].size())
-# print(example_out[Output.logrates][0, :, 0, :][:10, 8]) # unspiked prediction.
-
-
-# Masking through model update_batch also seems to work
-model.task_pipelines[ModelTask.infill.value].update_batch(example_batch)
-print(example_batch['is_masked'][0].nonzero())
-backbone_feats = model(example_batch)
-example_out = model.task_pipelines[ModelTask.infill.value](example_batch, backbone_feats, compute_metrics=True)
-# example_out = model.task_pipelines[ModelTask.infill.value](example_batch, backbone_feats, compute_metrics=False)
-print(example_out[Metric.bps])
-print(example_out[Output.logrates].size())
-print(example_out[Output.logrates][0, :, 0, :][:10, 8]) # unspiked prediction.
-
-
-# Ok - so the model is correctly predicting unspiked for masked timesteps.
-# Then why is test time evaluation so spiky? Even when we mask?
-# Let's check again...
+ax.set_title(f'{query} Raw MinMax bounds')
+ax.scatter(mins, maxes)
+ax.set_xlabel('Min')
+ax.set_ylabel('Max')
+# ax.plot(mins, label='min')
+# ax.plot(maxes, label='max')
+# ax.legend()

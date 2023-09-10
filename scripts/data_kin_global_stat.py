@@ -25,10 +25,11 @@ from context_general_bci.utils import wandb_query_latest
 # print(wandb_run)
 # _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 cfg = ScaleHistoryDatasetConfig()
-cfg.datasets = ['pitt_test_.*']
+# cfg.datasets = ['pitt_test_.*']
 cfg.odoherty_rtt.include_sorted = False
 cfg.odoherty_rtt.arrays = ['Indy-M1', 'Loco-M1']
-# cfg.datasets = ['odoherty_rtt.*']
+cfg.datasets = ['odoherty_rtt.*']
+cfg.datasets = ['odoherty_rtt-Loco.*']
 
 # cfg.dataset.datasets = ['observation_CRS07Lab_session_82_set_1']
 # default_cfg: DatasetConfig = OmegaConf.create(DatasetConfig())
@@ -44,6 +45,14 @@ dataset.build_context_index() # Train/val isn't going to bleed in 2 floats.
 #     lengths.append(dataset[t][DataKey.spikes].size(0))
 # print(torch.tensor(lengths).max(), torch.tensor(lengths).min())
 print(len(dataset))
+#%%
+# Plot raw trajectories, concatenated.
+
+
+# Box plot
+
+
+
 #%%
 from collections import defaultdict
 session_stats = defaultdict(list)
