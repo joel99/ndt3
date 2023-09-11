@@ -524,7 +524,6 @@ class BrainBertInterface(pl.LightningModule):
             tp.get_context(batch) for tp in tps
         ])
         tks.append('trial')
-        # breakpoint()
         pipeline_context = [*pipeline_context, trial_context] # tuples
         pipeline_times = [*pipeline_times, trial_times]
         pipeline_space = [*pipeline_space, trial_space]

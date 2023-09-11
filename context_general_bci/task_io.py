@@ -1252,7 +1252,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             decode_tokens = batch[f'{self.handle}_query']
             decode_time = batch[f'{DataKey.covariate_time}_target']
             decode_space = batch[f'{DataKey.covariate_space}_target']
-            # breakpoint()
             decode_padding = batch[f'{self.handle}_{DataKey.padding}_target']
             if not self.inject_constraint_tokens and self.cfg.encode_constraints:
                 decode_tokens = decode_tokens + self.encode_constraint(
@@ -1290,7 +1289,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 decode_time = torch.cat([backbone_times, decode_time], dim=1)
                 decode_space = torch.cat([backbone_space, decode_space], dim=1)
                 other_kwargs = {}
-            # breakpoint()
             # print('Src stream: ', decode_tokens.shape, decode_padding.shape, decode_time.shape, decode_space.shape)
             # print('Cross stream:', other_kwargs['memory'].shape, other_kwargs['memory_padding_mask'].shape, other_kwargs['memory_times'].shape)
             # print(backbone_space.max(), decode_space.max())
@@ -1350,7 +1348,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
         # At this point (computation and beyond) it is easiest to just restack tokenized targets, merge into regular API
         # The whole point of all this intervention is to test whether separate tokens affects perf (we hope not)
-
         if self.bhvr_lag_bins:
             bhvr = bhvr[..., :-self.bhvr_lag_bins, :]
             bhvr = F.pad(bhvr, (0, 0, self.bhvr_lag_bins, 0), value=0)
@@ -1522,7 +1519,7 @@ class BehaviorClassification(CovariateReadout):
     """
     QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
     def initialize_readin(self, backbone_size): # Assume quantized readin...
-        self.inp = nn.Embedding(self.QUANTIZE_CLASSES, backbone_size)
+        self.inp = nn.Embedding(self.QUANTIZE_CLASSES + 1, backbone_size)
         # self.inp_norm = nn.LayerNorm(backbone_size)
 
     def initialize_readout(self, backbone_size):
@@ -1537,23 +1534,23 @@ class BehaviorClassification(CovariateReadout):
                 Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
             )
         # We use these buckets as we minmax clamp in preprocessing
-        self.register_buffer('zscore_quantize_buckets', torch.linspace(-1., 1., self.QUANTIZE_CLASSES + 1)) # quite safe for expected z-score range. +1 as these are boundaries, not centers
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-1.001, 1.001, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
         assert self.spacetime, "BehaviorClassification requires spacetime path"
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
 
     def encode_cov(self, covariate: torch.Tensor):
-        breakpoint()
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
+        # print(covariate.min(), covariate.max())
+        # breakpoint()
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
-        if not self.cfg.decode_tokenize_dims:
-            covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H
+        covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1)
         # covariate = self.inp_norm(covariate)
         return covariate
 
     def quantize(self, x: torch.Tensor):
         x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
-        return torch.bucketize(x, self.zscore_quantize_buckets)
+        return torch.bucketize(x, self.zscore_quantize_buckets) - 1 # bucketize produces from [1, self.quantize_classes]
         # return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
@@ -1568,8 +1565,11 @@ class BehaviorClassification(CovariateReadout):
         bhvr = super().get_cov_pred(*args, **kwargs)
         if not self.cfg.decode_tokenize_dims:
             bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
+        elif self.served_tokenized_covariates:
+            bhvr = rearrange(bhvr, 'b c t -> b c t 1')
         else:
             bhvr = rearrange(bhvr, 'b (t d) c -> b c t d', d=self.cov_dims)
+
         return bhvr
 
     def simplify_logits_to_prediction(self, bhvr: torch.Tensor):

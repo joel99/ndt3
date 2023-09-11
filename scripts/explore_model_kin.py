@@ -4,7 +4,7 @@ r"""
 """
 # restrict cuda to gpu 1
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="1"
+os.environ["CUDA_VISIBLE_DEVICES"]="3"
 import logging
 import sys
 import itertools
@@ -42,6 +42,7 @@ query = 'no_sem-73nhkuba'
 
 query = '10s_exclude-vpqsnnam'
 query = '10s_regression_exclude-hio7q3x6'
+query = '10s_exclude-xfcwrte7'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -59,13 +60,13 @@ target = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
 
 target = 'odoherty_rtt-Loco-20170210_03'
 target = 'odoherty_rtt-Loco-20170213_02'
-target = [
-    'odoherty_rtt-Indy-20160407_02',
-    'odoherty_rtt-Indy-20160627_01',
-    'odoherty_rtt-Indy-20161005_06',
-    'odoherty_rtt-Indy-20161026_03',
-    'odoherty_rtt-Indy-20170131_02',
-]
+# target = [
+#     'odoherty_rtt-Indy-20160407_02',
+#     'odoherty_rtt-Indy-20160627_01',
+#     'odoherty_rtt-Indy-20161005_06',
+#     'odoherty_rtt-Indy-20161026_03',
+#     'odoherty_rtt-Indy-20170131_02',
+# ]
 
 # target = 'odoherty_rtt-Indy-20161026_03'
 # target = None
@@ -222,8 +223,14 @@ ax.set_xlabel('Time (s)')
 
 #%%
 # Look for the raw data
+from pathlib import Path
+from context_general_bci.tasks.rtt import ODohertyRTTLoader
 mins = []
 maxes = []
+raw_mins = []
+raw_maxes = []
+bhvr_vels = []
+bhvr_pos = []
 for i in dataset.meta_df[MetaKey.session].unique():
     # sample a trial
     trial = dataset.meta_df[dataset.meta_df[MetaKey.session] == i].iloc[0]
@@ -236,12 +243,39 @@ for i in dataset.meta_df[MetaKey.session].unique():
     mins.extend(payload['cov_min'].numpy())
     maxes.extend(payload['cov_max'].numpy())
     # open the original payload
-    # og_path = trial.path.parent.parent / 'original' / trial.path.name
+    path_pieces = Path(trial.path).parts
+    og_path = Path(path_pieces[0], *path_pieces[2:-1])
+    spike_arr, bhvr_raw, _ = ODohertyRTTLoader.load_raw(og_path, cfg.dataset, ['Indy-M1', 'Loco-M1'])
+    bhvr_vel = bhvr_raw[DataKey.bhvr_vel].flatten()
+    bhvr_vels.append(bhvr_vel)
+    # bhvr_pos.append(bhvr_raw['position'])
+    raw_mins.append(bhvr_vel.min().item())
+    raw_maxes.append(bhvr_vel.max().item())
 ax = prep_plt()
 ax.set_title(f'{query} Raw MinMax bounds')
 ax.scatter(mins, maxes)
+ax.scatter(raw_mins, raw_maxes)
 ax.set_xlabel('Min')
 ax.set_ylabel('Max')
 # ax.plot(mins, label='min')
 # ax.plot(maxes, label='max')
 # ax.legend()
+#%%
+print(bhvr_pos[0][:,1:3].shape)
+# plt.plot(bhvr_pos[0][:, 1:3])
+# plt.plot(bhvr_vels[3])
+# plt.plot(bhvr_vels[2])
+# plt.plot(bhvr_vels[1])
+# plt.plot(bhvr_vels[0])
+import scipy.signal as signal
+def resample(data):
+    covariate_rate = cfg.dataset.odoherty_rtt.covariate_sampling_rate
+    base_rate = int(1000 / cfg.dataset.bin_size_ms)
+    # print(base_rate, covariate_rate, base_rate / covariate_rate)
+    return torch.tensor(
+        # signal.resample(data, int(len(data) / cfg.dataset.odoherty_rtt.covariate_sampling_rate / (cfg.dataset.bin_size_ms / 1000))) # This produces an edge artifact
+        signal.resample_poly(data, base_rate, covariate_rate, padtype='line')
+    )
+# 250Hz to 5Hz - > 2000
+# plt.plot(bhvr_pos[0][:, 1:3])
+plt.plot(resample(bhvr_pos[0][:, 1:3]))

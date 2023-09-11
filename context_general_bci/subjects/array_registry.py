@@ -115,7 +115,7 @@ def create_spike_payload(spikes: Union[torch.Tensor, np.ndarray], arrays_to_use:
             array = SubjectArrayRegistry.query_by_array_geometric(a)
             spike_payload[a] = spikes[:, array.as_indices()].clone()
         else:
-            assert len(arrays_to_use) == 1, "Can't use multiple arrays with non-exact arrays"
+            assert len(arrays_to_use) == 1, f"Can't use multiple arrays {arrays_to_use} with non-exact array {array}"
             spike_payload[a] = spikes.clone()
     return spike_payload
 
