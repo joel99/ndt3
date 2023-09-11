@@ -4,7 +4,7 @@ r"""
 """
 # restrict cuda to gpu 1
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 import logging
 import sys
 import itertools
@@ -37,7 +37,7 @@ query = 'no_blacklist_no_session-xn7zeqpo'
 query = 'no_sem-73nhkuba'
 # query = 'grasp_icl-0rrikpqe'
 
-query = '10s_loco_regression'
+# query = '10s_loco_regression'
 # query = '10s_indy_regression'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]

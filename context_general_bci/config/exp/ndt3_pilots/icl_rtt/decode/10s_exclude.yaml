@@ -9,21 +9,24 @@ dataset:
     chop_size_ms: 10000
   # datasets:
   # - odoherty_rtt-Indy.*
+  exclude_datasets: # For zero-shot eval
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
 model:
   transformer:
     max_trial_length: 1500
   session_embed_strategy: EmbedStrat.none
   task:
-    covariate_mask_ratio: 1.0 # Straight regression
-    context_prompt_time_thresh: 0
+    covariate_mask_ratio: 0.2 # Target - last 2s
+    context_prompt_time_thresh: 400 # 8s * 50Hz
 train:
   autoscale_batch_size: False
   batch_size: 32
   effective_batch_size: 512 # 4x 80G
   patience: 150
 inherit_tag: 30s
-# Trying to override to test if curricula helps
-# inherit_exp: ""
-# init_from_id: 3s_indy_regression-3w1o141c
-load_from_id: 10s_regression-88djqhdb
+
 notes: "Remove ICL aspect, for sake of regression testing, and for sake of turning into straight regression problem."
