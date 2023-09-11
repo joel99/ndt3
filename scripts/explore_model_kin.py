@@ -40,6 +40,9 @@ query = 'no_sem-73nhkuba'
 # query = '10s_loco_regression'
 # query = '10s_indy_regression'
 
+query = '10s_exclude-vpqsnnam'
+query = '10s_regression_exclude-hio7q3x6'
+
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -49,20 +52,32 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 # cfg.model.task.metrics = [Metric.kinematic_r2]
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
-# target_dataset = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
-target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
-# target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1965'
-# target_dataset = 'pitt_broad_pitt_co_CRS02bLab_1993'
+# target = 'pitt_broad_CRS02bLab_1925_3' # 0.97 click acc
+target = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
+# target = 'pitt_broad_pitt_co_CRS02bLab_1965'
+# target = 'pitt_broad_pitt_co_CRS02bLab_1993'
 
-target_dataset = 'odoherty_rtt-Loco-20170210_03'
-target_dataset = 'odoherty_rtt-Loco-20170213_02'
-# target_dataset = 'odoherty_rtt-Indy-20161026_03'
-# target_dataset = None
+target = 'odoherty_rtt-Loco-20170210_03'
+target = 'odoherty_rtt-Loco-20170213_02'
+target = [
+    'odoherty_rtt-Indy-20160407_02',
+    'odoherty_rtt-Indy-20160627_01',
+    'odoherty_rtt-Indy-20161005_06',
+    'odoherty_rtt-Indy-20161026_03',
+    'odoherty_rtt-Indy-20170131_02',
+]
+
+# target = 'odoherty_rtt-Indy-20161026_03'
+# target = None
 
 dataset = SpikingDataset(cfg.dataset)
 print("Original length: ", len(dataset))
-if target_dataset:
-    ctx = dataset.list_alias_to_contexts([target_dataset])[0]
+if target == None:
+    target = []
+if not isinstance(target, list):
+    target = [target]
+if target:
+    ctx = dataset.list_alias_to_contexts(target)[0]
 
 if cfg.dataset.eval_datasets and mode == 'test':
     dataset.subset_split(splits=['eval'])
@@ -73,9 +88,15 @@ else:
     dataset = train
     dataset = val
 
-if target_dataset:
+if target:
     dataset.subset_by_key([ctx.id], MetaKey.session)
-    print("Subset length: ", len(dataset))
+    if len(dataset) == 0: # Context wasn't in, reset
+        cfg.dataset.datasets = target
+        cfg.dataset.exclude_datasets = []
+        dataset = SpikingDataset(cfg.dataset)
+        print("Reset to novel context: ", len(dataset))
+    else:
+        print("Subset length: ", len(dataset))
 
 
 data_attrs = dataset.get_data_attrs()
@@ -85,7 +106,7 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=300, num_workers=1, **kwargs) -> DataLoader:
-def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
+def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -99,15 +120,24 @@ heldin_metrics = stack_batch(trainer.test(model, dataloader))
 # A note on fullbatch R2 calculation - in my experience by bsz 128 the minibatch R2 ~ fullbatch R2 (within 0.01); for convenience we use minibatch R2
 
 #%%
+ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
+# ICL_CROP = 0
+
 from context_general_bci.config import DEFAULT_KIN_LABELS
 pred = heldin_outputs[Output.behavior_pred]
 true = heldin_outputs[Output.behavior]
 positions = heldin_outputs[f'{DataKey.covariate_space}_target']
 padding = heldin_outputs[f'covariate_{DataKey.padding}_target']
 
+if ICL_CROP:
+    pred = pred[:, -ICL_CROP:]
+    true = true[:, -ICL_CROP:]
+    positions = positions[:,-ICL_CROP:]
+    padding = padding[:, -ICL_CROP:]
+
 print(pred[0].shape)
 print(true[0].shape)
-print(heldin_outputs[f'{DataKey.covariate_space}_target'].shape)
+print(positions.shape)
 print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
 # print(heldin_outputs[DataKey.covariate_labels])
 
@@ -138,9 +168,12 @@ subdf = df
 # subdf = df[df['coord'].isin(['y'])]
 
 g = sns.jointplot(x='true', y='pred', hue='coord', data=subdf, s=3, alpha=0.4)
-
+# Recompute R2 between pred / true
+from sklearn.metrics import r2_score
+r2 = r2_score(subdf['true'], subdf['pred'])
+mse = np.mean((subdf['true'] - subdf['pred'])**2)
 # set title
-g.fig.suptitle(f'{query} {mode} {target_dataset} Velocity R2: {heldin_metrics["test_kinematic_r2"]:.2f}')
+g.fig.suptitle(f'{query} {mode} {str(target)[:20]} Velocity R2: {r2:.2f}, MSE: {mse:.4f}')
 #%%
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
@@ -180,7 +213,7 @@ def plot_trial(trial, ax, color, label=False):
 for i, trial in enumerate(trials):
     plot_trial(trial, ax, colors[i], label=i==0)
 ax.legend()
-ax.set_title(f'{mode} {target_dataset} Trajectories')
+ax.set_title(f'{mode} {str(target)[:20]} Trajectories')
 ax.set_ylabel(f'Force (minmax normalized)')
 # xticks - 1 bin is 20ms. Express in seconds
 ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms / 1000)

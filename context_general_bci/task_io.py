@@ -1536,12 +1536,14 @@ class BehaviorClassification(CovariateReadout):
                 nn.Linear(backbone_size, self.QUANTIZE_CLASSES * self.cov_dims),
                 Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
             )
-        self.register_buffer('zscore_quantize_buckets', torch.linspace(-2., 2., self.QUANTIZE_CLASSES + 1)) # quite safe for expected z-score range. +1 as these are boundaries, not centers
+        # We use these buckets as we minmax clamp in preprocessing
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-1., 1., self.QUANTIZE_CLASSES + 1)) # quite safe for expected z-score range. +1 as these are boundaries, not centers
         assert self.spacetime, "BehaviorClassification requires spacetime path"
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
 
     def encode_cov(self, covariate: torch.Tensor):
+        breakpoint()
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         if not self.cfg.decode_tokenize_dims:
@@ -1551,12 +1553,14 @@ class BehaviorClassification(CovariateReadout):
 
     def quantize(self, x: torch.Tensor):
         x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
-        return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
+        return torch.bucketize(x, self.zscore_quantize_buckets)
+        # return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
         if quantized.max() > self.zscore_quantize_buckets.shape[0]:
             raise Exception("go implement quantization clipping man")
-        return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
+        return (self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2
+        # return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
 
     def get_cov_pred(
         self, *args, **kwargs
