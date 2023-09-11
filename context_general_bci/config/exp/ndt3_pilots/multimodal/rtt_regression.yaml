@@ -1,0 +1,11 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - odoherty_rtt.*
+model:
+  task:
+    covariate_mask_ratio: 1.0
+train:
+  batch_size: 32

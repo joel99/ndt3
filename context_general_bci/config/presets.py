@@ -116,6 +116,7 @@ class FlatEncDecModelConfig(ModelConfig):
     # lr_decay_steps: int = 1000
     dropout: float = 0.1
     hidden_size: int = 256
+    neurons_per_token: int = 32
     encode_decode: bool = True
     transform_space: bool = True
     spike_embed_style: EmbedStrat = EmbedStrat.token

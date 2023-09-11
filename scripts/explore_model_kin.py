@@ -69,7 +69,7 @@ target = 'odoherty_rtt-Loco-20170213_02'
 # ]
 
 # target = 'odoherty_rtt-Indy-20161026_03'
-# target = None
+target = None
 
 dataset = SpikingDataset(cfg.dataset)
 print("Original length: ", len(dataset))

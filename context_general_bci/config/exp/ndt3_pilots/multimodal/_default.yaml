@@ -1,39 +1,115 @@
 # @package _global_
+
+# 15s multimodality experiments. Direct decoding, no pretraining, for simplicity.
+
 defaults:
   - /model:
     - flat_enc_dec
     - scale_history
+  - /model/task:
+    - decode_flat_v2
   - /dataset:
     - flat
     - scale_history
+  - /train:
+    - midscale
 model:
-  session_embed_token_count: 1 # Keep it low for maybe easier FT?
-  subject_embed_strategy: EmbedStrat.token
-  neurons_per_token: 32
-  causal: True
+  session_embed_strategy: EmbedStrat.none # evaluating zero-shot ICL exps
+  subject_embed_strategy: EmbedStrat.none
   task:
-    tasks: [ModelTask.shuffle_infill, ModelTask.constraints]
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints]
     task_weights: [1.0, 1.0] # after a failed set of initial exps, we decide to 10x to bring losses up to O(0.5)
-    mask_ratio: 0.5
-    # covariate_mask_ratio: 0.5
+    # mask_ratio: 0.5
+    covariate_mask_ratio: 0.2
+    context_prompt_time_thresh: 600 # 12s * 50Hz, 3s target
     encode_constraints: True
   transformer:
     n_layers: 8
+    max_trial_length: 1500 # Up to 30s
   use_full_encode: True
+  decoder_context_integration: 'cross_attn'
+  lr_ramp_steps: 50
 dataset:
+  max_length_ms: 15000
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 15000
+
   tokenize_covariates: True
-  behavior_dim: 10 # Force is here, include +1 for padding, etc.
   sparse_constraints: True
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
   datasets:
-  - pitt_return.* # Currently has obs, ortho, fbc, helicopter rescue
-  # - pitt_broad.*
+  - pitt_broad_pitt_co_CRS02bLab_1761
+  - pitt_broad_pitt_co_CRS02bLab_1767
+  - pitt_broad_pitt_co_CRS02bLab_1769
+  # - pitt_broad_pitt_co_CRS02bLab_1773 # ! Not found
+  - pitt_broad_pitt_co_CRS02bLab_1775
+  - pitt_broad_pitt_co_CRS02bLab_1790
+  - pitt_broad_pitt_co_CRS02bLab_1776
+  - pitt_broad_pitt_co_CRS02bLab_1778
+  - pitt_broad_pitt_co_CRS02bLab_1780
+  - pitt_broad_pitt_co_CRS02bLab_1798
+  - pitt_broad_pitt_co_CRS02bLab_1787
+  - pitt_broad_pitt_co_CRS02bLab_1789
+  # - pitt_broad_pitt_co_CRS02bLab_1885 # Failed, no force data
+  - pitt_broad_pitt_co_CRS02bLab_1829
+  - pitt_broad_pitt_co_CRS02bLab_1837
+  - pitt_broad_pitt_co_CRS02bLab_1855
+  - pitt_broad_pitt_co_CRS02bLab_1869
+  # Eval set.
+  - pitt_broad_pitt_co_CRS02bLab_1899
+  - pitt_broad_pitt_co_CRS02bLab_1900
+  - pitt_broad_pitt_co_CRS02bLab_1907
+
+  - pitt_broad_pitt_co_CRS02bLab_1918
+  - pitt_broad_pitt_co_CRS02bLab_1965
+  - pitt_broad_pitt_co_CRS02bLab_1993
+  - pitt_broad_pitt_co_CRS02bLab_2004
+  - pitt_broad_pitt_co_CRS02bLab_2011
+
+  - pitt_broad_pitt_co_CRS07Home_32
+  - pitt_broad_pitt_co_CRS07Home_33
+  - pitt_broad_pitt_co_CRS07Home_34
+  - pitt_broad_pitt_co_CRS07Home_35
+  - pitt_broad_pitt_co_CRS07Home_52 # mislabel
+  # - pitt_broad_pitt_co_CRS07Lab_52
+  - pitt_broad_pitt_co_CRS07Home_53
+  - pitt_broad_pitt_co_CRS07Home_49
+  # - pitt_broad_pitt_co_CRS07Home_57 # ! Not found
+
+  # Eval set
+  - pitt_broad_pitt_co_CRS07Home_69
+  - pitt_broad_pitt_co_CRS07Home_71
+  - pitt_broad_pitt_co_CRS07Home_83
+
+  - pitt_broad_pitt_co_CRS07Home_88
+  - pitt_broad_pitt_co_CRS07Home_61
+  - pitt_broad_pitt_co_CRS07Home_108
+
+  - odoherty_rtt.*
+  exclude_datasets:
+  # RTT
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+
+  # Pitt Grasp
+  - pitt_broad_pitt_co_CRS02bLab_1899
+  - pitt_broad_pitt_co_CRS02bLab_1900
+  - pitt_broad_pitt_co_CRS02bLab_1907
+  - pitt_broad_pitt_co_CRS07Home_69
+  - pitt_broad_pitt_co_CRS07Home_71
+  - pitt_broad_pitt_co_CRS07Home_83
+
   data_keys:
   - DataKey.spikes
   - DataKey.constraint
-  # - DataKey.bhvr_vel
+  - DataKey.bhvr_vel
   # - DataKey.task_return
 train:
   patience: 50
-  autoscale_batch_size: False
+  autoscale_batch_size: True # for initial sizing
   effective_batch_size: 512
   batch_size: 16
