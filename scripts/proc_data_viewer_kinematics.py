@@ -16,13 +16,11 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest
 
-# context = context_registry.query(alias='odoherty_rtt-Loco')[0]
-# datapath = './data/odoherty_rtt/indy_20160407_02.mat'
-# context = context_registry.query_by_datapath(datapath)
-# print(context)
-
 sample_query = 'base' # just pull the latest run to ensure we're keeping its preproc config
 sample_query = '10s_loco_regression'
+
+# Return run
+sample_query = 'sparse'
 
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
@@ -31,8 +29,12 @@ run_cfg = cfg.dataset
 # run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_13.*']
 # run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1965.*']
 # run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1789_2.*']
-# run_cfg.datasets = ['pitt_broad_pitt_co_CRS07Home_53_4.*']
-# run_cfg.pitt_co.chop_size_ms = 12000
+run_cfg.datasets = [
+    'pitt_return_pitt_co_CRS07Lab_97_13',
+    'pitt_return_pitt_co_CRS07Lab_97_15',
+    'pitt_return_pitt_co_CRS07Lab_97_17',
+] # 13, 15, 17 are all FBC
+
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
 dataset.subset_split()

@@ -1177,6 +1177,12 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             else:
                 shuffle_func = apply_shuffle
             encoder_frac = round((1 - mask_ratio) * covariates.size(1))
+            # TODO deprecate if we go multi-trial-streams, or next-step
+            # If we have non-behavioral data (i.e. scrape is malformatted)
+            # It'll just have one padding token.
+            # Make sure that's the target, else we'll throw in the decoder for having a null query
+            if covariates.size(1) == 1:
+                encoder_frac = 0
             def shuffle_key(key):
                 if key in batch:
                     shuffled = shuffle_func(batch[key], shuffle)
@@ -1196,8 +1202,10 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     DataKey.constraint_time
                 ]:
                     shuffle_key(key)
-
-            enc, target = torch.split(shuffle_func(covariates, shuffle), [encoder_frac, covariates.size(1) - encoder_frac], dim=1)
+            splits = [encoder_frac, covariates.size(1) - encoder_frac]
+            enc, target = torch.split(shuffle_func(covariates, shuffle), splits, dim=1)
+            # if target.size(1) == 0:
+                # breakpoint() # Wat
             batch.update({
                 self.cfg.behavior_target: enc,
                 f'{self.handle}_target': target,
@@ -1291,6 +1299,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 other_kwargs = {}
             # print('Src stream: ', decode_tokens.shape, decode_padding.shape, decode_time.shape, decode_space.shape)
             # print('Cross stream:', other_kwargs['memory'].shape, other_kwargs['memory_padding_mask'].shape, other_kwargs['memory_times'].shape)
+            # if decode_tokens.size(1) == 0:
+                # breakpoint() # Wat is this data...
             # print(backbone_space.max(), decode_space.max())
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
