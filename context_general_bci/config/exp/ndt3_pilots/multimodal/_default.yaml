@@ -34,6 +34,8 @@ dataset:
   max_trial_length: 1500
   odoherty_rtt:
     chop_size_ms: 15000
+  pitt_co:
+    chop_size_ms: 10000 # ! This was an accident, but all the data went in like this. In context framing still preserved; we still encode first 8s and decode last 2s.
 
   tokenize_covariates: True
   sparse_constraints: True

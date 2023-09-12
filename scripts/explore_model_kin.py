@@ -4,7 +4,7 @@ r"""
 """
 # restrict cuda to gpu 1
 import os
-os.environ["CUDA_VISIBLE_DEVICES"]="3"
+os.environ["CUDA_VISIBLE_DEVICES"]="2"
 import logging
 import sys
 import itertools
@@ -45,6 +45,12 @@ query = '10s_regression_exclude-hio7q3x6'
 query = '10s_exclude-xfcwrte7'
 
 query = '15s_class-fv9wd1g4'
+
+# Multimodal
+query = 'icl_class-ydvjbt5q'
+query = 'rtt_icl_class-wozi1pdn'
+# query = 'grasp_icl_class-2si8wtym'
+
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -61,16 +67,27 @@ target = 'pitt_broad_pitt_co_CRS02bLab_1918' # 0.95 click acc
 
 target = 'odoherty_rtt-Loco-20170210_03'
 target = 'odoherty_rtt-Loco-20170213_02'
+
+target = [
+    'odoherty_rtt-Indy-20160407_02',
+    'odoherty_rtt-Indy-20160627_01',
+    'odoherty_rtt-Indy-20161005_06',
+    'odoherty_rtt-Indy-20161026_03',
+    'odoherty_rtt-Indy-20170131_02',
+]
+
 # target = [
-#     'odoherty_rtt-Indy-20160407_02',
-#     'odoherty_rtt-Indy-20160627_01',
-#     'odoherty_rtt-Indy-20161005_06',
-#     'odoherty_rtt-Indy-20161026_03',
-#     'odoherty_rtt-Indy-20170131_02',
+#     'pitt_broad_pitt_co_CRS02bLab_1899',
+#     'pitt_broad_pitt_co_CRS02bLab_1900',
+#     'pitt_broad_pitt_co_CRS02bLab_1907',
+#     'pitt_broad_pitt_co_CRS07Home_69',
+#     'pitt_broad_pitt_co_CRS07Home_71',
+#     'pitt_broad_pitt_co_CRS07Home_83'
 # ]
 
+
 # target = 'odoherty_rtt-Indy-20161026_03'
-target = None
+# target = None
 
 dataset = SpikingDataset(cfg.dataset)
 print("Original length: ", len(dataset))
@@ -108,7 +125,8 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=300, num_workers=1, **kwargs) -> DataLoader:
-def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -123,6 +141,7 @@ heldin_metrics = stack_batch(trainer.test(model, dataloader))
 
 #%%
 ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
+ICL_CROP = 3 * 50 * 2 # Quick hack to eval only a certain portion of data. 3s x 50 bins/s x 2 dims
 # ICL_CROP = 0
 
 from context_general_bci.config import DEFAULT_KIN_LABELS
@@ -131,16 +150,26 @@ true = heldin_outputs[Output.behavior]
 positions = heldin_outputs[f'{DataKey.covariate_space}_target']
 padding = heldin_outputs[f'covariate_{DataKey.padding}_target']
 
+# ? Why do we only have 100 bins of output here?
+# I expect 3s * 50 bins * 1 dimension = 150 tokens.
 if ICL_CROP:
-    pred = pred[:, -ICL_CROP:]
-    true = true[:, -ICL_CROP:]
-    positions = positions[:,-ICL_CROP:]
-    padding = padding[:, -ICL_CROP:]
+    if isinstance(pred, torch.Tensor):
+        pred = pred[:, -ICL_CROP:]
+        true = true[:, -ICL_CROP:]
+        positions = positions[:,-ICL_CROP:]
+        padding = padding[:, -ICL_CROP:]
+    else:
+        print(pred[0].shape)
+        pred = [p[-ICL_CROP:] for p in pred]
+        print(pred[0].shape)
+        true = [t[-ICL_CROP:] for t in true]
+        positions = [p[-ICL_CROP:] for p in positions]
+        padding = [p[-ICL_CROP:] for p in padding]
 
 print(pred[0].shape)
-print(true[0].shape)
-print(positions.shape)
-print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
+# print(true[0].shape)
+# print(positions.shape)
+# print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
 # print(heldin_outputs[DataKey.covariate_labels])
 
 def flatten(arr):
@@ -161,8 +190,8 @@ else:
     coords = coords[~flat_padding]
 
 df = pd.DataFrame({
-    'pred': flatten(pred)[~flat_padding],
-    'true': flatten(true)[~flat_padding],
+    'pred': flatten(pred)[~flat_padding].flatten(), # Extra flatten - in list of tensors path, there's an extra singleton dimension
+    'true': flatten(true)[~flat_padding].flatten(),
     'coord': coords,
 })
 # plot marginals
@@ -184,7 +213,9 @@ trials = 1
 trials = min(trials, len(heldin_outputs[Output.behavior_pred]))
 trials = range(trials)
 
-colors = sns.color_palette('colorblind', len(trials))
+colors = sns.color_palette('colorblind', df.coord.nunique())
+label_unique = list(df.coord.unique())
+# print(label_unique)
 def plot_trial(trial, ax, color, label=False):
     vel_true = heldin_outputs[Output.behavior][trial]
     vel_pred = heldin_outputs[Output.behavior_pred][trial]
@@ -201,6 +232,7 @@ def plot_trial(trial, ax, color, label=False):
         if dim_label != 'f':
             true_dim = true_dim.cumsum(0)
             pred_dim = pred_dim.cumsum(0)
+        color = colors[label_unique.index(dim_label)]
         ax.plot(true_dim, label=f'{dim_label} true' if label else None, linestyle='-', color=color)
         ax.plot(pred_dim, label=f'{dim_label} pred' if label else None, linestyle='--', color=color)
 
@@ -216,7 +248,7 @@ for i, trial in enumerate(trials):
     plot_trial(trial, ax, colors[i], label=i==0)
 ax.legend()
 ax.set_title(f'{mode} {str(target)[:20]} Trajectories')
-ax.set_ylabel(f'Force (minmax normalized)')
+# ax.set_ylabel(f'Force (minmax normalized)')
 # xticks - 1 bin is 20ms. Express in seconds
 ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms / 1000)
 # express in seconds
