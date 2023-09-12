@@ -14,15 +14,15 @@ model:
     max_trial_length: 1500
   session_embed_strategy: EmbedStrat.none
   task:
-    tasks:
-    - ModelTask.spike_context
-    - ModelTask.kinematic_classification
+    # tasks:
+    # - ModelTask.spike_context
+    # - ModelTask.kinematic_classification
     covariate_mask_ratio: 0.2 # Target - last 2s
     context_prompt_time_thresh: 600 # 8s * 50Hz
 train:
-  autoscale_batch_size: False
+  autoscale_batch_size: True
   batch_size: 16
   effective_batch_size: 256 # 4x 80G
   patience: 250
-inherit_tag: 30s
+inherit_exp: ""
 notes: "Remove ICL aspect, for sake of regression testing, and for sake of turning into straight regression problem."

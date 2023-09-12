@@ -199,6 +199,7 @@ class TaskConfig:
     decode_normalizer: str = '' # If provided, use this path to normalize
     decode_use_shuffle_backbone: bool = False # Don't discard shuffle infill decode, take full rates as input to backbone features (useful specifically for parity on HeldoutPrediction)
     decode_label_smooth: float = 0.0 # If > 0, use this as a label smoothing factor for classifier decoding
+    decode_symlog: bool = False # symlog for classification
 
     # Held-out neuron prediction - for integration into `ShuffleInfill` (rather than separate task)
     query_heldout: int = 0 # number of heldout neurons to query

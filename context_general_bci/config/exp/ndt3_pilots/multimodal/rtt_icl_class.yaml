@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - odoherty_rtt.*
+model:
+  task:
+    tasks:
+      - ModelTask.spike_context
+      - ModelTask.kinematic_classification
+train:
+  batch_size: 32

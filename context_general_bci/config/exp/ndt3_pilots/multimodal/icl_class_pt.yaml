@@ -1,0 +1,14 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks:
+    - ModelTask.spike_context
+    - ModelTask.kinematic_classification
+    covariate_mask_ratio: 0.2 # Target - last 2s
+    context_prompt_time_thresh: 600 # 8s * 50Hz
+train:
+  batch_size: 8
+inherit_exp: ndt3_pilots/multimodal
+inherit_tag: pt

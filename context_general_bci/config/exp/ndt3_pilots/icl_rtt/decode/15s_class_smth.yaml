@@ -18,7 +18,8 @@ model:
     - ModelTask.spike_context
     - ModelTask.kinematic_classification
     covariate_mask_ratio: 0.2 # Target - last 2s
-    context_prompt_time_thresh: 600 # 8s * 50Hz
+    context_prompt_time_thresh: 400 # 8s * 50Hz
+    decode_label_smooth: 0.1
 train:
   autoscale_batch_size: False
   batch_size: 16

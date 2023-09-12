@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - odoherty_rtt.*
+  behavior_dim: 9
+model:
+  transformer:
+    n_layers: 6
+train:
+  batch_size: 32
+# load_from_id: 10s-wi3elpat
+notes: "Parity check for RTT ICL"
+inherit_tag: 30s
+inherit_exp: ndt3_pilots/icl_rtt

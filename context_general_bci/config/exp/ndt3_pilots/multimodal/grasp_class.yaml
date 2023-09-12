@@ -1,0 +1,59 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks:
+    - ModelTask.spike_context
+    - ModelTask.kinematic_classification
+    covariate_mask_ratio: 1.0
+dataset:
+  datasets:
+  - pitt_broad_pitt_co_CRS02bLab_1761
+  - pitt_broad_pitt_co_CRS02bLab_1767
+  - pitt_broad_pitt_co_CRS02bLab_1769
+  # - pitt_broad_pitt_co_CRS02bLab_1773 # ! Not found
+  - pitt_broad_pitt_co_CRS02bLab_1775
+  - pitt_broad_pitt_co_CRS02bLab_1790
+  - pitt_broad_pitt_co_CRS02bLab_1776
+  - pitt_broad_pitt_co_CRS02bLab_1778
+  - pitt_broad_pitt_co_CRS02bLab_1780
+  - pitt_broad_pitt_co_CRS02bLab_1798
+  - pitt_broad_pitt_co_CRS02bLab_1787
+  - pitt_broad_pitt_co_CRS02bLab_1789
+  # - pitt_broad_pitt_co_CRS02bLab_1885 # Failed, no force data
+  - pitt_broad_pitt_co_CRS02bLab_1829
+  - pitt_broad_pitt_co_CRS02bLab_1837
+  - pitt_broad_pitt_co_CRS02bLab_1855
+  - pitt_broad_pitt_co_CRS02bLab_1869
+  # Eval set.
+  - pitt_broad_pitt_co_CRS02bLab_1899
+  - pitt_broad_pitt_co_CRS02bLab_1900
+  - pitt_broad_pitt_co_CRS02bLab_1907
+
+  - pitt_broad_pitt_co_CRS02bLab_1918
+  - pitt_broad_pitt_co_CRS02bLab_1965
+  - pitt_broad_pitt_co_CRS02bLab_1993
+  - pitt_broad_pitt_co_CRS02bLab_2004
+  - pitt_broad_pitt_co_CRS02bLab_2011
+
+  - pitt_broad_pitt_co_CRS07Home_32
+  - pitt_broad_pitt_co_CRS07Home_33
+  - pitt_broad_pitt_co_CRS07Home_34
+  - pitt_broad_pitt_co_CRS07Home_35
+  - pitt_broad_pitt_co_CRS07Home_52 # mislabel
+  # - pitt_broad_pitt_co_CRS07Lab_52
+  - pitt_broad_pitt_co_CRS07Home_53
+  - pitt_broad_pitt_co_CRS07Home_49
+  # - pitt_broad_pitt_co_CRS07Home_57 # ! Not found
+
+  # Eval set
+  - pitt_broad_pitt_co_CRS07Home_69
+  - pitt_broad_pitt_co_CRS07Home_71
+  - pitt_broad_pitt_co_CRS07Home_83
+
+  - pitt_broad_pitt_co_CRS07Home_88
+  - pitt_broad_pitt_co_CRS07Home_61
+  - pitt_broad_pitt_co_CRS07Home_108
+train:
+  batch_size: 16 # 40G

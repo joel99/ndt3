@@ -44,6 +44,7 @@ query = '10s_exclude-vpqsnnam'
 query = '10s_regression_exclude-hio7q3x6'
 query = '10s_exclude-xfcwrte7'
 
+query = '15s_class-fv9wd1g4'
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)

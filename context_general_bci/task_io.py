@@ -1534,7 +1534,8 @@ class BehaviorClassification(CovariateReadout):
                 Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
             )
         # We use these buckets as we minmax clamp in preprocessing
-        self.register_buffer('zscore_quantize_buckets', torch.linspace(-1.001, 1.001, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
+        quantize_bound = 1.001 if not getattr(self.cfg, 'decode_symlog', False) else symlog(torch.tensor(1.001))
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
         assert self.spacetime, "BehaviorClassification requires spacetime path"
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
@@ -1550,14 +1551,16 @@ class BehaviorClassification(CovariateReadout):
 
     def quantize(self, x: torch.Tensor):
         x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
+        if getattr(self.cfg, 'decode_symlog', False):
+            return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
         return torch.bucketize(x, self.zscore_quantize_buckets) - 1 # bucketize produces from [1, self.quantize_classes]
-        # return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
 
     def dequantize(self, quantized: torch.Tensor):
         if quantized.max() > self.zscore_quantize_buckets.shape[0]:
             raise Exception("go implement quantization clipping man")
+        if getattr(self.cfg, 'decode_symlog', False):
+            return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
         return (self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2
-        # return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
 
     def get_cov_pred(
         self, *args, **kwargs
