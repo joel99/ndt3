@@ -30,7 +30,7 @@ def compute_return_to_go(rewards: torch.Tensor, horizon=100):
     # rewards: T
     if horizon:
         padded_reward = F.pad(rewards, (0, horizon - 1), value=0)
-        return padded_reward.unfold(0, horizon, 1).sum(-1) # T
+        return padded_reward.unfold(0, horizon, 1)[..., 1:].sum(-1) # T. Don't include current timestep
     reversed_rewards = torch.flip(rewards, [0])
     returns_to_go_reversed = torch.cumsum(reversed_rewards, dim=0)
     return torch.flip(returns_to_go_reversed, [0])
@@ -154,6 +154,7 @@ class PittCOLoader(ExperimentalTaskLoader):
     """
     name = ExperimentalTask.pitt_co
 
+    # We have a basic 180ms boxcar smooth to deal with visual noise in rendering. Not really that excessive, still preserves high frequency control characteristics in the data. At lower values, observation targets becomes jagged and unrealistic.
     @staticmethod
     def smooth(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
@@ -332,7 +333,8 @@ class PittCOLoader(ExperimentalTaskLoader):
             passed = payload.get('passed', None)
             trial_num: torch.Tensor = payload['trial_num']
             if passed is not None and trial_num.max() > 1: # Heuristic - single trial means this is probably not a task-based dataset
-                trial_change_step = (trial_num.roll(-1, dims=0) != trial_num).nonzero()[:,0] # end of episode timestep
+                trial_change_step = (trial_num.roll(-1, dims=0) != trial_num).nonzero()[:,0] # * end of episode timestep.
+                # * Since this marks end of episode, it also marks when reward is provided
 
                 per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=int)
                 per_trial_pass = torch.clamp(per_trial_pass, max=1) # Literally, clamp that. What does 2x reward even mean? (It shows up sometimes...)
@@ -341,6 +343,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 return_dense = compute_return_to_go(reward_dense, horizon=int((cfg.return_horizon_s * 1000) // cfg.bin_size_ms))
                 reward_dense = reward_dense.unsqueeze(-1) # T -> Tx1
                 return_dense = return_dense.unsqueeze(-1) # T -> Tx1
+                # We need to have tuples <Return, State, Action, Reward> - currently, final timestep still has 1 return
             else:
                 reward_dense = None
                 return_dense = None

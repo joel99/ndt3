@@ -499,13 +499,14 @@ class SpikingDataset(Dataset):
                         if self.cfg.sparse_rewards:
                             return_dense = payload[k]
                             change_steps = torch.cat([torch.tensor([0]), (return_dense[1:] != return_dense[:-1]).any(1).nonzero().squeeze(1) + 1])
-                            data_items[k] = return_dense[change_steps] # + 1 # +1, 0 is pad
+                            data_items[k] = return_dense[change_steps]
                             data_items[DataKey.task_return_time] = change_steps
-                            data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps] #  + 1 # +1, 0 is pad
+                            data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps]
                         else:
                             data_items[k] = payload[k]
                             data_items[DataKey.task_return_time] = torch.arange(payload[k].size(0)) # create, for simplicity, though we might technically mirror `DataKey.time` if we must...
                             data_items[DataKey.task_reward] = payload[DataKey.task_reward]
+                        # +1 since 0 is reserved for padding. Note that since this is a dataloader-level offset... um...
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
                 else:

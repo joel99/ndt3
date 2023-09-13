@@ -37,8 +37,8 @@ run_cfg.datasets = [
 
 run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
-    'pitt_broad_pitt_co_CRS02bLab_1942_6',
+    'pitt_broad_pitt_co_CRS02bLab_1942_3',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
 ]
 
 dataset = SpikingDataset(run_cfg)
@@ -63,7 +63,6 @@ for session in dataset.meta_df[MetaKey.session].unique():
     # print(f'Session {session}: {all_constraints.shape}')
     # has_brain_control[session] = (all_constraints[:, 0] < 1).any()
 from pprint import pprint
-# print(has_brain_control)
 pprint(dimensions)
 # for session in has_brain_control:
 #     if not has_brain_control[session]:
@@ -97,22 +96,24 @@ def plot_covs(ax, trial_cov, cov_dims, cov_space: torch.Tensor | None =None):
     ax.set_ylim(-1, 1)
     # ax.set_ylabel('Position')
     # Convert xticks to 20x ms
-    # xticks = ax.get_xticks()
-    # ax.set_xticklabels((xticks * 20).astype(int))
-    # ax.set_xlabel('Time (ms)')
+    xticks = ax.get_xticks()
+    ax.set_xticks(xticks)
+    ax.set_xticklabels((xticks / 50).astype(int))
+    # ax.set_xlabel('Time (s)')
 
 
 def plot_multiple_trials(trial_indices, dataset):
-    n_trials = len(trial_indices)
-
     # Determine the number of rows needed for constraints
-    n_constraint_rows = 1 if any(DataKey.constraint in dataset[trial] for trial in trial_indices) else 0
-    n_return_rows = 1 if any(DataKey.task_return in dataset[trial] for trial in trial_indices) else 0
+    use_constraint = False and any(DataKey.constraint in dataset[trial] for trial in trial_indices)
+    use_return = any(DataKey.task_return in dataset[trial] for trial in trial_indices)
+    n_constraint_rows = 1 if use_constraint else 0
+    n_return_rows = 1 if use_return else 0
     # Create subplots
     f, axes = plt.subplots(
         1 + n_constraint_rows + n_return_rows, len(trial_indices),
         sharex=True, sharey='row',
-        figsize=(n_trials * 8, 8),
+        figsize=(40, 8),
+        # figsize=(len(trial_indices) * 8, 8),
     )
 
     cur_trial_name = ""
@@ -127,12 +128,6 @@ def plot_multiple_trials(trial_indices, dataset):
             axes[0, col].axvline(x=0, color='k', linestyle='--')
             # annotate with rotated trial name
             axes[0, col].text(0.1, 0.5, trial_name, rotation=90, transform=axes[0, col].transAxes, fontsize=8)
-        # print('Mean: ', test['cov_mean'])
-        # print('Min: ', test['cov_min'])
-        # print('Max: ', test['cov_max'])
-
-        # trial_cov = dataset[trial][DataKey.bhvr_vel]
-        # print(f'Covariate shape: {trial_cov.shape}')
 
         # Extract trial data
         trial_cov = dataset[trial][DataKey.bhvr_vel]
@@ -143,42 +138,48 @@ def plot_multiple_trials(trial_indices, dataset):
         plot_covs(axes[0, col], trial_cov, cov_dims, cov_space)
 
         # Plot constraints if available
-        if DataKey.constraint in dataset[trial]:
+        if use_constraint and DataKey.constraint in dataset[trial]:
             constraints = dataset[trial][DataKey.constraint]
             times = dataset[trial][DataKey.constraint_time]
             # print(constraints)
             prep_plt(axes[1, col], big=True)
             # print(constraints.shape, times)
-            axes[1, col].scatter(times, constraints[:, 0], label='fbc-lock', marker='|')
+            axes[1, col].scatter(times, constraints[:, 0], label='fbc-lock', marker='|', s=1000)
             # axes[1, col].scatter(times, constraints[:, 1], label='active', marker='|')
             # axes[1, col].scatter(times, constraints[:, 2], label='passive', marker='|')
             # axes[1 + n_constraint_rows, col].set_ylim(-0.1, 3.1)
             # plot_constraints(axes[1, col], constraints, times)
 
-        if DataKey.task_return in dataset[trial]:
+        if use_return and DataKey.task_return in dataset[trial]:
             returns = dataset[trial][DataKey.task_return]
             rewards = dataset[trial][DataKey.task_reward]
-            # print(returns)
-            # print(returns.shape)
+            print("Rewards : ", rewards)
+            print("Returns : ", returns)
             times = dataset[trial][DataKey.task_return_time]
             prep_plt(axes[1 + n_constraint_rows, col], big=True)
-            axes[1 + n_constraint_rows, col].scatter(times, returns[:, 0], label='return', marker='|')
-            axes[1 + n_constraint_rows, col].scatter(times, rewards[:, 0], label='reward', marker='|')
+            axes[1 + n_constraint_rows, col].scatter(times, returns[:, 0], label='return', marker='|', s=1000)
+            axes[1 + n_constraint_rows, col].scatter(times, rewards[:, 0] + 0.25, label='reward', marker='|', s=1000) # Offset for visibility
             # axes[1 + n_constraint_rows, col].set_ylim(-0.1, 8.1)
             # Put minor gridlines every 1
             axes[1 + n_constraint_rows, col].yaxis.set_minor_locator(plt.MultipleLocator(1))
             # Turn on grid
             axes[1 + n_constraint_rows, col].grid(which='minor', axis='y', linestyle='--')
-    axes[0, col].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    axes[1, col].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    axes[2, col].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    for final_ax in axes[:, -1]:
+        final_ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    for i in range(axes.shape[1]):
+        axes[-1, i].set_xlabel('Time (s)')
 
 # Usage
 trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
 trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
 # trial_indices = range(40)
-trial_indices = range(12)
-trial_indices = range(2)
+trial_indices = np.arange(12)
+trial_indices = np.arange(12)+12
+trial_indices = np.arange(12)+24
+trial_indices = np.arange(12)+24+12
+trial_indices = np.arange(5)
+# trial_indices = np.arange(3)+24+26
+# trial_indices = range(2)
 plot_multiple_trials(trial_indices, dataset)
 
 
