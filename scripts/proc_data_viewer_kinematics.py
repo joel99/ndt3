@@ -35,6 +35,12 @@ run_cfg.datasets = [
     'pitt_return_pitt_co_CRS07Lab_97_17',
 ] # 13, 15, 17 are all FBC
 
+run_cfg.datasets = [
+    # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
+    'pitt_broad_pitt_co_CRS02bLab_1942_6',
+]
+
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
 dataset.subset_split()
@@ -64,46 +70,15 @@ pprint(dimensions)
 #         print(session)
 
 #%%
-trial = 0
-# trial = 1
-# trial = 2
-# trial = 10
-# trial = 100
-# trial = 4000
-# trial = 3000
-# trial = 3500
-# trial = 3200
-# trial = 3100
-# trial = 3050
-# trial = 3007
-
-trial_name = dataset.meta_df.iloc[trial][MetaKey.unique]
-test = torch.load(dataset.meta_df.iloc[trial]['path'])
-print(dataset.meta_df.iloc[trial]['path'])
-print('Mean: ', test['cov_mean'])
-print('Min: ', test['cov_min'])
-print('Max: ', test['cov_max'])
-
-trial_cov = dataset[trial][DataKey.bhvr_vel]
-print(f'Covariate shape: {trial_cov.shape}')
-cov_dims = dataset[trial][DataKey.covariate_labels]
-cov_space = dataset[trial].get(DataKey.covariate_space, None)
-
-use_constraint = False and DataKey.constraint in dataset[trial]
-if use_constraint:
-    constraints = dataset[trial][DataKey.constraint]
-    print(f'Constraint shape: {constraints.shape}')
-    f, axes = plt.subplots(2, 1, sharex=True)
-else:
-    f, axes = plt.subplots(1, 1)
-    axes = [axes]
-
-def plot_covs(ax, cov, cov_dims, cov_space: torch.Tensor | None =None):
+from pathlib import Path
+def plot_covs(ax, trial_cov, cov_dims, cov_space: torch.Tensor | None =None):
+    # print(trial_cov.shape)
     ax = prep_plt(ax=ax, big=True)
     if cov_space is None:
         for cov, label in zip(trial_cov.T, cov_dims):
             if label != 'f':
-                cov_pos = cov.cumsum(0)
+                cov_pos = cov # Avoid cumsum to avoid visual discontinuity across trials
+                # cov_pos = cov.cumsum(0)
             else:
                 cov_pos = cov
             cov_pos = cov_pos - cov_pos[0]
@@ -111,68 +86,129 @@ def plot_covs(ax, cov, cov_dims, cov_space: torch.Tensor | None =None):
     else:
         for i, unique_space in enumerate(cov_space.unique()):
             label = cov_dims[i]
-            cov_pos = cov[cov_space == unique_space]
+            cov_pos = trial_cov[cov_space == unique_space]
+            # if label not in ['rx', 'ry']:
+                # continue
             if label != 'f':
-                cov_pos = cov_pos.cumsum(0)
+                # cov_pos = cov_pos.cumsum(0)
+                cov_pos = cov_pos # Avoid cumsum to avoid visual discontinuity across trials
             # cov_pos = cov_pos - cov_pos[0]
             ax.plot(cov_pos, label=cov_dims[i])
-    # plot legend off side
-    ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_ylabel('Position')
+    ax.set_ylim(-1, 1)
+    # ax.set_ylabel('Position')
     # Convert xticks to 20x ms
-    xticks = ax.get_xticks()
-    ax.set_xticklabels((xticks * 20).astype(int))
-    ax.set_xlabel('Time (ms)')
+    # xticks = ax.get_xticks()
+    # ax.set_xticklabels((xticks * 20).astype(int))
+    # ax.set_xlabel('Time (ms)')
 
-def plot_constraints(ax):
-    ax = prep_plt(ax=ax, big=True)
-    ax.plot(constraints)
-    ax.set_title('Constraints')
 
-plot_covs(axes[0], trial_cov, cov_dims, cov_space)
-if use_constraint:
-    plot_constraints(axes[1])
-axes[0].set_title(trial_name)
+def plot_multiple_trials(trial_indices, dataset):
+    n_trials = len(trial_indices)
+
+    # Determine the number of rows needed for constraints
+    n_constraint_rows = 1 if any(DataKey.constraint in dataset[trial] for trial in trial_indices) else 0
+    n_return_rows = 1 if any(DataKey.task_return in dataset[trial] for trial in trial_indices) else 0
+    # Create subplots
+    f, axes = plt.subplots(
+        1 + n_constraint_rows + n_return_rows, len(trial_indices),
+        sharex=True, sharey='row',
+        figsize=(n_trials * 8, 8),
+    )
+
+    cur_trial_name = ""
+    for col, trial in enumerate(trial_indices):
+        # trial_name = dataset.meta_df.iloc[trial][MetaKey.unique]
+        # test = torch.load(dataset.meta_df.iloc[trial]['path'])
+        trial_name = '_'.join(Path(dataset.meta_df.iloc[trial]['path']).stem.split('_')[-4:-1])
+        if trial_name != cur_trial_name:
+            # print(trial_name)
+            cur_trial_name = trial_name
+            # Plot vertical
+            axes[0, col].axvline(x=0, color='k', linestyle='--')
+            # annotate with rotated trial name
+            axes[0, col].text(0.1, 0.5, trial_name, rotation=90, transform=axes[0, col].transAxes, fontsize=8)
+        # print('Mean: ', test['cov_mean'])
+        # print('Min: ', test['cov_min'])
+        # print('Max: ', test['cov_max'])
+
+        # trial_cov = dataset[trial][DataKey.bhvr_vel]
+        # print(f'Covariate shape: {trial_cov.shape}')
+
+        # Extract trial data
+        trial_cov = dataset[trial][DataKey.bhvr_vel]
+        cov_dims = dataset[trial][DataKey.covariate_labels]
+        cov_space = dataset[trial].get(DataKey.covariate_space, None)
+
+        # Plot covariates
+        plot_covs(axes[0, col], trial_cov, cov_dims, cov_space)
+
+        # Plot constraints if available
+        if DataKey.constraint in dataset[trial]:
+            constraints = dataset[trial][DataKey.constraint]
+            times = dataset[trial][DataKey.constraint_time]
+            # print(constraints)
+            prep_plt(axes[1, col], big=True)
+            # print(constraints.shape, times)
+            axes[1, col].scatter(times, constraints[:, 0], label='fbc-lock', marker='|')
+            # axes[1, col].scatter(times, constraints[:, 1], label='active', marker='|')
+            # axes[1, col].scatter(times, constraints[:, 2], label='passive', marker='|')
+            # axes[1 + n_constraint_rows, col].set_ylim(-0.1, 3.1)
+            # plot_constraints(axes[1, col], constraints, times)
+
+        if DataKey.task_return in dataset[trial]:
+            returns = dataset[trial][DataKey.task_return]
+            rewards = dataset[trial][DataKey.task_reward]
+            # print(returns)
+            # print(returns.shape)
+            times = dataset[trial][DataKey.task_return_time]
+            prep_plt(axes[1 + n_constraint_rows, col], big=True)
+            axes[1 + n_constraint_rows, col].scatter(times, returns[:, 0], label='return', marker='|')
+            axes[1 + n_constraint_rows, col].scatter(times, rewards[:, 0], label='reward', marker='|')
+            # axes[1 + n_constraint_rows, col].set_ylim(-0.1, 8.1)
+            # Put minor gridlines every 1
+            axes[1 + n_constraint_rows, col].yaxis.set_minor_locator(plt.MultipleLocator(1))
+            # Turn on grid
+            axes[1 + n_constraint_rows, col].grid(which='minor', axis='y', linestyle='--')
+    axes[0, col].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    axes[1, col].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    axes[2, col].legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+
+# Usage
+trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
+trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
+# trial_indices = range(40)
+trial_indices = range(12)
+trial_indices = range(2)
+plot_multiple_trials(trial_indices, dataset)
+
 
 #%%
 # Pull the raw file, if you can
 from pathlib import Path
 from context_general_bci.tasks.pitt_co import load_trial, PittCOLoader, interpolate_nan
+from context_general_bci.config import DEFAULT_KIN_LABELS
 from torch.nn import functional as F
 datapath = Path('data') / '/'.join(Path(dataset.meta_df.iloc[trial]['path']).parts[2:-1])
 print(datapath, datapath.exists())
 payload = load_trial(datapath, key='thin_data', limit_dims=run_cfg.pitt_co.limit_kin_dims)
-
-def mock_velocity(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
-    position = interpolate_nan(position)
-    position = position - position[0] # zero out initial position
-    position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
-    vel = torch.as_tensor(np.gradient(position.numpy(), axis=0)).float() # note gradient preserves shape
-    vel = interpolate_nan(vel) # extra call to deal with edge values
-    return vel
-# print(payload['force'].shape)
-# print(payload['position'].shape)
-# plt.plot(payload['force'], label='f')
-position = payload['position'][:500,:1]
-# plt.plot(position[:, 0], label='x')
-kernel = np.ones((int(180 / 20), 1))/ (180 / 20)
-position = F.conv1d(position.T.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1), padding='same')[:,0].T
-# plt.plot(payload['position'][:, 0], label='x')
-# plt.plot(position[:, 0], label='x smth')
-
-# plt.plot(np.gradient(payload['position'][:, 0]), label='x')
-# plt.plot(payload['position'][:, 1], label='y')
-# plt.plot(PittCOLoader.smooth(payload['position'][:, 2:3]), label='z')
-plt.legend()
-# plt.plot(payload['position'][:, 0], label='ry')
-# plt.plot(payload['position'][:, 6], label='gx')
-# print(payload['position'][:, 0].max(), payload['position'][:, 0].min())
-# print(payload['position'][:, 6].max(), payload['position'][:, 6].min())
 
 covariates = PittCOLoader.get_velocity(payload['position'])
 # print(covariates[:,2].max(), covariates[:,2].min())
 # plt.plot(covariates[:, 2], label='vz')
 # plt.plot(covariates[:, 6], label='vgx')
 # plt.plot(payload['position'][3150:3200, 0], label='x')
-plt.plot(covariates[:, 0], label='vx')
-# %%
+print(covariates.shape)
+print(covariates[498:502, 2])
+ax = prep_plt()
+raw_dims = [0]
+raw_dims = [2]
+# raw_dims = [1, 2, 6]
+xlim = [0, 1000]
+for i in raw_dims:
+    ax.plot(covariates[:, i], label=DEFAULT_KIN_LABELS[i])
+ax.legend()
+ax.set_xlim(xlim)
+# *20 to convert xticks to ms
+ax.set_xticklabels((ax.get_xticks() / 50).astype(int))
+ax.set_xlabel('s')
+ax.set_title(f'Velocity {datapath.stem}')

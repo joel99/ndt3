@@ -50,6 +50,8 @@ query = '15s_class-fv9wd1g4'
 query = 'icl_class-ydvjbt5q'
 query = 'rtt_icl_class-wozi1pdn'
 # query = 'grasp_icl_class-2si8wtym'
+query = 'rtt_class-0rc5zpjv'
+# query = 'rtt_icl_class-hsbejvlz'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -142,7 +144,7 @@ heldin_metrics = stack_batch(trainer.test(model, dataloader))
 #%%
 ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
 ICL_CROP = 3 * 50 * 2 # Quick hack to eval only a certain portion of data. 3s x 50 bins/s x 2 dims
-# ICL_CROP = 0
+ICL_CROP = 0
 
 from context_general_bci.config import DEFAULT_KIN_LABELS
 pred = heldin_outputs[Output.behavior_pred]

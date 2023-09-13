@@ -152,8 +152,10 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
                 bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr])
         if cfg.odoherty_rtt.minmax: # Note we apply after chop, which also includes binning
             global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
-            global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.0001, dim=0) # essentially guard for extreme outliers, but that's it.
-            global_args['cov_max'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.9999, dim=0)
+            # global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.0001, dim=0) # essentially guard for extreme outliers, but that's it.
+            global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.001, dim=0) # essentially guard for extreme outliers, but that's it.
+            global_args['cov_max'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.999, dim=0) # Just be consistent with pitt preproc.
+            # global_args['cov_max'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.9999, dim=0)
             rescale = global_args['cov_max'] - global_args['cov_min']
             rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
             # if (bhvr_vars[bhvr] / rescale).max() > 0.9 or (bhvr_vars[bhvr] / rescale).min() < -0.9: # Looks like there's a long tail, sick.

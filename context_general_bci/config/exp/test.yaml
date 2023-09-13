@@ -1,24 +1,55 @@
 # @package _global_
-
+# Updated to direct ICL experiments. No pretraining, for simplicity.
 defaults:
-  - /model: flat_enc_dec
-  - /dataset: flat
-  - /train: single_session_exp1
+  - /model:
+    - flat_enc_dec
+    - scale_history
+  - /model/task:
+    - decode_flat_v2
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - midscale
 model:
-  hidden_size: 128 # size down appropriately
-  causal: true
-  subject_embed_strategy: EmbedStrat.token
+  session_embed_strategy: EmbedStrat.none # evaluating zero-shot ICL exps
+  subject_embed_strategy: EmbedStrat.none
+  causal: True
   task:
-    mask_ratio: 0.5 # for efficiency
-  neurons_per_token: 32
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_classification, ModelTask.constraints]
+    task_weights: [1.0, 1.0] # after a failed set of initial exps, we decide to 10x to bring losses up to O(0.5)
+    # mask_ratio: 0.5
+    covariate_mask_ratio: 0.2
+    context_prompt_time_thresh: 600 # 12s * 50Hz, 3s target
+    encode_constraints: True
+  transformer:
+    n_layers: 8
+    max_trial_length: 1500 # Up to 30s
+  use_full_encode: True
+  decoder_context_integration: 'cross_attn'
+  lr_ramp_steps: 50
 dataset:
-  eval_ratio: 0.1
-  eval_split_continuous: True
-  scale_limit_per_eval_session: 320
+  max_length_ms: 15000
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 15000
+  pitt_co:
+    chop_size_ms: 10000 # ! This was an accident, but all the data went in like this. In context framing still preserved; we still encode first 8s and decode last 2s.
+
+  tokenize_covariates: True
+  sparse_constraints: True
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
   datasets:
-  - odoherty_rtt-Indy-20160627_01 # Original
-  eval_datasets:
-  - odoherty_rtt-Indy-20160627_01 # Original
+  # - pitt_broad.* # Currently has obs, fbc, helicopter rescue; i.e. this was a repull of NDT2 `pitt_co` criteria, the script for pulling might no longer exist. I also don't think this has ortho.
+  # - 'pitt_broad_pitt_co_CRS02bLab_1942_6'
+  - 'pitt_broad_pitt_co_CRS02bLab_1942_.*'
+  data_keys:
+  - DataKey.spikes
+  - DataKey.constraint
+  - DataKey.bhvr_vel
+  - DataKey.task_return
 train:
+  patience: 50
   autoscale_batch_size: true
-fragment_datasets: False
+  batch_size: 4 # 40G
+  effective_batch_size: 512

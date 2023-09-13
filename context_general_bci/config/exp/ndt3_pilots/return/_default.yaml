@@ -49,4 +49,5 @@ dataset:
 train:
   patience: 50
   autoscale_batch_size: true
+  batch_size: 4 # 40G
   effective_batch_size: 512

@@ -302,10 +302,14 @@ class PittCOLoader(ExperimentalTaskLoader):
             # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
             if covariates is not None:
                 payload['cov_mean'] = covariates.mean(0)
-                payload['cov_min'] = torch.quantile(covariates, 0.01, dim=0)
-                payload['cov_max'] = torch.quantile(covariates, 0.99, dim=0)
+                payload['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
+                payload['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
                 covariates = covariates - covariates.mean(0)
-                covariates[:, (payload['cov_max'] - payload['cov_min']) < 0.01] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
+                NOISE_THRESHOLDS = torch.full_like(payload['cov_min'], 0.001)
+                # Threshold for force is much higher based on spotchecks. Better to allow noise, than to drop true values? IDK.
+                if 'force' in payload: # Force is appended if available
+                    NOISE_THRESHOLDS[-covariate_force.size(1):] = 0.008
+                covariates[:, (payload['cov_max'] - payload['cov_min']) < NOISE_THRESHOLDS] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
             else:
                 payload['cov_mean'] = None
                 payload['cov_min'] = None

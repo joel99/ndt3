@@ -1,0 +1,6 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  hidden_size: 512
+notes: "basic scaling test"
