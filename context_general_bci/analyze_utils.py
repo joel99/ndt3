@@ -69,14 +69,17 @@ def create_typed_cfg(cfg: Dict) -> RootConfig:
     cfg = cast_paths_and_enums(cfg)
     return from_dict(data_class=RootConfig, data=cfg)
 
-def load_wandb_run(run: WandbRun, tag="val_loss") -> Tuple[BrainBertInterface, RootConfig, DataAttrs]:
+def load_wandb_run(run: WandbRun, tag="val_loss", load_model=True) -> Tuple[BrainBertInterface, RootConfig, DataAttrs]:
     run_data_attrs = from_dict(data_class=DataAttrs, data=run.config['data_attrs'])
     config_copy = deepcopy(run.config)
     del config_copy['data_attrs']
     cfg: RootConfig = OmegaConf.create(create_typed_cfg(config_copy)) # Note, unchecked cast, but we often fiddle with irrelevant variables and don't want to get caught up
-    ckpt = get_best_ckpt_from_wandb_id(cfg.wandb_project, run.id, tag=tag)
-    print(f"Loading {ckpt}")
-    model = load_from_checkpoint(ckpt)
+    if load_model:
+        ckpt = get_best_ckpt_from_wandb_id(cfg.wandb_project, run.id, tag=tag)
+        print(f"Loading {ckpt}")
+        model = load_from_checkpoint(ckpt)
+    else:
+        model = None
     # model = BrainBertInterface.load_from_checkpoint(ckpt, cfg=cfg)
     return model, cfg, run_data_attrs
 

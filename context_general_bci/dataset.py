@@ -510,9 +510,11 @@ class SpikingDataset(Dataset):
                         # +1 since 0 is reserved for padding. Note that since this is a dataloader-level offset... um...
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
+                # elif k in ['cov_min', 'cov_max', 'cov_mean'] and k not in payload: # Debug
+                    # data_items[k] = torch.zeros(self.cfg.behavior_dim)
+                    # Collater not implemented
                 else:
                     data_items[k] = payload[k]
-
         out = {
             **data_items,
             **meta_items,

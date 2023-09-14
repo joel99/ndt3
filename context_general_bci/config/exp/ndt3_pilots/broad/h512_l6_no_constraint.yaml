@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  hidden_size: 512
+  task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_classification]
+  transformer:
+    n_layers: 6
+notes: "Base model"

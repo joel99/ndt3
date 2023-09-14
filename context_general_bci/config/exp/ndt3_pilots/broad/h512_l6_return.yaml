@@ -2,11 +2,11 @@
 defaults:
   - _default
 model:
-  hidden_size: 1024
+  hidden_size: 512
   transformer:
-    n_layers: 12
+    n_layers: 6
   task:
     tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints, ModelTask.return_context]
 dataset:
   sparse_rewards: True
-notes: "Deepspeed debug"
+notes: "Add return"
