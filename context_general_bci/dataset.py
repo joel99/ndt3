@@ -472,11 +472,12 @@ class SpikingDataset(Dataset):
                         else:
                             # check for change
                             constraint_dense = payload[k]
+                            # Low-pri - should be slightly more efficient to only serve a constraint change per covariate dimension, not for all dimensions at once (there only needs to be one `.any`)
                             change_steps = torch.cat([torch.tensor([0]), (constraint_dense[1:] != constraint_dense[:-1]).any(1).any(1).nonzero().squeeze(1) + 1])
                             # T x 3 x Bhvr_Dim
                             data_items[k] = constraint_dense[change_steps]
                             data_items[DataKey.constraint_time] = change_steps
-
+                        # breakpoint()
                         if self.cfg.tokenize_covariates:
                             data_items[DataKey.constraint_space] = repeat(torch.arange(data_items[k].size(-1)), 'b -> (t b)', t=data_items[k].size(0))
                             data_items[DataKey.constraint_time] = repeat(data_items[DataKey.constraint_time], 't -> (t b)', b=data_items[k].size(-1))

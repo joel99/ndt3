@@ -1,0 +1,8 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  hidden_size: 512
+  transformer:
+    n_layers: 6
+notes: "Base model"

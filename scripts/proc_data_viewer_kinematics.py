@@ -1,5 +1,8 @@
 #%%
 r""" What does raw data look like? (Preprocessing devbook) """
+import os
+os.environ["CUDA_VISIBLE_DEVICES"]="2"
+
 import numpy as np
 import pandas as pd
 import torch
@@ -35,11 +38,27 @@ run_cfg.datasets = [
     'pitt_return_pitt_co_CRS07Lab_97_17',
 ] # 13, 15, 17 are all FBC
 
-run_cfg.datasets = [
+# Helicopter spot check
+# run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
-    'pitt_broad_pitt_co_CRS02bLab_1942_3',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
-]
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
+# ]
+
+# run_cfg.datasets = [
+    # Force
+    # 'pitt_broad_pitt_co_CRS07Home_108_1',
+    # 'pitt_broad_pitt_co_CRS07Home_108_3',
+    # More helicopter rescue
+    # 'pitt_broad_pitt_co_CRS07Home_118_1',
+    # 'pitt_broad_pitt_co_CRS07Home_118_5',
+
+    # Archival
+    # 'pitt_broad_pitt_co_CRS02bLab_100_1',
+# ]
 
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()
@@ -117,6 +136,8 @@ def plot_multiple_trials(trial_indices, dataset):
     )
 
     cur_trial_name = ""
+    palette = sns.color_palette(n_colors=10)
+
     for col, trial in enumerate(trial_indices):
         # trial_name = dataset.meta_df.iloc[trial][MetaKey.unique]
         # test = torch.load(dataset.meta_df.iloc[trial]['path'])
@@ -141,12 +162,20 @@ def plot_multiple_trials(trial_indices, dataset):
         if use_constraint and DataKey.constraint in dataset[trial]:
             constraints = dataset[trial][DataKey.constraint]
             times = dataset[trial][DataKey.constraint_time]
-            # print(constraints)
+            space = dataset[trial][DataKey.constraint_space]
+            print('Constraint:', constraints.shape)
             prep_plt(axes[1, col], big=True)
             # print(constraints.shape, times)
-            axes[1, col].scatter(times, constraints[:, 0], label='fbc-lock', marker='|', s=1000)
-            # axes[1, col].scatter(times, constraints[:, 1], label='active', marker='|')
-            # axes[1, col].scatter(times, constraints[:, 2], label='passive', marker='|')
+            # If off axis, that means it's on
+            space_offset = constraints / 2 + constraints / 24 * space.unsqueeze(-1)
+            for i, pos in enumerate(space.unique()):
+                axes[1, col].scatter(times[space == pos], space_offset[:, 0][space == pos], label='fbc-lock', marker='x', s=500, color=palette[i], alpha=0.5)
+                axes[1, col].scatter(times[space == pos], space_offset[:, 1][space == pos] + 1, label='active', marker='+', s=500, color=palette[i], alpha=0.5)
+                axes[1, col].scatter(times[space == pos], space_offset[:, 2][space == pos] + 2, label='passive', marker='1', s=500, color=palette[i], alpha=0.5)
+            # Draw a hline at 0.4
+            axes[1, col].axhline(y=0.9, color='k', linestyle='--')
+            axes[1, col].axhline(y=1.9, color='k', linestyle='--')
+
             # axes[1 + n_constraint_rows, col].set_ylim(-0.1, 3.1)
             # plot_constraints(axes[1, col], constraints, times)
 
@@ -173,11 +202,12 @@ def plot_multiple_trials(trial_indices, dataset):
 trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
 trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
 # trial_indices = range(40)
-trial_indices = np.arange(12)
-trial_indices = np.arange(12)+12
-trial_indices = np.arange(12)+24
-trial_indices = np.arange(12)+24+12
-trial_indices = np.arange(5)
+trial_indices = np.arange(6)
+trial_indices = np.arange(2)
+# trial_indices = np.arange(12)+12
+# trial_indices = np.arange(12)+24
+# trial_indices = np.arange(12)+24+12
+# trial_indices = np.arange(5)
 # trial_indices = np.arange(3)+24+26
 # trial_indices = range(2)
 plot_multiple_trials(trial_indices, dataset)
@@ -193,23 +223,47 @@ datapath = Path('data') / '/'.join(Path(dataset.meta_df.iloc[trial]['path']).par
 print(datapath, datapath.exists())
 payload = load_trial(datapath, key='thin_data', limit_dims=run_cfg.pitt_co.limit_kin_dims)
 
-covariates = PittCOLoader.get_velocity(payload['position'])
+covariates_smth = PittCOLoader.get_velocity(payload['position'])
+# covariates_smth = PittCOLoader.get_velocity(payload['position'], kernel=np.ones((5, 1)) / 5)
+covariates_raw = PittCOLoader.get_velocity(payload['position'], kernel=np.ones((1, 1)))
+brain_control = payload.get('brain_control', None)
+active_assist = payload.get('active_assist', None)
+passive_assist = payload.get('passive_assist', None)
+
+print(brain_control.shape)
+print(covariates_smth.shape)
+# constraints = payload[DataKey.constraint]
+# constraint_time = payload[DataKey.constraint_time]
+# print(constraints)
 # print(covariates[:,2].max(), covariates[:,2].min())
 # plt.plot(covariates[:, 2], label='vz')
 # plt.plot(covariates[:, 6], label='vgx')
 # plt.plot(payload['position'][3150:3200, 0], label='x')
-print(covariates.shape)
-print(covariates[498:502, 2])
 ax = prep_plt()
 raw_dims = [0]
-raw_dims = [2]
-# raw_dims = [1, 2, 6]
-xlim = [0, 1000]
-for i in raw_dims:
-    ax.plot(covariates[:, i], label=DEFAULT_KIN_LABELS[i])
+raw_dims = [1, 2]
+raw_dims = [1, 2, 6]
+# raw_dims = [6]
+# xlim = [0, 1000]
+xlim = [500, 600]
+# xlim = [0, 200]
+palette = sns.color_palette(n_colors=len(raw_dims) + 2)
+for i, r in enumerate(raw_dims):
+    ax.plot(covariates_smth[:, r], label=f'{DEFAULT_KIN_LABELS[r]} smth', color=palette[i])
+    ax.plot(covariates_raw[:, r], label=f'{DEFAULT_KIN_LABELS[r]} raw', color=palette[i], linestyle='--')
+
+# ax.plot(brain_control[:, 0] * 0.01, label='fbc-lock')
+ax.plot(active_assist[:, 0] * 0.01, label='active p', color=palette[-2])
+# ax.plot(active_assist[:, 1] * 0.02, label='active r')
+ax.plot(active_assist[:, 2] * 0.03, label='active g', color=palette[-1])
+# ax.plot(passive_assist[:, 0] * 0.01, label='passiv')
+
 ax.legend()
 ax.set_xlim(xlim)
 # *20 to convert xticks to ms
-ax.set_xticklabels((ax.get_xticks() / 50).astype(int))
-ax.set_xlabel('s')
+xticks = ax.get_xticks()
+ax.set_xticks(xticks)
+# ax.set_xticklabels((xticks / 50).astype(int))
+ax.set_xticklabels((xticks * 20).astype(int))
+ax.set_xlabel('ms')
 ax.set_title(f'Velocity {datapath.stem}')

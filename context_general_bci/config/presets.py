@@ -416,6 +416,16 @@ class ScaleHistoryModelConfig(FlatEncDecModelConfig):
 
 cs.store(group="model", name="scale_history", node=ScaleHistoryModelConfig)
 
+@dataclass
+class LargescaleModelConfig(ScaleHistoryModelConfig):
+    lr_ramp_steps: int = 10 # Many more steps per epoch
+    dropout: float = 0.1 # Less regularization
+    hidden_size: int = 512 # At a minimum
+    session_embed_strategy: EmbedStrat = EmbedStrat.none
+    subject_embed_strategy: EmbedStrat = EmbedStrat.none
+
+cs.store(group="model", name="largescale", node=LargescaleModelConfig)
+
 r"""
     Some experiment specific presets
 """
@@ -442,3 +452,12 @@ class MidscaleTrainConfig(TrainConfig):
     max_batch_size: int = 512
 
 cs.store(group="train", name="midscale", node=MidscaleTrainConfig)
+
+@dataclass
+class LargescaleTrainConfig(TrainConfig):
+    patience: int = 5
+    effective_batch_size: int = 2048
+    max_batch_size: int = 2048
+    log_every_n_steps: int = 4 # Steps take very long now due to incredible accumulation
+cs.store(group="train", name="largescale", node=LargescaleTrainConfig)
+

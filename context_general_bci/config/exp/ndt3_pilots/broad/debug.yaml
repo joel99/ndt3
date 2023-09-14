@@ -1,0 +1,21 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  datasets:
+  - pitt_broad_pitt_co_CRS07.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_110.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_120.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_130.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_140.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_150.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_160.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_170.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_180.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_190.* # Accelerate preproc by parallelize
+  - pitt_broad_pitt_co_CRS02bLab_200.* # Accelerate preproc by parallelize
+model:
+  hidden_size: 512
+  transformer:
+    n_layers: 6
+notes: "Base model"

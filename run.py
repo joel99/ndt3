@@ -393,7 +393,7 @@ def run_exp(cfg : RootConfig) -> None:
             model,
             datamodule=data_module,
             mode="power",
-            init_val=4,
+            init_val=1,
             steps_per_trial=15,
         )
         if cfg.train.max_batch_size and data_module.batch_size > cfg.train.max_batch_size:
