@@ -330,11 +330,11 @@ class PittCOLoader(ExperimentalTaskLoader):
             passive_assist = payload.get('passive_assist', None)
             # clamp each constraint to 0 and 1 - otherwise nonsensical
             if brain_control is not None:
-                brain_control = torch.clamp(brain_control, 0, 1)
+                brain_control = brain_control.int().clamp(0, 1).half()
             if active_assist is not None:
-                active_assist = torch.clamp(active_assist, 0, 1)
+                active_assist = active_assist.int().clamp(0, 1).half()
             if passive_assist is not None:
-                passive_assist = torch.clamp(passive_assist, 0, 1)
+                passive_assist = passive_assist.int().clamp(0, 1).half()
 
             # * Reward and return!
             passed = payload.get('passed', None)

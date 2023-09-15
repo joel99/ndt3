@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  next_step_prediction: True
+  task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_infill]
+dataset:
+  sparse_rewards: True
+notes: "Only behavior pred for loss scale comparison"

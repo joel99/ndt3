@@ -83,7 +83,12 @@ class DataAttrs:
     maze_heldout_channel_count: int = 0
 
     behavior_dim: int = 2 # This is the _max_ number of features expected, in NDT2 simply also the readout dim. Will compare first N dimensions if fewer are available.
-    pad_token: int = 20 # this needs to be a value that definitely won't appear as a natural spike count for your used bin size.
+
+    pad_token: int = 0
+    # This pad token applies for both content and space in enc/dec flow
+    # The "Time" associated with padding is determined on a per-modality basis (either min time or max time)
+    # In decoder-only models, space has sorting priority, and "Space" for padding is also set to max position (hardcoded to 32)
+
     serve_tokens: bool = False # if true, serves flat data tokens with additional keys for annotations (e.g. array + timestep) instead of structured data (e.g. with array dimensions)
     serve_tokens_flat: bool = False
     neurons_per_token: int = 8
@@ -253,6 +258,7 @@ class SpikingDataset(Dataset):
 
     def load_single_session(self, context_meta: ContextInfo, override_preprocess_path: bool=False) -> pd.DataFrame:
         session_path = context_meta.datapath
+        # breakpoint()
         if not (hash_dir := self.preprocess_path(self.cfg, session_path, override_preprocess_path)).exists() or \
             self.checksum_diff(hash_dir / 'preprocess_version.json', context_meta.task):
             # TODO consider filtering meta df to be more lightweight (we don't bother right now because some nonessential attrs can be useful for analysis)
@@ -636,15 +642,25 @@ class SpikingDataset(Dataset):
                 continue # Just leave it alone, we need to know which dims are which
             elif isinstance(k, DataKey) or (k == CHANNEL_KEY):
                 # This padding injects pad values into time/space. The alternate is to assign time/space at collation time, but this is not as flexible, I'd rather individual trials specify their times.
+                if k in [
+                    DataKey.time,
+                    DataKey.constraint_time,
+                    DataKey.task_return_time,
+                    DataKey.covariate_time
+                ]:
+                    pad_value = self.cfg.max_trial_length
+                elif k in [
+                    DataKey.position,
+                    DataKey.constraint_space,
+                    DataKey.covariate_space,
+                ]:
+                    pad_value = self.pad_value # We could hypothetically serve a different space, but right now we leave as default; since space manipulation is a model level concern atm.
+                else:
+                    pad_value = self.pad_value
                 stack_batch[k] = pad_sequence(
                     stack_batch[k],
                     batch_first=True,
-                    padding_value=self.pad_value if k not in [
-                        DataKey.time,
-                        DataKey.constraint_time,
-                        DataKey.task_return_time,
-                        DataKey.covariate_time
-                    ] else self.cfg.max_trial_length)
+                    padding_value=pad_value)
             else:
                 stack_batch[k] = torch.stack(stack_batch[k])
         stack_batch[LENGTH_KEY] = lengths

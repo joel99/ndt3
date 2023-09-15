@@ -23,6 +23,7 @@ class ModelTask(Enum):
     spike_context = 'spike_context'
     shuffle_next_step_prediction = 'shuffle_next_step_prediction'
     shuffle_infill = 'shuffle_infill'
+    spike_infill = 'spike_infill'
 
     # Time-varying - these tasks are currently implemented by matching time-varying input shape
     # But could hypothetically call for enc-dec etc
@@ -256,7 +257,9 @@ class ModelConfig:
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
     use_full_encode: bool = False # ! Major change, return all tokens in decode stream
+
     next_step_prediction: bool = False # Major change, autoregressive path, limited compatibility with most NDT2 settigs
+    max_spatial_position: int = 32 # For next step prediction
 
     half_precision: bool = True
     # full_half_precision: bool = False # if true, use half precision for all model parameters, not just mixed precision
@@ -530,6 +533,7 @@ class DatasetConfig:
     # pad_time_value: int = 400 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
     pad_spike_value: int = 0 # extra thing just for spikes, which we can typically afford to keep low w/o consequence. Sometimes above pad value (which applies for time/space values) needs to be set higher than 0 to avoid nan attn, typically for co-bps
     # pad_value: int = 20
+    pad_position_value: int = 32 # Should match maximal space tokens per timestep (across all modalities) for next step prediction specifically
 
     # Experimental Task configuration - matching registered names
     # Note - we choose to put task specific things here rather than ModelConfig as model will read the relevant variables

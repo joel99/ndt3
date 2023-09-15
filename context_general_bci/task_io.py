@@ -647,13 +647,20 @@ class SpikeBase(SpikeContext, RatePrediction):
             eval_mode=False
     ) -> torch.Tensor:
         assert compute_metrics, "No direct outputs supported, code inference separately"
-        # ! We assume that backbone features arrives in a batch-major, time-minor format, and that
+        # ! We assume that backbone features arrives in a batch-major, time-minor format, that has already been flattened
+        # We need to similarly flatten
         # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
         breakpoint()
-        # ! No, this isn't enough. We lost the channel mask, in doing this. Get it back.
         target = batch[DataKey.spikes]
         rates = self.out(backbone_features) # B x H
-        return {'loss': self.loss(rates, target.flatten())[~backbone_padding].mean()}
+        loss = self.loss(rates, target.flatten())[~backbone_padding]
+        # cf self.get_loss_mask
+        loss_mask = ~backbone_padding.unsqueeze(-1) # B -> B x 1
+        comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
+        channel_mask = comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1)
+        loss_mask = loss_mask & channel_mask
+        loss = loss[loss_mask].mean()
+        return { 'loss': loss }
 
 
 class ShuffleInfill(SpikeBase):

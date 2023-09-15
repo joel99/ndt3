@@ -59,8 +59,7 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
     'kinematic_classification': 22,
     'kinematic_context': 22,
 }
-MAX_SPACE_MODALITY = 32
-
+MAX_KINEMATIC_DIMS = 10
 
 class BrainBertInterface(pl.LightningModule):
     r"""
@@ -119,12 +118,13 @@ class BrainBertInterface(pl.LightningModule):
             self.backbone = nn.Identity()
             self.backbone.out_size = self.cfg.hidden_size
         else:
-            # breakpoint()
+            # Max space can be manipulated in model in next_step path; thus model is responsible for determining max space to encode. If not, use raw max token expected
+            max_spatial_tokens = self.cfg.max_spatial_position if getattr(self.cfg, 'next_step_prediction', True) else data_attrs.max_spatial_tokens
             self.backbone = SpaceTimeTransformer(
                 self.cfg.transformer,
-                max_spatial_tokens=data_attrs.max_spatial_tokens,
-                debug_override_dropout_out=getattr(cfg.transformer, 'debug_override_dropout_io', False),
-                context_integration=getattr(cfg.transformer, 'context_integration', 'in_context'),
+                max_spatial_tokens=max_spatial_tokens,
+                debug_override_dropout_out=cfg.transformer.debug_override_dropout_io,
+                context_integration=cfg.transformer.context_integration,
                 embed_space=cfg.transformer.embed_space,
                 allow_embed_padding=True,
             )
@@ -320,6 +320,9 @@ class BrainBertInterface(pl.LightningModule):
 
         if getattr(self.cfg, 'next_step_prediction', False): # special tokens
             self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
+            # Checks on spatial tokens
+            assert self.data_attrs.max_spatial_tokens_neural < MODALITY_SPACE_RANGE_START['return'] -  MODALITY_SPACE_RANGE_START['spike']
+            assert self.cfg.max_spatial_position >= max(MODALITY_SPACE_RANGE_START.values()) + MAX_KINEMATIC_DIMS
 
 
     def _wrap_key(self, prefix, key):
@@ -568,6 +571,7 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_padding = [pipeline_padding[i] for i in filtered]
 
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
+        breakpoint()
         if getattr(self.cfg, 'next_step_prediction', False):
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
@@ -584,7 +588,8 @@ class BrainBertInterface(pl.LightningModule):
         if getattr(self.cfg, 'next_step_prediction', False):
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
             modalities, _ = pack(modalities, 'b *')
-            order = times * MAX_SPACE_MODALITY + space
+            space[pipeline_padding] = self.cfg.max_spatial_position # Assumes dataloader currently doesn't serve pad space especially
+            order = times * self.cfg.max_spatial_position + space
 
             # * ps becomes useless, is that ok? It's fine - we need to create a modality mask so subsequent task pipelines can map out their desired targets
             pipeline_context = sort_A_by_B(pipeline_context, order)

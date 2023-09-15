@@ -43,7 +43,7 @@ dataset:
   sparse_constraints: True
   behavior_dim: 10 # Force is here, include +1 for padding, etc.
   datasets:
-  - pitt_return.* # Currently has obs, fbc, helicopter rescue; i.e. this was a repull of NDT2 `pitt_co` criteria, the script for pulling might no longer exist. I also don't think this has ortho.
+  - pitt_broad.* # Currently has obs, fbc, helicopter rescue; i.e. this was a repull of NDT2 `pitt_co` criteria, the script for pulling might no longer exist. I also don't think this has ortho.
   data_keys:
   - DataKey.spikes
   - DataKey.constraint

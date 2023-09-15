@@ -7,5 +7,3 @@ model:
     tasks: [ModelTask.spike_infill, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_infill]
 dataset:
   sparse_rewards: True
-  # datasets:
-  # - pitt_return_pitt_co_CRS02bLab_1646_5 # Debug - we have no covariates
