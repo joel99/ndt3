@@ -2,8 +2,9 @@
 defaults:
   - _default
 model:
+  next_step_prediction: True
   task:
-    tasks: [ModelTask.spike_context, ModelTask.kinematic_classification, ModelTask.constraints, ModelTask.return_context]
+    tasks: [ModelTask.spike_infill, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_infill]
 dataset:
   sparse_rewards: True
   # datasets:

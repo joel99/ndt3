@@ -520,11 +520,9 @@ class SpikeContext(ContextPipeline):
         return state_in
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
-        spikes = batch[DataKey.spikes]
         batch[DataKey.padding] = create_token_padding_mask(
-            spikes, batch,
+            batch[DataKey.spikes], batch,
             length_key=LENGTH_KEY, # Use the right key, if there's no shuffle # TODO fix dataloader to load LENGTH_KEY as SPIKE_LENGTH_KEY (make spikes less special)
-            # shuffle_key=f'{self.handle}_{SHUFFLE_KEY}', # This is actually pre-shuffle, no need!
         )
         return batch
 
@@ -652,6 +650,7 @@ class SpikeBase(SpikeContext, RatePrediction):
         # ! We assume that backbone features arrives in a batch-major, time-minor format, and that
         # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
         breakpoint()
+        # ! No, this isn't enough. We lost the channel mask, in doing this. Get it back.
         target = batch[DataKey.spikes]
         rates = self.out(backbone_features) # B x H
         return {'loss': self.loss(rates, target.flatten())[~backbone_padding].mean()}
@@ -1034,7 +1033,23 @@ class ReturnContext(ContextPipeline):
             padding
         )
 
-class ReturnInfill(DataPipeline, ReturnContext):
+class ReturnInfill(ReturnContext):
+    def __init__(self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        # TODO - we need return targets that are appropriately in range in preproc. Don't use this task until we have sanitized return data.
+        self.out = nn.Linear(backbone_out_size, self.max_return)
+        # TODO - we should merge this pipeline with covariate into a generic classification pipeline.
+
     def forward(
         self,
         batch,
@@ -1045,7 +1060,13 @@ class ReturnInfill(DataPipeline, ReturnContext):
         compute_metrics=True,
         eval_mode=False
     ) -> torch.Tensor:
-        raise NotImplementedError
+        assert compute_metrics, "No direct outputs supported, code inference separately"
+        target = batch[DataKey.task_return]
+        pred = self.out(backbone_features)
+        breakpoint()
+        return {
+            'loss': F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.label_smoothing)[~backbone_padding].mean()
+        }
 
 
 class CovariateReadout(DataPipeline, ConstraintPipeline):
@@ -1152,7 +1173,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
             batch[self.cfg.behavior_target], batch,
             length_key=f'{self.handle}_{LENGTH_KEY}',
-            # shuffle_key=f'{self.handle}_{SHUFFLE_KEY}'
         )
         return self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
 
@@ -1558,9 +1578,20 @@ class QuantizeBehavior(TaskPipeline): # Mixin
     QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
     # TODO bake above into config
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
         quantize_bound = 1.001 if not self.cfg.decode_symlog else symlog(torch.tensor(1.001))
+        self.cov_dims = data_attrs.behavior_dim
         self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
 
     def quantize(self, x: torch.Tensor) -> torch.Tensor:
@@ -1580,7 +1611,8 @@ class QuantizeBehavior(TaskPipeline): # Mixin
 class BehaviorContext(ContextPipeline, QuantizeBehavior):
     # For feeding autoregressive task
     # Simple quantizing tokenizer
-    # * Actually just a reference, not actually used...
+    # * Actually just a reference, not actually used... this is because data must arrive embedded for the main model.
+    # So either this is subsumed as
     @property
     def handle(self):
         return 'covariate'
@@ -1598,17 +1630,13 @@ class BehaviorContext(ContextPipeline, QuantizeBehavior):
             batch[f'{self.handle}_{DataKey.padding}']
         )
 
-class BehaviorClassification(CovariateReadout, QuantizeBehavior):
-    r"""
-        In preparation for NDT3.
-        Assumes cross-attn, spacetime path.
-        Cross-attention, autoregressive classification.
-    """
+class ClassificationMixin(QuantizeBehavior):
     def initialize_readin(self, backbone_size): # Assume quantized readin...
         self.inp = nn.Embedding(self.QUANTIZE_CLASSES + 1, backbone_size)
         # self.inp_norm = nn.LayerNorm(backbone_size)
 
     def initialize_readout(self, backbone_size):
+        # We use these buckets as we minmax clamp in preprocessing
         if self.cfg.decode_tokenize_dims:
             self.out = nn.Sequential(
                 nn.Linear(backbone_size, self.QUANTIZE_CLASSES),
@@ -1619,11 +1647,6 @@ class BehaviorClassification(CovariateReadout, QuantizeBehavior):
                 nn.Linear(backbone_size, self.QUANTIZE_CLASSES * self.cov_dims),
                 Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
             )
-        # We use these buckets as we minmax clamp in preprocessing
-
-        assert self.spacetime, "BehaviorClassification requires spacetime path"
-        assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
-        assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
 
     def encode_cov(self, covariate: torch.Tensor):
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
@@ -1633,6 +1656,21 @@ class BehaviorClassification(CovariateReadout, QuantizeBehavior):
         covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1, which is true in tokenized serving)
         # covariate = self.inp_norm(covariate)
         return covariate
+
+    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
+        return self.dequantize(bhvr.argmax(1))
+
+    def compute_loss(self, bhvr: torch.Tensor, bhvr_tgt: torch.Tensor):
+        comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
+        return F.cross_entropy(comp_bhvr, self.quantize(bhvr_tgt), reduction='none', label_smoothing=self.cfg.decode_label_smooth)
+
+
+class BehaviorClassification(CovariateReadout, ClassificationMixin):
+    r"""
+        In preparation for NDT3.
+        Assumes cross-attn, spacetime path.
+        Cross-attention, autoregressive classification.
+    """
 
     def get_cov_pred(
         self, *args, **kwargs
@@ -1647,12 +1685,92 @@ class BehaviorClassification(CovariateReadout, QuantizeBehavior):
 
         return bhvr
 
-    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
-        return self.dequantize(bhvr.argmax(1))
+class CovariateInfill(ClassificationMixin):
+    # CovariateReadout is quite overloaded; we create a simpler next step prediction covariate readout module
+    # Uses classification path...
+    def __init__(
+        self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        self.served_tokenized_covariates = data_attrs.tokenize_covariates
+        self.served_semantic_covariates = data_attrs.semantic_covariates
+        self.reference_cov = self.cfg.behavior_target
+        self.cov_dims = data_attrs.behavior_dim
+        self.initialize_readin(cfg.hidden_size)
+        self.initialize_readout(cfg.hidden_size)
 
-    def compute_loss(self, bhvr, bhvr_tgt):
-        comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
-        return F.cross_entropy(comp_bhvr, self.quantize(bhvr_tgt), reduction='none', label_smoothing=self.cfg.decode_label_smooth)
+    @property
+    def handle(self):
+        return 'covariate'
+
+    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
+        batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
+            batch[self.cfg.behavior_target], batch,
+            length_key=f'{self.handle}_{LENGTH_KEY}',
+        )
+        return batch
+
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        enc = self.encode_cov(batch[self.cfg.behavior_target])
+        return (
+            enc,
+            batch[DataKey.covariate_time],
+            batch[DataKey.covariate_space] + 1, # reserve 0 for trial context
+            batch[f'{self.handle}_{DataKey.padding}']
+        )
+
+    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
+        # no op for regression, argmax + dequantize for classification
+        return bhvr
+
+    def forward(
+        self,
+        batch,
+        backbone_features: torch.Tensor,
+        backbone_times: torch.Tensor,
+        backbone_space: torch.Tensor,
+        backbone_padding: torch.Tensor,
+        compute_metrics=True,
+        eval_mode=False
+    ) -> torch.Tensor:
+        assert compute_metrics, "Inference path should be implemented elsewhere"
+        batch_out = {}
+        breakpoint()
+        bhvr: torch.Tensor = self.out(backbone_features)
+        if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
+            raise NotImplementedError
+        bhvr_tgt = batch[self.cfg.behavior_target]
+        if Output.behavior in self.cfg.outputs:
+            batch_out[Output.behavior] = bhvr_tgt
+        if not compute_metrics:
+            return batch_out
+
+        # Compute loss
+        loss = self.compute_loss(bhvr, bhvr_tgt)
+        loss = loss[~batch[f'{self.handle}_{DataKey.padding}']].mean()
+
+        r2_mask = ~batch[f'{self.handle}_{DataKey.padding}']
+
+        batch_out['loss'] = loss
+        if Metric.kinematic_r2 in self.cfg.metrics:
+            valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
+            valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
+            valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
+            batch_out[Metric.kinematic_r2] = np.array([r2_score(valid_tgt, valid_bhvr)])
+            batch[DataKey.covariate_labels] = ['x'] # base default
+        if Metric.kinematic_acc in self.cfg.metrics:
+            acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
+            batch_out[Metric.kinematic_acc] = acc[r2_mask].float().mean()
+        return batch_out
 
 # === Utils ===
 
@@ -1688,12 +1806,14 @@ task_modules = {
     ModelTask.infill: SelfSupervisedInfill,
     ModelTask.shuffle_infill: ShuffleInfill,
     ModelTask.spike_context: SpikeContext,
+    ModelTask.spike_infill: SpikeBase,
     ModelTask.next_step_prediction: NextStepPrediction,
     ModelTask.shuffle_next_step_prediction: ShuffleInfill, # yeahhhhh it's the SAME TASK WTH
     # ModelTask.shuffle_next_step_prediction: ShuffleNextStepPrediction,
     ModelTask.kinematic_decoding: BehaviorRegression,
     ModelTask.kinematic_classification: BehaviorClassification,
     ModelTask.kinematic_context: BehaviorContext, # Use classification route, mainly for tokenizing
+    ModelTask.kinematic_infill: CovariateInfill,
     ModelTask.constraints: ConstraintPipeline,
     ModelTask.return_context: ReturnContext,
     ModelTask.return_infill: ReturnInfill,
