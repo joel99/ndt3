@@ -28,6 +28,7 @@ from context_general_bci.dataset import (
 )
 from context_general_bci.contexts import context_registry, ContextInfo
 from context_general_bci.components import SpaceTimeTransformer
+from context_general_bci.utils import sort_A_by_B
 
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
 # through most of data collection (certainly good if we aggregate sensor/sessions)
@@ -45,13 +46,6 @@ def apply_shuffle(item: torch.Tensor, shuffle: torch.Tensor):
     # item: B T *
     # shuffle: T
     return item.transpose(1, 0)[shuffle].transpose(1, 0)
-
-def sort_A_by_B(A, B):
-    # Sort B along the Time dimension (dim=1) and get the sorting indices
-    _, indices = torch.sort(B, dim=1)
-    # Sort A using the sorting indices obtained from B
-    A_sorted = torch.gather(A, 1, indices)
-    return A_sorted
 
 def apply_shuffle_2d(item: torch.Tensor, shuffle: torch.Tensor):
     # item: B T *
@@ -849,16 +843,14 @@ class ShuffleInfill(SpikeBase):
 class NextStepPrediction(RatePrediction):
     r"""
         One-step-ahead modeling prediction. Teacher-forced (we don't use force self-consistency, to save on computation)
-        Note while pretraining necesarily should be causal (no way of preventing ctx bleed across layers)
-        We can still use a semi-causal decoder (however much context we can afford).
+        Revamped for NDT3, matching GATO.
     """
     modifies = []
 
     def __init__(self, backbone_out_size: int, channel_count: int, cfg: ModelConfig, data_attrs: DataAttrs, **kwargs):
         super().__init__(backbone_out_size, channel_count, cfg, data_attrs, **kwargs)
         self.start_token = nn.Parameter(torch.randn(cfg.hidden_size))
-        self.separator_token = nn.Parameter(torch.randn(cfg.hidden_size)) # Spike - action separator
-        assert not data_attrs.serve_tokens_flat, "not implemented, try ShuffleNextStepPrediction"
+        self.separator_token = nn.Parameter(torch.randn(cfg.hidden_size)) # Delimits action modality, per GATO. # TODO ablate
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
         spikes = batch[DataKey.spikes]
@@ -989,15 +981,28 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
-        # if batch[DataKey.task_return].numel()
-        if batch[DataKey.task_return].max() > self.max_return:
-            print('Return max: ', batch[DataKey.task_return].max(), batch[MetaKey.session][batch[DataKey.task_return].argmax()])
-            # clamp # TODO bake down, we shouldn't need a posthoc fix like this. Understand the data
-            batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], min=0, max=self.max_return - 1)
-        if batch[DataKey.task_reward].max() > 2:
-            print('Reward max: ', batch[DataKey.task_reward].max(), batch[MetaKey.session][batch[DataKey.task_reward].argmax()])
-            # This should have already happened, but just in case.
-            batch[DataKey.task_reward] = torch.clamp(batch[DataKey.task_reward], min=0, max=1)
+        # if batch[DataKey.task_return].numel() == 0:
+        #     breakpoint()
+        # if batch[DataKey.task_return].max() >= self.max_return - 1:
+        #     print('Return max: ', batch[DataKey.task_return].max(dim=1), batch[MetaKey.session][batch[DataKey.task_return].argmax(dim=1)])
+        #     batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], max=self.max_return - 2) # Really got to understand what's happening here... guard against off by 1 errors.
+        #     breakpoint()
+        # * Don't understand why we're OOB-ing based on dataloader, it's one of these two. We need a data check, but scrape is taking a while.
+        batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
+        batch[DataKey.task_return_time] = batch[DataKey.task_return_time].clamp(min=0)
+        # if batch[DataKey.task_return].min() < 0:
+        #     print('Return min: ', batch[DataKey.task_return].min(dim=1), batch[MetaKey.session][batch[DataKey.task_return].argmin(dim=1)])
+        #     # clamp # TODO bake down, we shouldn't need a posthoc fix like this. Understand the data
+        #     breakpoint()
+        # if batch[DataKey.task_reward].max() >= 3:
+        #     print('Reward max: ', batch[DataKey.task_reward].max(dim=1), batch[MetaKey.session][batch[DataKey.task_reward].argmax(dim=1)])
+        #     batch[DataKey.task_reward] = torch.clamp(batch[DataKey.task_reward], max=2)
+        #     breakpoint()
+        # if batch[DataKey.task_reward].min() < 0: # assumes pad token atm
+        #     print('Reward min: ', batch[DataKey.task_reward].min(dim=1), batch[MetaKey.session][batch[DataKey.task_reward].argmin(dim=1)])
+        #     # This should have already happened, but just in case.
+        #     batch[DataKey.task_reward] = torch.clamp(batch[DataKey.task_reward], min=0)
+        #     breakpoint()
 
         # print('Reward max: ', batch[DataKey.task_reward].max())
         # print(f'Time max: {batch[DataKey.task_return_time].max()} min: {batch[DataKey.task_return_time].min()}')
@@ -1562,6 +1567,7 @@ class QuantizeBehavior(TaskPipeline): # Mixin
 class BehaviorContext(ContextPipeline, QuantizeBehavior):
     # For feeding autoregressive task
     # Simple quantizing tokenizer
+    # * Actually just a reference, not actually used...
     @property
     def handle(self):
         return 'covariate'

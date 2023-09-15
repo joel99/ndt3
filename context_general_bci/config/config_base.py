@@ -36,6 +36,7 @@ class ModelTask(Enum):
 
     constraints = 'constraints'
 
+
 class Metric(Enum):
     # Monitoring metrics to log. Losses are automatically included in lgos.
     bps = 'bps'
@@ -254,11 +255,10 @@ class ModelConfig:
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
     use_full_encode: bool = False # ! Major change, return all tokens in decode stream
-
-    # 1. makes masking shuffle-based
+    next_step_prediction: bool = False # Major change, autoregressive path, limited compatibility with most NDT2 settigs
 
     half_precision: bool = True
-    full_half_precision: bool = False # if true, use half precision for all model parameters, not just mixed precision
+    # full_half_precision: bool = False # if true, use half precision for all model parameters, not just mixed precision
     lr_init: float = 0.0005 # be careful of interxn with bsz
     lr_schedule: str = 'cosine_warmup'
     # one of 'fixed' (default), 'cosine_warmup', 'linear_warmup'

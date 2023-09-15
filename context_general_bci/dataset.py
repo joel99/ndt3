@@ -491,10 +491,12 @@ class SpikingDataset(Dataset):
                         # If not sparse, we don't need to create constraint time, as code reuses covariate time.
                 elif k == DataKey.task_return:
                     # Default policy - if querying for reward and payload doesn't have it, just return nothing (which at most becomes padding), so stream is effectively unconditioned
-                    if k not in payload: # add padding so things compile
+                    if k not in payload: # add padding so things "compile"
                         data_items[DataKey.task_return] = torch.tensor([self.pad_value]).unsqueeze(0)
                         data_items[DataKey.task_reward] = torch.tensor([self.pad_value]).unsqueeze(0)
-                        data_items[DataKey.task_return_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
+                        data_items[DataKey.task_return_time] = torch.tensor([0], dtype=int) # Using a max return is no good. We will crop it out in long seqs. This design in general should be refactored out eventually
+                        # TODO think harder about this padding special case
+                        # data_items[DataKey.task_return_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
                     else:
                         # Not sure this is legitimate
                         if self.cfg.sparse_rewards:
@@ -548,10 +550,10 @@ class SpikingDataset(Dataset):
                             if not constraint_mask.any():
                                 # breakpoint()
                                 constraint_mask = (b[DataKey.constraint_time] < crop_start[i] + time_budget[i]) # There should always be one, since there's always a constraint specified at start of trial.
-                                # Get the latest timestep specified
+                                # Get the latest timestep specified (which is before first crop timestep)
                                 last_valid = b[DataKey.constraint_time][constraint_mask].max()
-                                constraint_mask = (b[DataKey.constraint_time] == last_valid)
-                                b[DataKey.constraint_time][constraint_mask] = crop_start[i] # Bump up to start of crop
+                                constraint_mask = (b[DataKey.constraint_time] == last_valid) # Identify all tokens at that timestep, should only be a few
+                                b[DataKey.constraint_time][constraint_mask] = crop_start[i] # Bump up time to start of crop
                             constraint = constraint[constraint_mask]
                             if DataKey.constraint_space in b:
                                 constraint_space = b[DataKey.constraint_space][constraint_mask]
@@ -573,6 +575,11 @@ class SpikingDataset(Dataset):
                         if self.cfg.sparse_rewards:
                             # assumes return time is present, note we are aware of diff with constraints
                             time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i]) & (b[DataKey.task_return_time] >= crop_start[i])
+                            if not time_mask.any():
+                                time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i])
+                                last_valid = b[DataKey.task_return_time][time_mask].max()
+                                time_mask = (b[DataKey.task_return_time] == last_valid)
+                                b[DataKey.task_return_time][time_mask] = crop_start[i]
                             task_return = task_return[time_mask]
                             task_reward = task_reward[time_mask]
                             task_return_time = task_return_time[time_mask] - crop_start[i] # assumes time starts at 0

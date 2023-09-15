@@ -37,7 +37,7 @@ from context_general_bci.components import (
     ContextualMLP,
 )
 from context_general_bci.task_io import task_modules
-from context_general_bci.utils import enum_backport
+from context_general_bci.utils import enum_backport, sort_A_by_B
 
 logger = logging.getLogger(__name__)
 class BrainBertInterface(pl.LightningModule):
@@ -296,6 +296,10 @@ class BrainBertInterface(pl.LightningModule):
             ) for k in self.cfg.task.tasks
         })
 
+        if getattr(self.cfg, 'next_step_prediction', False): # special tokens
+            self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
+
+
     def _wrap_key(self, prefix, key):
         return f'{prefix}.{key}'
 
@@ -524,6 +528,7 @@ class BrainBertInterface(pl.LightningModule):
             tp.get_context(batch) for tp in tps
         ])
         tks.append('trial')
+
         pipeline_context = [*pipeline_context, trial_context] # tuples
         pipeline_times = [*pipeline_times, trial_times]
         pipeline_space = [*pipeline_space, trial_space]
@@ -531,18 +536,48 @@ class BrainBertInterface(pl.LightningModule):
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
         # breakpoint()
         tks = [tks[i] for i in filtered]
+
         pipeline_context = [pipeline_context[i] for i in filtered]
         pipeline_times = [pipeline_times[i] for i in filtered]
         pipeline_space = [pipeline_space[i] for i in filtered]
         pipeline_padding = [pipeline_padding[i] for i in filtered]
+
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
+        if getattr(self.cfg, 'next_step_prediction', False):
+            # 1. ensure everything is tokenized or embedded. That strictly is not true... lol...
+            # * For simplicity, is there any difference is the tokenizer is a few separate embeds or one? Efficiency, probably?
+            # 2. Create canonical order and canonical tokenized IDs
+            # 3. Inject separator tokens (should just be configurable as part of behavior token 0 Next Step prediction task)
+            pass
         pipeline_context, ps = pack(pipeline_context, 'b * h')
         times, _ = pack(pipeline_times, 'b *')
         space, _ = pack(pipeline_space, 'b *')
         pipeline_padding, _ = pack(pipeline_padding, 'b *')
-        # breakpoint()
-        # if times.max() > self.cfg.transformer.max_trial_length:
-            # raise ValueError(f'Backbone Trial length {times.max()} exceeds max trial length {self.cfg.transformer.max_trial_length}')
+
+        if getattr(self.cfg, 'next_step_prediction', False):
+            # Pack and Sort
+            # TODO offset per pipeline space with canonical ordering
+            order = times * 50 + space
+
+            # * ps becomes useless, is that ok? It's fine - we need to create a modality mask so subsequent task pipelines can map out their desired targets
+            pipeline_context = sort_A_by_B(pipeline_context, order)
+            times = sort_A_by_B(times, order)
+            space = sort_A_by_B(space, order)
+            pipeline_padding = sort_A_by_B(pipeline_padding, order)
+
+            # As _input_, we provide the previous step (teacher-forcing).
+            # Output targets are maintained (individual tasks are responsible for tracking this)
+            pipeline_context = pipeline_context.roll(1, dims=1)
+            pipeline_context[:, 0] = self.start_of_sentence
+
+            # Who receives this data? Probably still the old readouts, no?
+            # Need to update SpikeInfill, BehaviorInfill, ReturnInfill to be compatible here
+            # * What exactly does the downstream module _need_?
+            # They will receive backbones that are essentially almost done, just need a behavioral readout and they need to track targets correctly...
+            # * I think they can keep whatever they embedded as targets without shuffling (internal order shhould be respected)
+            # * But... padding might've been displaced. Padding should be end of sequence - except in reward case?
+            # * Ok... I need to seriously treat padding once core logic is in place.
+
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             padding_mask=pipeline_padding,
