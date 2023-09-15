@@ -541,6 +541,8 @@ class BrainBertInterface(pl.LightningModule):
         space, _ = pack(pipeline_space, 'b *')
         pipeline_padding, _ = pack(pipeline_padding, 'b *')
         # breakpoint()
+        # if times.max() > self.cfg.transformer.max_trial_length:
+            # raise ValueError(f'Backbone Trial length {times.max()} exceeds max trial length {self.cfg.transformer.max_trial_length}')
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             padding_mask=pipeline_padding,

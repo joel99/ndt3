@@ -14,7 +14,7 @@ class Architecture(Enum):
     ndt = 'ndt'
 
 class ModelTask(Enum):
-    next_step_prediction = 'next_step'
+    next_step_prediction = 'next_step' # Decoder-only path, global modality
     infill = 'infill'
 
     return_context = 'return_context'
@@ -220,6 +220,8 @@ class TransformerConfig:
     # Optional pattern for phasing in config?
     # fixup_init: Optional[bool] = False # doesn't seem useful
 
+    use_biases: bool = True # TODO implement false path - remove linear and layernorm biases, efficiency
+
     # Position
     learnable_position: bool = False
     scale_sin: bool = False # per https://proceedings.mlr.press/v162/hua22a/hua22a.pdf
@@ -255,6 +257,7 @@ class ModelConfig:
     # 1. makes masking shuffle-based
 
     half_precision: bool = True
+    full_half_precision: bool = False # if true, use half precision for all model parameters, not just mixed precision
     lr_init: float = 0.0005 # be careful of interxn with bsz
     lr_schedule: str = 'cosine_warmup'
     # one of 'fixed' (default), 'cosine_warmup', 'linear_warmup'
@@ -333,7 +336,7 @@ class ModelConfig:
     neurons_per_token: int = 1 # how many neurons to embed per token (only makes sense for token/project)
     # This needs to match neurons_per_token in data config if data is in serve_tokenized mode
     max_neuron_count: int = 21 # pretty safe upper bound on number of neurons that can be embedded. Must be > data.pad_value
-    max_return: int = 20 # max reward expected to embed or decode
+    max_return: int = 50 # max reward expected to embed or decode # ! Somehow 30 isn't high enough, need to sanitize...
 
     causal: bool = True
 
@@ -592,6 +595,7 @@ class TrainConfig:
     overfit_batches: bool = False
     profiler: str = ""
     val_check_interval: int = 100 # these are in steps, but mostly isn't used # TODO deprecate
+    strategy: str = "" # uses DDP or auto by default, can specify deepspeed
 
 @dataclass
 class RootConfig:

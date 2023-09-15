@@ -852,11 +852,12 @@ class NextStepPrediction(RatePrediction):
         Note while pretraining necesarily should be causal (no way of preventing ctx bleed across layers)
         We can still use a semi-causal decoder (however much context we can afford).
     """
-    modifies = [DataKey.spikes]
+    modifies = []
 
     def __init__(self, backbone_out_size: int, channel_count: int, cfg: ModelConfig, data_attrs: DataAttrs, **kwargs):
         super().__init__(backbone_out_size, channel_count, cfg, data_attrs, **kwargs)
         self.start_token = nn.Parameter(torch.randn(cfg.hidden_size))
+        self.separator_token = nn.Parameter(torch.randn(cfg.hidden_size)) # Spike - action separator
         assert not data_attrs.serve_tokens_flat, "not implemented, try ShuffleNextStepPrediction"
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
@@ -974,6 +975,7 @@ class ReturnContext(ContextPipeline):
             data_attrs=data_attrs
         )
         self.is_sparse = data_attrs.sparse_rewards
+        self.max_return = cfg.max_return
         self.return_enc = nn.Embedding(
             cfg.max_return,
             cfg.hidden_size,
@@ -987,7 +989,11 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
-        # print('Return max: ', batch[DataKey.task_return].max())
+        if batch[DataKey.task_return].max() > self.max_return:
+            print('Return max: ', batch[DataKey.task_return].max(), batch[MetaKey.session][batch[DataKey.task_return].argmax()])
+            # clamp
+            batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], max=self.max_return)
+
         # print('Reward max: ', batch[DataKey.task_reward].max())
         # print(f'Time max: {batch[DataKey.task_return_time].max()} min: {batch[DataKey.task_return_time].min()}')
         return_embed = self.return_enc(batch[DataKey.task_return])
@@ -1301,7 +1307,10 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             # print('Cross stream:', other_kwargs['memory'].shape, other_kwargs['memory_padding_mask'].shape, other_kwargs['memory_times'].shape)
             # if decode_tokens.size(1) == 0:
                 # breakpoint() # Wat is this data...
-            # print(backbone_space.max(), decode_space.max())
+            # print(decode_time.max(), backbone_space.max(), decode_space.max())
+            # if decode_time.max() > 1500: # debug
+            # if decode_time.max() > self.cfg.task.max_trial_length:
+                # raise ValueError(f'Decode Trial length {decode_time.max()} exceeds max trial length {self.cfg.max_trial_length}')
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=decode_padding,

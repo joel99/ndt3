@@ -7,6 +7,14 @@ model:
     n_layers: 12
   task:
     tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints, ModelTask.return_context]
+  full_half_precision: True
 dataset:
   sparse_rewards: True
+train:
+  # Without, max batch size is 1 (1GPU)
+  # With...
+  autoscale_batch_size: False
+  batch_size: 4
+  strategy: "deepspeed_stage_2"
 notes: "Deepspeed debug"
+# https://lightning.ai/docs/pytorch/stable/advanced/model_parallel.html#deepspeed-zero-stage-3-offload

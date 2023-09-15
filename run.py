@@ -339,6 +339,13 @@ def run_exp(cfg : RootConfig) -> None:
 
     is_distributed = (torch.cuda.device_count() > 1) or getattr(cfg, 'nodes', 1) > 1
     default_strat = 'auto' if pl.__version__.startswith('2.0') else None
+    precision = 'bf16-mixed' if cfg.model.half_precision else 32
+    strategy = DDPStrategy(find_unused_parameters=len(cfg.model.task.covariate_blacklist_dims) > 0 and not cfg.dataset.tokenize_covariates) if is_distributed else default_strat
+    if cfg.train.strategy != "":
+        strategy = cfg.train.strategy
+    # if cfg.model.full_half_precision:
+        # precision = 'bf16'
+    # strategy = strategy="deepspeed_stage_2", precision=16
     trainer = Trainer(
         logger=wandb_logger,
         max_epochs=epochs,
@@ -352,8 +359,8 @@ def run_exp(cfg : RootConfig) -> None:
         callbacks=callbacks,
         default_root_dir=cfg.default_root_dir,
         # track_grad_norm=2 if cfg.train.log_grad else -1, # this is quite cluttered, but probably better that way. See https://github.com/Lightning-AI/lightning/issues/1462#issuecomment-1190253742 for patch if needed, though.
-        precision='bf16-mixed' if cfg.model.half_precision else 32,
-        strategy=DDPStrategy(find_unused_parameters=len(cfg.model.task.covariate_blacklist_dims) > 0 and not cfg.dataset.tokenize_covariates) if is_distributed else default_strat,
+        precision=precision,
+        strategy=strategy,
         gradient_clip_val=cfg.train.gradient_clip_val,
         accumulate_grad_batches=cfg.train.accumulate_batches,
         profiler=cfg.train.profiler if cfg.train.profiler else None,

@@ -9,4 +9,6 @@ model:
     tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints, ModelTask.return_context]
 dataset:
   sparse_rewards: True
+# train:
+  # strategy: "deepspeed_stage_2" # well, this is dumb, doesn't improve max batch size.
 notes: "Add return"

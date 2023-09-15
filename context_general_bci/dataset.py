@@ -500,6 +500,8 @@ class SpikingDataset(Dataset):
                         if self.cfg.sparse_rewards:
                             return_dense = payload[k]
                             change_steps = torch.cat([torch.tensor([0]), (return_dense[1:] != return_dense[:-1]).any(1).nonzero().squeeze(1) + 1])
+                            if change_steps.max() > self.cfg.max_trial_length:
+                                raise Exception(f"Trial {trial.path} has return horizon {change_steps.max()} which exceeds max_trial_length {self.cfg.max_trial_length}")
                             data_items[k] = return_dense[change_steps]
                             data_items[DataKey.task_return_time] = change_steps
                             data_items[DataKey.task_reward] = payload[DataKey.task_reward][change_steps]
@@ -510,9 +512,6 @@ class SpikingDataset(Dataset):
                         # +1 since 0 is reserved for padding. Note that since this is a dataloader-level offset... um...
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
-                # elif k in ['cov_min', 'cov_max', 'cov_mean'] and k not in payload: # Debug
-                    # data_items[k] = torch.zeros(self.cfg.behavior_dim)
-                    # Collater not implemented
                 else:
                     data_items[k] = payload[k]
         out = {

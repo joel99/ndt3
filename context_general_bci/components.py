@@ -304,13 +304,13 @@ class SpaceTimeTransformer(nn.Module):
             self.time_transformer_encoder = nn.TransformerEncoder(enc_layer, n_layers - round(n_layers / 2))
         else:
             self.transformer_encoder = enc_cls(enc_layer, n_layers)
-        if not getattr(self.cfg, 'debug_force_nonlearned_position', False) and (self.cfg.flat_encoder or self.cfg.learnable_position):
-            if allow_embed_padding:
-                self.time_encoder = nn.Embedding(self.cfg.max_trial_length + 1, self.cfg.n_state, padding_idx=self.cfg.max_trial_length)
-            else:
-                self.time_encoder = nn.Embedding(self.cfg.max_trial_length, self.cfg.n_state)
+        # if not getattr(self.cfg, 'debug_force_nonlearned_position', False) and (self.cfg.flat_encoder or self.cfg.learnable_position):
+        if allow_embed_padding:
+            self.time_encoder = nn.Embedding(self.cfg.max_trial_length + 1, self.cfg.n_state, padding_idx=self.cfg.max_trial_length)
         else:
-            self.time_encoder = PositionalEncoding(self.cfg, input_times=self.cfg.transform_space)
+            self.time_encoder = nn.Embedding(self.cfg.max_trial_length, self.cfg.n_state)
+        # else:
+            # self.time_encoder = PositionalEncoding(self.cfg, input_times=self.cfg.transform_space)
         if debug_override_dropout_in:
             self.dropout_in = nn.Identity()
         else:
@@ -322,6 +322,7 @@ class SpaceTimeTransformer(nn.Module):
         self.embed_space = embed_space
         if self.cfg.transform_space and self.embed_space:
             n_space = max_spatial_tokens if max_spatial_tokens else self.cfg.max_spatial_tokens
+            self.n_space = n_space
             if allow_embed_padding:
                 self.space_encoder = nn.Embedding(n_space + 1, self.cfg.n_state, padding_idx=n_space)
             else:
@@ -343,10 +344,12 @@ class SpaceTimeTransformer(nn.Module):
         """
         if ref_times is None:
             ref_times = times
-        return torch.where(
-            times[:, :, None] >= ref_times[:, None, :],
-            0.0, float('-inf')
-        )
+        return times[:, :, None] < ref_times[:, None, :]
+        # return times[:, :, None] >= ref_times[:, None, :]
+        # return torch.where(
+        #     times[:, :, None] >= ref_times[:, None, :],
+        #     0.0, float('-inf')
+        # )
 
     def forward(
         self,
@@ -367,6 +370,12 @@ class SpaceTimeTransformer(nn.Module):
             (So attention masks do not vary across batch)
         """
         # breakpoint()
+        # if times.max() > self.cfg.max_trial_length:
+            # raise ValueError(f'Trial length {times.max()} exceeds max trial length {self.cfg.max_trial_length}')
+        # if positions is not None and positions.max() > self.n_space:
+            # raise ValueError(f'Space length {positions.max()} exceeds max space length {self.n_space}')
+        # print(f'Debug: Time: {times.unique()} Space: {positions.unique()}')
+        # print(f'Debug: Space: {positions.unique()}')
         src = self.dropout_in(src)
         # === Embeddings ===
         src = src + self.time_encoder(times)
@@ -390,9 +399,10 @@ class SpaceTimeTransformer(nn.Module):
             if padding_mask is not None:
                 # ! Allow attention if full sequence is padding - no loss will be computed...
                 padding_mask[padding_mask.all(1)] = False
-                padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
-            if memory_padding_mask is not None:
-                memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
+                # padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+            # if memory_padding_mask is not None:
+                # memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
+            # breakpoint()
             output = self.transformer_encoder(
                 src,
                 memory,
@@ -405,9 +415,9 @@ class SpaceTimeTransformer(nn.Module):
                 raise ValueError('NaN in output')
                 breakpoint()
         else:
-            if padding_mask is not None:
-                if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
-                    padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+            # if padding_mask is not None:
+                # if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
+                    # padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
             output = self.transformer_encoder(
                 src,
                 src_mask,

@@ -24,7 +24,7 @@ sample_query = '10s_loco_regression'
 
 # Return run
 sample_query = 'sparse'
-sample_query = 'h512_l6'
+sample_query = 'h512_l6_return'
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
@@ -42,7 +42,6 @@ set_stats = {} # No set level granularity, will have to build from labels later
 session_stats = {}
 trial_stats = [] # No tracking...
 dimensions = {}
-from tqdm import tqdm
 
 def process_session(meta_session):
     session_stats = {}
@@ -64,9 +63,10 @@ def process_session(meta_session):
         total_count = dataset[trial][DataKey.bhvr_vel].flatten().shape[0]
         trial_stats.append({
             'length': dataset[trial][DataKey.time].max(),
-            'mode': mode_value,
-            'mode_count': mode_count,
+            'mode': mode_value.item(),
+            'mode_count': mode_count.item(),
             'total_count': total_count,
+            'max_return': dataset[trial][DataKey.task_return].max().item(),
         })
         session_length += trial_stats[-1]['length']
     payload = torch.load(session_df.iloc[-1].path)
@@ -78,15 +78,15 @@ def process_session(meta_session):
     subject, session, set = meta_session.split('_')[-3:]
     session_stats[meta_session] = {
         "subject": subject,
-        "session": session,
-        "set": set,
+        "session": int(session),
+        "set": int(set),
         "length": session_df.shape[0],
         "dimensions": dim,
         "cov_min": payload["cov_min"],
         "cov_max": payload["cov_max"],
         "cov_mean": payload["cov_mean"],
-        "session_length": session_length,
-        "has_brain_control": (torch.cat(all_constraints)[:, 0] < 1).any(),
+        "session_length": session_length.item(),
+        "has_brain_control": (torch.cat(all_constraints)[:, 0] < 1).any().item(),
     }
     # if len(session_stats) > 10:
         # break # trial
@@ -100,12 +100,17 @@ total_sessions = len(unique_sessions)
 
 # with Pool(processes=32) as pool:
     # results = list(tqdm(pool.imap(process_session, unique_sessions), total=len(unique_sessions)))
-with ProcessPoolExecutor(max_workers=8) as executor:
-    results = list(tqdm(executor.map(process_session, unique_sessions), total=total_sessions))
-
+# with ProcessPoolExecutor(max_workers=8) as executor:
+    # results = list(tqdm(executor.map(process_session, unique_sessions), total=total_sessions))
+# no multiprocessing
+results = []
+for meta_session in tqdm(unique_sessions):
+    results.append(process_session(meta_session))
+    # if len(results) > 2:
+        # break
 combined_trial_stats = []
 combined_session_stats = {}
-for trial_stat, session_stat in results:
+for session_stat, trial_stat in results:
     combined_trial_stats.extend(trial_stat)
     combined_session_stats.update(session_stat)
 # for meta_session in tqdm(dataset.meta_df[MetaKey.session].unique()):
