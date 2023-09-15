@@ -4,7 +4,7 @@ defaults:
 model:
   next_step_prediction: True
   task:
-    tasks: [ModelTask.spike_context, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_infill]
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_context]
 dataset:
   sparse_rewards: True
 notes: "Only behavior pred for loss scale comparison"

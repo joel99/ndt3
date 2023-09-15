@@ -278,20 +278,23 @@ class ConstraintPipeline(ContextPipeline):
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time]
-        bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
-        space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
-        time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
+        if self.cfg.decode_tokenize_dims:
+            assert DataKey.constraint_space in batch, 'constraint space must be provided, inference deprecated on tokenized path'
+            space = batch[DataKey.constraint_space]
+        else:
+            logger.warning('Deprecated constraint path! JY does not remember what preconditions are for this path')
+            bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
+            space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
+            time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
         padding = create_token_padding_mask(
             constraint,
             batch,
-            length_key=CONSTRAINT_LENGTH_KEY,
-            shuffle_key='',
-            multiplicity=bhvr_attr_factor if self.cfg.decode_tokenize_dims else 1,
+            length_key=CONSTRAINT_LENGTH_KEY, # 9/15/23: length is compatible on tokenized path. No need for special length treatment
+            # multiplicity=bhvr_attr_factor if self.cfg.decode_tokenize_dims else 1,
         ) # Make it before constraint is flattened
         if not self.cfg.decode_tokenize_dims: # if not already flattened
             padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
             constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
-        # print(f'Constraint Space range: [{space.min()}, {space.max()}]')
         return (
             constraint_embed,
             time,

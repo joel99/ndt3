@@ -51,12 +51,15 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
 
     'spike': 11, # 11-20. Max of 10 spike dims (32 neurons per -> 320 neurons, IIRC 288 was max for NDT2)
     'spike_context': 11,
+    'spike_infill': 11,
 
     'return': 21, # Only 1 dimension needed for return.
     'return_context': 21,
+    'return_infill': 21,
 
     'covariate': 22, # 22-31. Max of 10 covariate dims. Separator token possibly include.
     'kinematic_classification': 22,
+    'kinematic_infill': 22,
     'kinematic_context': 22,
 }
 MAX_KINEMATIC_DIMS = 10
@@ -571,7 +574,6 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_padding = [pipeline_padding[i] for i in filtered]
 
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
-        breakpoint()
         if getattr(self.cfg, 'next_step_prediction', False):
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
@@ -588,6 +590,7 @@ class BrainBertInterface(pl.LightningModule):
         if getattr(self.cfg, 'next_step_prediction', False):
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
             modalities, _ = pack(modalities, 'b *')
+            breakpoint()
             space[pipeline_padding] = self.cfg.max_spatial_position # Assumes dataloader currently doesn't serve pad space especially
             order = times * self.cfg.max_spatial_position + space
 
