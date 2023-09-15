@@ -571,8 +571,11 @@ class BrainBertInterface(pl.LightningModule):
         if getattr(self.cfg, 'next_step_prediction', False):
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
-                pipeline_space[i] = MODALITY_SPACE_RANGE_START[tk] + s
+                pipeline_space[i] = s + MODALITY_SPACE_RANGE_START[tk]
             modalities = [torch.full_like(s, filtered[i], dtype=torch.uint8) for i, s in enumerate(pipeline_space)] # track original task pipeline index
+        else:
+            for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
+                pipeline_space[i] = (s + 1) if tk == 'trial' else s
         pipeline_context, ps = pack(pipeline_context, 'b * h')
         times, _ = pack(pipeline_times, 'b *')
         space, _ = pack(pipeline_space, 'b *')

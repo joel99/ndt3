@@ -295,7 +295,7 @@ class ConstraintPipeline(ContextPipeline):
         return (
             constraint_embed,
             time,
-            space + 1, # +1, reserve 0 for trial context
+            space,
             padding,
         )
 
@@ -529,7 +529,7 @@ class SpikeContext(ContextPipeline):
     def get_context(self, batch: Dict[str, torch.Tensor]):
         spikes = self.encode(batch)
         time = batch[DataKey.time]
-        space = batch[DataKey.position] + 1 # reserve 0 for trial context
+        space = batch[DataKey.position]
         padding = batch[DataKey.padding] # Padding should be made in the `update` step
         # print(f'Spike Space range: [{space.min()}, {space.max()}]')
         return spikes, time, space, padding
@@ -1029,7 +1029,7 @@ class ReturnContext(ContextPipeline):
             return_embed + reward_embed,
             # self.norm(return_embed + reward_embed),
             times,
-            space + 1, # reserve 0 for trial context
+            space,
             padding
         )
 
@@ -1277,7 +1277,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         return (
             enc,
             batch[DataKey.covariate_time],
-            batch[DataKey.covariate_space] + 1, # reserve 0 for trial context
+            batch[DataKey.covariate_space],
             batch[f'{self.handle}_{DataKey.padding}']
         )
 
@@ -1724,7 +1724,7 @@ class CovariateInfill(ClassificationMixin):
         return (
             enc,
             batch[DataKey.covariate_time],
-            batch[DataKey.covariate_space] + 1, # reserve 0 for trial context
+            batch[DataKey.covariate_space],
             batch[f'{self.handle}_{DataKey.padding}']
         )
 
