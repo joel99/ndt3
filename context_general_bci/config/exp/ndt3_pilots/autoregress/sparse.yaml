@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_classification, ModelTask.constraints, ModelTask.return_context]
+dataset:
+  sparse_rewards: True
+  # datasets:
+  # - pitt_return_pitt_co_CRS02bLab_1646_5 # Debug - we have no covariates

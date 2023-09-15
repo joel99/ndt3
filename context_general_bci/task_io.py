@@ -1535,13 +1535,56 @@ def symlog(x: torch.Tensor):
 def unsymlog(x: torch.Tensor):
     return torch.sign(x) * (torch.exp(torch.abs(x)) - 1)
 
-class BehaviorClassification(CovariateReadout):
+
+class QuantizeBehavior(TaskPipeline): # Mixin
+    QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
+    # TODO bake above into config
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        quantize_bound = 1.001 if not self.cfg.decode_symlog else symlog(torch.tensor(1.001))
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
+
+    def quantize(self, x: torch.Tensor) -> torch.Tensor:
+        x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
+        if getattr(self.cfg, 'decode_symlog', False):
+            return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
+        return torch.bucketize(x, self.zscore_quantize_buckets) - 1 # bucketize produces from [1, self.quantize_classes]
+
+    def dequantize(self, quantized: torch.Tensor) -> torch.Tensor:
+        if quantized.max() > self.zscore_quantize_buckets.shape[0]:
+            raise Exception("go implement quantization clipping man")
+        if getattr(self.cfg, 'decode_symlog', False):
+            return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
+        return (self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2
+
+
+class BehaviorContext(ContextPipeline, QuantizeBehavior):
+    # For feeding autoregressive task
+    # Simple quantizing tokenizer
+    @property
+    def handle(self):
+        return 'covariate'
+
+    def get_context(self, batch: Dict[str, torch.Tensor]):
+        batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
+            batch[self.cfg.behavior_target], batch,
+            length_key=f'{self.handle}_{LENGTH_KEY}',
+        )
+        breakpoint() # TODO check dims, we may not need the mean call
+        return (
+            self.quantize(batch[self.cfg.behavior_target]).mean(-2), # B T 1 out
+            batch[DataKey.covariate_time],
+            batch[DataKey.covariate_space],
+            batch[f'{self.handle}_{DataKey.padding}']
+        )
+
+class BehaviorClassification(CovariateReadout, QuantizeBehavior):
     r"""
         In preparation for NDT3.
         Assumes cross-attn, spacetime path.
         Cross-attention, autoregressive classification.
     """
-    QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
     def initialize_readin(self, backbone_size): # Assume quantized readin...
         self.inp = nn.Embedding(self.QUANTIZE_CLASSES + 1, backbone_size)
         # self.inp_norm = nn.LayerNorm(backbone_size)
@@ -1558,8 +1601,7 @@ class BehaviorClassification(CovariateReadout):
                 Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
             )
         # We use these buckets as we minmax clamp in preprocessing
-        quantize_bound = 1.001 if not getattr(self.cfg, 'decode_symlog', False) else symlog(torch.tensor(1.001))
-        self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
+
         assert self.spacetime, "BehaviorClassification requires spacetime path"
         assert self.cfg.decode_separate, "BehaviorClassification requires decode_separate"
         assert not self.cfg.behavior_lag, "BehaviorClassification does not support behavior_lag"
@@ -1569,22 +1611,9 @@ class BehaviorClassification(CovariateReadout):
         # print(covariate.min(), covariate.max())
         # breakpoint()
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
-        covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1)
+        covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1, which is true in tokenized serving)
         # covariate = self.inp_norm(covariate)
         return covariate
-
-    def quantize(self, x: torch.Tensor):
-        x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
-        if getattr(self.cfg, 'decode_symlog', False):
-            return torch.bucketize(symlog(x), self.zscore_quantize_buckets)
-        return torch.bucketize(x, self.zscore_quantize_buckets) - 1 # bucketize produces from [1, self.quantize_classes]
-
-    def dequantize(self, quantized: torch.Tensor):
-        if quantized.max() > self.zscore_quantize_buckets.shape[0]:
-            raise Exception("go implement quantization clipping man")
-        if getattr(self.cfg, 'decode_symlog', False):
-            return unsymlog((self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2)
-        return (self.zscore_quantize_buckets[quantized] + self.zscore_quantize_buckets[quantized + 1]) / 2
 
     def get_cov_pred(
         self, *args, **kwargs
@@ -1645,6 +1674,7 @@ task_modules = {
     # ModelTask.shuffle_next_step_prediction: ShuffleNextStepPrediction,
     ModelTask.kinematic_decoding: BehaviorRegression,
     ModelTask.kinematic_classification: BehaviorClassification,
+    ModelTask.kinematic_context: BehaviorContext, # Use classification route, mainly for tokenizing
     ModelTask.constraints: ConstraintPipeline,
     ModelTask.return_context: ReturnContext,
     ModelTask.return_infill: ReturnInfill,

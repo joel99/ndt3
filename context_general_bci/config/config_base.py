@@ -29,6 +29,7 @@ class ModelTask(Enum):
     heldout_decoding = 'heldout_decoding'
     kinematic_decoding = 'kinematic_decoding'
     kinematic_classification = 'kinematic_classification'
+    kinematic_context = 'kinematic_context'
 
     # Trial-summarizing
     detection_decoding = 'detection_decoding'
