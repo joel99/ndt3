@@ -536,8 +536,11 @@ class BrainBertInterface(pl.LightningModule):
             torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
         )
 
-    def forward(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        # Encoder: returns backbone features B T H, and timesteps B T
+    def forward(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+        r"""
+            returns backbone features B T H, and timesteps B T
+            modalities is flag indicating _target_ modality.
+        """
 
         # There are two main types of tokens: conditioning and data tokens
         # Conditioning tokens are never meant to be retrieved, solely to condition the backbone
@@ -569,7 +572,7 @@ class BrainBertInterface(pl.LightningModule):
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
                 pipeline_space[i] = MODALITY_SPACE_RANGE_START[tk] + s
-            modalities = [torch.full_like(s, i) for i, s in enumerate(pipeline_space)]
+            modalities = [torch.full_like(s, filtered[i], dtype=torch.uint8) for i, s in enumerate(pipeline_space)] # track original task pipeline index
         pipeline_context, ps = pack(pipeline_context, 'b * h')
         times, _ = pack(pipeline_times, 'b *')
         space, _ = pack(pipeline_space, 'b *')
@@ -599,6 +602,8 @@ class BrainBertInterface(pl.LightningModule):
             # * I think they can keep whatever they embedded as targets without shuffling (internal order shhould be respected)
             # * But... padding might've been displaced. Padding should be end of sequence - except in reward case?
             # * Ok... I need to seriously treat padding once core logic is in place.
+        else:
+            modalities = None
 
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
@@ -608,7 +613,7 @@ class BrainBertInterface(pl.LightningModule):
             positions=space,
         ) # B x Token x H (flat)
         if self.cfg.use_full_encode:
-            return outputs, times, space, pipeline_padding
+            return outputs, times, space, pipeline_padding, modalities
         else:
             outputs = unpack(outputs, ps, 'b * h')
             times = unpack(times, ps, 'b *')
@@ -649,7 +654,7 @@ class BrainBertInterface(pl.LightningModule):
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
-        features, times, space, padding = self(batch) # B T H
+        features, times, space, padding, modalities = self(batch) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -660,21 +665,26 @@ class BrainBertInterface(pl.LightningModule):
         running_loss = 0
         for i, task in enumerate(self.cfg.task.tasks):
             should_detach = 'infill' not in task.value and self.detach_backbone_for_task
+            if getattr(self.cfg, 'next_step_prediction', False):
+                sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything
+                sub_times = times[modalities == i]
+                sub_space = space[modalities == i]
+                sub_padding = padding[modalities == i]
+                breakpoint() # Check the shape here. Also, check the modality mask, unclear we provide the right features if some task pipeline provides nothing
+            else:
+                sub_features = features
+                sub_times = times
+                sub_space = space
+                sub_padding = padding
             update = self.task_pipelines[task.value](
                 batch,
-                features.detach() if should_detach else features,
-                times,
-                space,
-                padding,
+                sub_features.detach() if should_detach else sub_features,
+                sub_times,
+                sub_space,
+                sub_padding,
                 eval_mode=eval_mode
             )
-            for k in update:
-                if 'update' in str(k):
-                    if k == 'update_features':
-                        features = update[k]
-                    batch[k] = update[k]
-                else:
-                    batch_out[k] = update[k]
+            batch_out.update(update)
             if 'loss' in update and self.cfg.task.task_weights[i] > 0:
                 batch_out[f'{task.value}_loss'] = update['loss']
                 running_loss = running_loss + self.cfg.task.task_weights[i] * update['loss']

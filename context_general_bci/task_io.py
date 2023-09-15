@@ -354,7 +354,6 @@ class RatePrediction(DataPipeline):
         channel_count: int,
         cfg: ModelConfig,
         data_attrs: DataAttrs,
-        decoder: Optional[nn.Module] = None,
     ):
         super().__init__(
             backbone_out_size=backbone_out_size,
@@ -364,28 +363,25 @@ class RatePrediction(DataPipeline):
         )
         if self.serve_tokens_flat:
             assert Metric.bps not in self.cfg.metrics, "bps metric not supported for flat tokens"
-        if decoder is not None:
-            self.out = decoder
+        readout_size = cfg.neurons_per_token if cfg.transform_space else channel_count
+        if self.cfg.unique_no_head:
+            decoder_layers = []
+        elif self.cfg.linear_head:
+            decoder_layers = [nn.Linear(backbone_out_size, readout_size)]
         else:
-            readout_size = cfg.neurons_per_token if cfg.transform_space else channel_count
-            if self.cfg.unique_no_head:
-                decoder_layers = []
-            elif self.cfg.linear_head:
-                decoder_layers = [nn.Linear(backbone_out_size, readout_size)]
-            else:
-                decoder_layers = [
-                    nn.Linear(backbone_out_size, backbone_out_size),
-                    nn.ReLU() if cfg.activation == 'relu' else nn.GELU(),
-                    nn.Linear(backbone_out_size, readout_size)
-                ]
+            decoder_layers = [
+                nn.Linear(backbone_out_size, backbone_out_size),
+                nn.ReLU() if cfg.activation == 'relu' else nn.GELU(),
+                nn.Linear(backbone_out_size, readout_size)
+            ]
 
-            if not cfg.lograte:
-                decoder_layers.append(nn.ReLU())
+        if not cfg.lograte:
+            decoder_layers.append(nn.ReLU())
 
-            if cfg.transform_space and not self.serve_tokens: # if serving as tokens, then target has no array dim
-                # after projecting, concatenate along the group dimension to get back into channel space
-                decoder_layers.append(Rearrange('b t a s_a c -> b t a (s_a c)'))
-            self.out = nn.Sequential(*decoder_layers)
+        if cfg.transform_space and not self.serve_tokens: # if serving as tokens, then target has no array dim
+            # after projecting, concatenate along the group dimension to get back into channel space
+            decoder_layers.append(Rearrange('b t a s_a c -> b t a (s_a c)'))
+        self.out = nn.Sequential(*decoder_layers)
 
         if getattr(self.cfg, 'spike_loss', 'poisson') == 'poisson':
             self.loss = nn.PoissonNLLLoss(reduction='none', log_input=cfg.lograte)
@@ -540,8 +536,6 @@ class SpikeContext(ContextPipeline):
         # print(f'Spike Space range: [{space.min()}, {space.max()}]')
         return spikes, time, space, padding
 
-    # TODO implement... needed to make sure spikes are encoded now that we've delegated internally
-
 class SelfSupervisedInfill(RatePrediction):
     modifies = [DataKey.spikes]
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
@@ -643,7 +637,25 @@ class SelfSupervisedInfill(RatePrediction):
 
 class SpikeBase(SpikeContext, RatePrediction):
     modifies = [DataKey.spikes]
-    pass
+
+    def forward(
+            self,
+            batch,
+            backbone_features: torch.Tensor,
+            backbone_times: torch.Tensor,
+            backbone_space: torch.Tensor,
+            backbone_padding: torch.Tensor,
+            compute_metrics=True,
+            eval_mode=False
+    ) -> torch.Tensor:
+        assert compute_metrics, "No direct outputs supported, code inference separately"
+        # ! We assume that backbone features arrives in a batch-major, time-minor format, and that
+        # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
+        breakpoint()
+        target = batch[DataKey.spikes]
+        rates = self.out(backbone_features) # B x H
+        return {'loss': self.loss(rates, target.flatten())[~backbone_padding].mean()}
+
 
 class ShuffleInfill(SpikeBase):
     r"""
