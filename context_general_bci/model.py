@@ -40,6 +40,28 @@ from context_general_bci.task_io import task_modules
 from context_general_bci.utils import enum_backport, sort_A_by_B
 
 logger = logging.getLogger(__name__)
+
+# For autoregressive. If using a common position space to sort, this defines the canonical order.
+# Not sure I really believe in separators - the space input should cue the requisite modality.
+MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for convenience, but code mainly reference task pipeline names
+    'padding': 0, # also trial context receives these space values
+    'trial': 0, # also trial context receives these space values
+
+    'constraints': 1, # 1-10. If tokenized, there are as many constraint dims as behavior dims. We allocate max of 10 behavior dims for now.
+
+    'spike': 11, # 11-20. Max of 10 spike dims (32 neurons per -> 320 neurons, IIRC 288 was max for NDT2)
+    'spike_context': 11,
+
+    'return': 21, # Only 1 dimension needed for return.
+    'return_context': 21,
+
+    'covariate': 22, # 22-31. Max of 10 covariate dims. Separator token possibly include.
+    'kinematic_classification': 22,
+    'kinematic_context': 22,
+}
+MAX_SPACE_MODALITY = 32
+
+
 class BrainBertInterface(pl.LightningModule):
     r"""
         I know I'll end up regretting this name.
@@ -537,27 +559,26 @@ class BrainBertInterface(pl.LightningModule):
         # breakpoint()
         tks = [tks[i] for i in filtered]
 
-        pipeline_context = [pipeline_context[i] for i in filtered]
+        pipeline_context = [pipeline_context[i] for i in filtered] # embedded at this point
         pipeline_times = [pipeline_times[i] for i in filtered]
         pipeline_space = [pipeline_space[i] for i in filtered]
         pipeline_padding = [pipeline_padding[i] for i in filtered]
 
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
         if getattr(self.cfg, 'next_step_prediction', False):
-            # 1. ensure everything is tokenized or embedded. That strictly is not true... lol...
-            # * For simplicity, is there any difference is the tokenizer is a few separate embeds or one? Efficiency, probably?
-            # 2. Create canonical order and canonical tokenized IDs
-            # 3. Inject separator tokens (should just be configurable as part of behavior token 0 Next Step prediction task)
-            pass
+            # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
+            for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
+                pipeline_space[i] = MODALITY_SPACE_RANGE_START[tk] + s
+            modalities = [torch.full_like(s, i) for i, s in enumerate(pipeline_space)]
         pipeline_context, ps = pack(pipeline_context, 'b * h')
         times, _ = pack(pipeline_times, 'b *')
         space, _ = pack(pipeline_space, 'b *')
         pipeline_padding, _ = pack(pipeline_padding, 'b *')
 
         if getattr(self.cfg, 'next_step_prediction', False):
-            # Pack and Sort
-            # TODO offset per pipeline space with canonical ordering
-            order = times * 50 + space
+            # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
+            modalities, _ = pack(modalities, 'b *')
+            order = times * MAX_SPACE_MODALITY + space
 
             # * ps becomes useless, is that ok? It's fine - we need to create a modality mask so subsequent task pipelines can map out their desired targets
             pipeline_context = sort_A_by_B(pipeline_context, order)
@@ -570,6 +591,7 @@ class BrainBertInterface(pl.LightningModule):
             pipeline_context = pipeline_context.roll(1, dims=1)
             pipeline_context[:, 0] = self.start_of_sentence
 
+            # TODO modality mask
             # Who receives this data? Probably still the old readouts, no?
             # Need to update SpikeInfill, BehaviorInfill, ReturnInfill to be compatible here
             # * What exactly does the downstream module _need_?

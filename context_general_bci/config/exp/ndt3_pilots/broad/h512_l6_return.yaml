@@ -6,7 +6,7 @@ model:
   transformer:
     n_layers: 6
   task:
-    tasks: [ModelTask.spike_context, ModelTask.kinematic_decoding, ModelTask.constraints, ModelTask.return_context]
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_classification, ModelTask.constraints, ModelTask.return_context]
 dataset:
   sparse_rewards: True
 # train:

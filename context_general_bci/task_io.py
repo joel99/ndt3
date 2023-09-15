@@ -988,8 +988,9 @@ class ReturnContext(ContextPipeline):
         #     batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], max=self.max_return - 2) # Really got to understand what's happening here... guard against off by 1 errors.
         #     breakpoint()
         # * Don't understand why we're OOB-ing based on dataloader, it's one of these two. We need a data check, but scrape is taking a while.
-        batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
+        batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0, max=self.max_return-1) # Really got to understand what's happening here... guard against off by 1 errors.
         batch[DataKey.task_return_time] = batch[DataKey.task_return_time].clamp(min=0)
+        batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(min=0, max=2)
         # if batch[DataKey.task_return].min() < 0:
         #     print('Return min: ', batch[DataKey.task_return].min(dim=1), batch[MetaKey.session][batch[DataKey.task_return].argmin(dim=1)])
         #     # clamp # TODO bake down, we shouldn't need a posthoc fix like this. Understand the data
