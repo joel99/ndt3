@@ -344,7 +344,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # * Since this marks end of episode, it also marks when reward is provided
 
                 per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=int)
-                per_trial_pass = torch.clamp(per_trial_pass, max=1) # Literally, clamp that. What does 2x reward even mean? (It shows up sometimes...)
+                per_trial_pass = torch.clamp(per_trial_pass, min=0, max=1) # Literally, clamp that. What does > 1 reward even mean? (It shows up sometimes...)
                 reward_dense = torch.zeros_like(trial_num, dtype=int) # only 0 or 1 reward
                 reward_dense.scatter_(0, trial_change_step, per_trial_pass)
                 return_dense = compute_return_to_go(reward_dense, horizon=int((cfg.return_horizon_s * 1000) // cfg.bin_size_ms))

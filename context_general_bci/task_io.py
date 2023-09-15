@@ -975,9 +975,9 @@ class ReturnContext(ContextPipeline):
             data_attrs=data_attrs
         )
         self.is_sparse = data_attrs.sparse_rewards
-        self.max_return = cfg.max_return
+        self.max_return = cfg.max_return + 1 if data_attrs.pad_token is not None else cfg.max_return
         self.return_enc = nn.Embedding(
-            cfg.max_return,
+            self.max_return, # It will rarely be
             cfg.hidden_size,
             padding_idx=data_attrs.pad_token,
         )
@@ -989,10 +989,15 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
+        # if batch[DataKey.task_return].numel()
         if batch[DataKey.task_return].max() > self.max_return:
             print('Return max: ', batch[DataKey.task_return].max(), batch[MetaKey.session][batch[DataKey.task_return].argmax()])
-            # clamp
-            batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], max=self.max_return)
+            # clamp # TODO bake down, we shouldn't need a posthoc fix like this. Understand the data
+            batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], min=0, max=self.max_return - 1)
+        if batch[DataKey.task_reward].max() > 2:
+            print('Reward max: ', batch[DataKey.task_reward].max(), batch[MetaKey.session][batch[DataKey.task_reward].argmax()])
+            # This should have already happened, but just in case.
+            batch[DataKey.task_reward] = torch.clamp(batch[DataKey.task_reward], min=0, max=1)
 
         # print('Reward max: ', batch[DataKey.task_reward].max())
         # print(f'Time max: {batch[DataKey.task_return_time].max()} min: {batch[DataKey.task_return_time].min()}')
