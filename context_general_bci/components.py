@@ -428,7 +428,7 @@ class SpaceTimeTransformer(nn.Module):
             output = self.transformer_encoder(
                 src,
                 src_mask,
-                padding_mask=padding_mask, # should be none in flash/autoregressive path
+                src_key_padding_mask=padding_mask, # should be none in flash/autoregressive path
                 is_causal=causal, # Flash Attn hint (token causality, not time causality)
             )
         output = self.dropout_out(output)

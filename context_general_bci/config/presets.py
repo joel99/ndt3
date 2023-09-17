@@ -419,7 +419,7 @@ cs.store(group="model", name="scale_history", node=ScaleHistoryModelConfig)
 @dataclass
 class LargescaleModelConfig(ScaleHistoryModelConfig):
     lr_ramp_steps: int = 10 # Many more steps per epoch
-    dropout: float = 0.1 # Less regularization
+    dropout: float = 0.1
     hidden_size: int = 512 # At a minimum
     session_embed_strategy: EmbedStrat = EmbedStrat.none
     subject_embed_strategy: EmbedStrat = EmbedStrat.none
