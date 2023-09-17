@@ -10,7 +10,7 @@ defaults:
     - flat
     - scale_history
   - /train:
-    - midscale
+    - midscale # TODO migrate to largescale
 model:
   session_embed_strategy: EmbedStrat.none # evaluating zero-shot ICL exps
   subject_embed_strategy: EmbedStrat.none

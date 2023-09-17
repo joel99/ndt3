@@ -454,7 +454,7 @@ class MidscaleTrainConfig(TrainConfig):
 cs.store(group="train", name="midscale", node=MidscaleTrainConfig)
 
 @dataclass
-class LargescaleTrainConfig(TrainConfig):
+class LargescaleTrainConfig(MidscaleTrainConfig):
     patience: int = 5
     effective_batch_size: int = 2048
     max_batch_size: int = 2048

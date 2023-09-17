@@ -657,10 +657,9 @@ class SpikeBase(SpikeContext, RatePrediction):
         rates = self.out(backbone_features) # B x H
         loss = self.loss(rates, target.flatten(0, 1))
         comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
-        loss = loss[~backbone_padding]
         # cf self.get_loss_mask
         loss_mask = ~backbone_padding.unsqueeze(-1) # B -> B x 1
-        channel_mask = (comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1))[~backbone_padding]
+        channel_mask = (comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1))
         loss_mask = loss_mask & channel_mask
         loss = loss[loss_mask].mean()
         return { 'loss': loss }

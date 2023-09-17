@@ -3,5 +3,6 @@
         "data/": true,
         "data/preprocessed/": true,
         "outputs/": true
-    }
+    },
+    "python.analysis.typeCheckingMode": "basic"
 }
