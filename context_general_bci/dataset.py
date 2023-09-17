@@ -559,7 +559,8 @@ class SpikingDataset(Dataset):
                                 # Get the latest timestep specified (which is before first crop timestep)
                                 last_valid = b[DataKey.constraint_time][constraint_mask].max()
                                 constraint_mask = (b[DataKey.constraint_time] == last_valid) # Identify all tokens at that timestep, should only be a few
-                                b[DataKey.constraint_time][constraint_mask] = crop_start[i] # Bump up time to start of crop
+                                # breakpoint()
+                                b[DataKey.constraint_time] = torch.where(constraint_mask, crop_start[i], b[DataKey.constraint_time]) # Bump up time to start of crop
                             constraint = constraint[constraint_mask]
                             if DataKey.constraint_space in b:
                                 constraint_space = b[DataKey.constraint_space][constraint_mask]
@@ -585,7 +586,7 @@ class SpikingDataset(Dataset):
                                 time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i])
                                 last_valid = b[DataKey.task_return_time][time_mask].max()
                                 time_mask = (b[DataKey.task_return_time] == last_valid)
-                                b[DataKey.task_return_time][time_mask] = crop_start[i]
+                                b[DataKey.task_return_time] = torch.where(time_mask, crop_start[i], b[DataKey.task_return_time])
                             task_return = task_return[time_mask]
                             task_reward = task_reward[time_mask]
                             task_return_time = task_return_time[time_mask] - crop_start[i] # assumes time starts at 0

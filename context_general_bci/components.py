@@ -356,6 +356,7 @@ class SpaceTimeTransformer(nn.Module):
         src: torch.Tensor, # B T H, already embedded. (Flat spacetime path now asserted, can't deal with heterogeneity otherwise (need to implement hierarchy carefully again if so).)
         padding_mask: Optional[torch.Tensor] = None, # B T
         causal: bool=True,
+        autoregressive: bool = False, # Only allow next step (disregards `times`) prediction; uses a triangular mask
         times: Optional[torch.Tensor] = None, # for flat spacetime path, B x Token
         positions: Optional[torch.Tensor] = None, # for flat spacetime path
         memory: Optional[torch.Tensor] = None, # memory as other context if needed for covariate decoder flow
@@ -381,7 +382,11 @@ class SpaceTimeTransformer(nn.Module):
         src = src + self.time_encoder(times)
         if self.embed_space:
             src = src + self.space_encoder(positions)
-        src_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(times) if causal else None
+        if autoregressive:
+            src_mask = torch.triu(torch.ones(src.size(1), src.size(1)), diagonal=1).bool()
+            src_mask = src_mask.to(src.device)
+        else:
+            src_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(times) if causal else None
         if src_mask is not None and src_mask.ndim == 3: # expand along heads
             src_mask = repeat(src_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
         if padding_mask is None:

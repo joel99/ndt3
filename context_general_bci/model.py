@@ -582,6 +582,7 @@ class BrainBertInterface(pl.LightningModule):
         else:
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
                 pipeline_space[i] = (s + 1) if tk == 'trial' else s
+
         pipeline_context, ps = pack(pipeline_context, 'b * h')
         times, _ = pack(pipeline_times, 'b *')
         space, _ = pack(pipeline_space, 'b *')
@@ -590,16 +591,17 @@ class BrainBertInterface(pl.LightningModule):
         if getattr(self.cfg, 'next_step_prediction', False):
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
             modalities, _ = pack(modalities, 'b *')
-            breakpoint()
             space[pipeline_padding] = self.cfg.max_spatial_position # Assumes dataloader currently doesn't serve pad space especially
             order = times * self.cfg.max_spatial_position + space
 
             # * ps becomes useless, is that ok? It's fine - we need to create a modality mask so subsequent task pipelines can map out their desired targets
-            pipeline_context = sort_A_by_B(pipeline_context, order)
-            times = sort_A_by_B(times, order)
-            space = sort_A_by_B(space, order)
-            pipeline_padding = sort_A_by_B(pipeline_padding, order)
+            pipeline_context, indices = sort_A_by_B(pipeline_context, order)
+            times, _ = sort_A_by_B(times, order, indices)
+            space, _ = sort_A_by_B(space, order, indices)
+            pipeline_padding, _ = sort_A_by_B(pipeline_padding, order, indices)
+            modalities, _ = sort_A_by_B(modalities, order, indices)
 
+            # breakpoint()
             # As _input_, we provide the previous step (teacher-forcing).
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
@@ -618,6 +620,7 @@ class BrainBertInterface(pl.LightningModule):
 
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
+            autoregressive=getattr(self.cfg, 'next_step_prediction', False),
             padding_mask=pipeline_padding,
             causal=self.cfg.causal,
             times=times,
@@ -677,11 +680,11 @@ class BrainBertInterface(pl.LightningModule):
         for i, task in enumerate(self.cfg.task.tasks):
             should_detach = 'infill' not in task.value and self.detach_backbone_for_task
             if getattr(self.cfg, 'next_step_prediction', False):
-                sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything
+                sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything. # B* H (flattened)
                 sub_times = times[modalities == i]
                 sub_space = space[modalities == i]
                 sub_padding = padding[modalities == i]
-                breakpoint() # Check the shape here. Also, check the modality mask, unclear we provide the right features if some task pipeline provides nothing
+                # breakpoint() # Check the shape here. Also, check the modality mask, unclear we provide the right features if some task pipeline provides nothing
             else:
                 sub_features = features
                 sub_times = times

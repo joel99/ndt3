@@ -15,10 +15,12 @@ def enum_backport(old_inst, new_enum_cls):
     # so we add a cast
     return new_enum_cls[old_inst.name]
 
-def sort_A_by_B(A: torch.Tensor, B: torch.Tensor):
+def sort_A_by_B(A: torch.Tensor, B: torch.Tensor, indices: torch.Tensor | None = None):
     # Generally expecting Batch T * dimensions
     # Sort B along the Time dimension (dim=1) and get the sorting indices
     _, indices = torch.sort(B, dim=1)
     # Sort A using the sorting indices obtained from B
+    if indices.ndim != A.ndim:
+        indices = indices.unsqueeze(-1).expand(-1, -1, A.shape[-1])
     A_sorted = torch.gather(A, 1, indices)
-    return A_sorted
+    return A_sorted, indices

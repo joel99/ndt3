@@ -344,6 +344,7 @@ class ModelConfig:
     max_return: int = 50 # max reward expected to embed or decode # ! Somehow 30 isn't high enough, need to sanitize...
 
     causal: bool = True
+    # autoregressive: bool = False # Stronger flag - does transformer only allow attending to literal previous tokens (For decoder only operations); not just in `time`
 
     log_backbone_norm: int = 0 # 1 for basic, 2 or higher not implemented
     log_token_seen_throughput: bool = False # for flat models - log post-crop non-padding tokens

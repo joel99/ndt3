@@ -653,14 +653,14 @@ class SpikeBase(SpikeContext, RatePrediction):
         # ! We assume that backbone features arrives in a batch-major, time-minor format, that has already been flattened
         # We need to similarly flatten
         # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
-        breakpoint()
-        target = batch[DataKey.spikes]
+        target = batch[DataKey.spikes][..., 0]
         rates = self.out(backbone_features) # B x H
-        loss = self.loss(rates, target.flatten())[~backbone_padding]
+        loss = self.loss(rates, target.flatten(0, 1))
+        comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
+        loss = loss[~backbone_padding]
         # cf self.get_loss_mask
         loss_mask = ~backbone_padding.unsqueeze(-1) # B -> B x 1
-        comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
-        channel_mask = comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1)
+        channel_mask = (comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1))[~backbone_padding]
         loss_mask = loss_mask & channel_mask
         loss = loss[loss_mask].mean()
         return { 'loss': loss }
@@ -1071,11 +1071,10 @@ class ReturnInfill(ReturnContext):
         eval_mode=False
     ) -> torch.Tensor:
         assert compute_metrics, "No direct outputs supported, code inference separately"
-        target = batch[DataKey.task_return]
+        target = batch[DataKey.task_return].flatten()
         pred = self.out(backbone_features)
-        breakpoint()
         return {
-            'loss': F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.label_smoothing)[~backbone_padding].mean()
+            'loss': F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.decode_label_smooth)[~backbone_padding].mean()
         }
 
 
@@ -1601,6 +1600,7 @@ class QuantizeBehavior(TaskPipeline): # Mixin
             data_attrs=data_attrs
         )
         quantize_bound = 1.001 if not self.cfg.decode_symlog else symlog(torch.tensor(1.001))
+        self.is_next_step = getattr(cfg, 'next_step_prediction', False)
         self.cov_dims = data_attrs.behavior_dim
         self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
 
@@ -1642,17 +1642,21 @@ class BehaviorContext(ContextPipeline, QuantizeBehavior):
 
 class ClassificationMixin(QuantizeBehavior):
     def initialize_readin(self, backbone_size): # Assume quantized readin...
-        self.inp = nn.Embedding(self.QUANTIZE_CLASSES + 1, backbone_size)
+        self.inp = nn.Embedding(self.QUANTIZE_CLASSES + 1, backbone_size, padding_idx=0)
         # self.inp_norm = nn.LayerNorm(backbone_size)
 
     def initialize_readout(self, backbone_size):
         # We use these buckets as we minmax clamp in preprocessing
         if self.cfg.decode_tokenize_dims:
-            self.out = nn.Sequential(
-                nn.Linear(backbone_size, self.QUANTIZE_CLASSES),
-                Rearrange('b t c -> b c t')
-            )
+            if self.is_next_step:
+                self.out = nn.Linear(backbone_size, self.QUANTIZE_CLASSES)
+            else:
+                self.out = nn.Sequential(
+                    nn.Linear(backbone_size, self.QUANTIZE_CLASSES),
+                    Rearrange('b t c -> b c t')
+                )
         else:
+            assert not self.is_next_step, "next step not implemented for non-tokenized"
             self.out = nn.Sequential(
                 nn.Linear(backbone_size, self.QUANTIZE_CLASSES * self.cov_dims),
                 Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
@@ -1671,8 +1675,9 @@ class ClassificationMixin(QuantizeBehavior):
         return self.dequantize(bhvr.argmax(1))
 
     def compute_loss(self, bhvr: torch.Tensor, bhvr_tgt: torch.Tensor):
-        comp_bhvr = bhvr[...,:bhvr_tgt.shape[-1]]
-        return F.cross_entropy(comp_bhvr, self.quantize(bhvr_tgt), reduction='none', label_smoothing=self.cfg.decode_label_smooth)
+        # breakpoint()
+        # print(bhvr.shape, self.quantize(bhvr_tgt).shape, self.quantize(bhvr_tgt).min(), self.quantize(bhvr_tgt).max())
+        return F.cross_entropy(bhvr, self.quantize(bhvr_tgt), reduction='none', label_smoothing=self.cfg.decode_label_smooth)
 
 
 class BehaviorClassification(CovariateReadout, ClassificationMixin):
@@ -1738,10 +1743,6 @@ class CovariateInfill(ClassificationMixin):
             batch[f'{self.handle}_{DataKey.padding}']
         )
 
-    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
-        # no op for regression, argmax + dequantize for classification
-        return bhvr
-
     def forward(
         self,
         batch,
@@ -1754,25 +1755,25 @@ class CovariateInfill(ClassificationMixin):
     ) -> torch.Tensor:
         assert compute_metrics, "Inference path should be implemented elsewhere"
         batch_out = {}
-        breakpoint()
         bhvr: torch.Tensor = self.out(backbone_features)
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
             raise NotImplementedError
-        bhvr_tgt = batch[self.cfg.behavior_target]
+        bhvr_tgt = batch[self.cfg.behavior_target].flatten()
         if Output.behavior in self.cfg.outputs:
-            batch_out[Output.behavior] = bhvr_tgt
+            raise NotImplementedError
+            # batch_out[Output.behavior] = bhvr_tgt
         if not compute_metrics:
             return batch_out
 
         # Compute loss
         loss = self.compute_loss(bhvr, bhvr_tgt)
-        loss = loss[~batch[f'{self.handle}_{DataKey.padding}']].mean()
-
-        r2_mask = ~batch[f'{self.handle}_{DataKey.padding}']
-
+        loss = loss[~backbone_padding].mean()
         batch_out['loss'] = loss
+
+        r2_mask = ~backbone_padding
+
         if Metric.kinematic_r2 in self.cfg.metrics:
-            valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
+            valid_bhvr = bhvr
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
             batch_out[Metric.kinematic_r2] = np.array([r2_score(valid_tgt, valid_bhvr)])
