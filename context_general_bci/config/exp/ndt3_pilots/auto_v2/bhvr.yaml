@@ -1,0 +1,13 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  next_step_prediction: True
+  hidden_size: 512
+  task:
+    tasks: [ModelTask.spike_context, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_context]
+    task_weights: [0., 1., 0., 0.]
+dataset:
+  # max_tokens: 2048 # from 8192, significantly crops time, just for debugging (bring in flash to aid)
+  sparse_rewards: True
+notes: "Only behavior pred for loss scale comparison"

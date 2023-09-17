@@ -385,12 +385,15 @@ class SpaceTimeTransformer(nn.Module):
         if autoregressive:
             src_mask = torch.triu(torch.ones(src.size(1), src.size(1)), diagonal=1).bool()
             src_mask = src_mask.to(src.device)
+        elif causal:
+            src_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(times)
+            if src_mask.ndim == 3: # expand along heads
+                src_mask = repeat(src_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
         else:
-            src_mask = SpaceTimeTransformer.generate_square_subsequent_mask_from_times(times) if causal else None
-        if src_mask is not None and src_mask.ndim == 3: # expand along heads
-            src_mask = repeat(src_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
-        if padding_mask is None:
-            padding_mask = torch.zeros(src.size()[:2], dtype=torch.bool, device=src.device)
+            src_mask = None
+
+        # if padding_mask is None:
+        #     padding_mask = torch.zeros(src.size()[:2], dtype=torch.bool, device=src.device)
 
         if self.cross_attn_enabled and memory is not None:
             if memory_times is None: # No mask needed for trial-context only, unless specified
@@ -400,13 +403,9 @@ class SpaceTimeTransformer(nn.Module):
                     times, memory_times
                 )
                 memory_mask = repeat(memory_mask, 'b t1 t2 -> (b h) t1 t2', h=self.cfg.n_heads)
-            # convert padding masks to float to suppress torch 2 warnings - TODO bake into generation to save op
             if padding_mask is not None:
                 # ! Allow attention if full sequence is padding - no loss will be computed...
                 padding_mask[padding_mask.all(1)] = False
-                # padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
-            # if memory_padding_mask is not None:
-                # memory_padding_mask = torch.where(memory_padding_mask, float('-inf'), 0.0)
             # breakpoint()
             output = self.transformer_encoder(
                 src,
@@ -420,13 +419,17 @@ class SpaceTimeTransformer(nn.Module):
                 raise ValueError('NaN in output')
                 breakpoint()
         else:
-            # if padding_mask is not None:
-                # if torch.__version__.startswith('2.0'): # Need float for 2.0 and higher
-                    # padding_mask = torch.where(padding_mask, float('-inf'), 0.0)
+            # Flash attn, context manager is extra debug guard
+            # with torch.backends.cuda.sdp_kernel(
+            #     enable_flash=True,
+            #     enable_math=False,
+            #     enable_mem_efficient=False
+            # ):
             output = self.transformer_encoder(
                 src,
                 src_mask,
-                src_key_padding_mask=padding_mask
+                padding_mask=padding_mask, # should be none in flash/autoregressive path
+                is_causal=causal, # Flash Attn hint (token causality, not time causality)
             )
         output = self.dropout_out(output)
         if self.cfg.pre_norm and self.cfg.final_norm:

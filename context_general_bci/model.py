@@ -591,6 +591,9 @@ class BrainBertInterface(pl.LightningModule):
         if getattr(self.cfg, 'next_step_prediction', False):
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
             modalities, _ = pack(modalities, 'b *')
+            # breakpoint()
+            # TODO this op may be redundant - we may be able to address it directly in data loader
+            times[pipeline_padding] = self.cfg.transformer.max_trial_length # Assumes dataloader currently doesn't serve pad time especially
             space[pipeline_padding] = self.cfg.max_spatial_position # Assumes dataloader currently doesn't serve pad space especially
             order = times * self.cfg.max_spatial_position + space
 
@@ -599,6 +602,8 @@ class BrainBertInterface(pl.LightningModule):
             times, _ = sort_A_by_B(times, order, indices)
             space, _ = sort_A_by_B(space, order, indices)
             pipeline_padding, _ = sort_A_by_B(pipeline_padding, order, indices)
+            # breakpoint()
+            # assert (pipeline_padding.diff(1).sum(1) <= 1).all(), "Padding should be contiguous and at end of trial..."
             modalities, _ = sort_A_by_B(modalities, order, indices)
 
             # breakpoint()
@@ -606,22 +611,13 @@ class BrainBertInterface(pl.LightningModule):
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
             pipeline_context[:, 0] = self.start_of_sentence
-
-            # TODO modality mask
-            # Who receives this data? Probably still the old readouts, no?
-            # Need to update SpikeInfill, BehaviorInfill, ReturnInfill to be compatible here
-            # * What exactly does the downstream module _need_?
-            # They will receive backbones that are essentially almost done, just need a behavioral readout and they need to track targets correctly...
-            # * I think they can keep whatever they embedded as targets without shuffling (internal order shhould be respected)
-            # * But... padding might've been displaced. Padding should be end of sequence - except in reward case?
-            # * Ok... I need to seriously treat padding once core logic is in place.
         else:
             modalities = None
 
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             autoregressive=getattr(self.cfg, 'next_step_prediction', False),
-            padding_mask=pipeline_padding,
+            padding_mask=None if getattr(self.cfg, 'next_step_prediction', False) else pipeline_padding, # suppress padding if flash attn-able
             causal=self.cfg.causal,
             times=times,
             positions=space,
