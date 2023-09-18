@@ -38,6 +38,8 @@ target = [
     'odoherty_rtt-Indy-20161026_03',
     'odoherty_rtt-Indy-20170131_02',
 ]
+target = ['odoherty_rtt-Loco-20170213_02']
+
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 cfg.dataset.datasets = target
@@ -92,8 +94,6 @@ ax.scatter(target, prediction, s=3, alpha=0.4)
 # positions = heldin_outputs[f'{DataKey.covariate_space}_target']
 # padding = heldin_outputs[f'covariate_{DataKey.padding}_target']
 
-# # ? Why do we only have 100 bins of output here?
-# # I expect 3s * 50 bins * 1 dimension = 150 tokens.
 # if ICL_CROP:
 #     if isinstance(pred, torch.Tensor):
 #         pred = pred[:, -ICL_CROP:]
@@ -108,9 +108,6 @@ ax.scatter(target, prediction, s=3, alpha=0.4)
 #         positions = [p[-ICL_CROP:] for p in positions]
 #         padding = [p[-ICL_CROP:] for p in padding]
 
-# print(pred[0].shape)
-# # print(true[0].shape)
-# # print(positions.shape)
 # # print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
 # # print(heldin_outputs[DataKey.covariate_labels])
 

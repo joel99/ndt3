@@ -21,6 +21,9 @@ model:
     - ModelTask.return_context
     - ModelTask.next_step_prediction # Must come last, uses contributed context from earlier
     task_weights: [0., 0., 0., 0., 1.0]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
     encode_constraints: True
     use_constraint_cls: False # No need
   transformer:

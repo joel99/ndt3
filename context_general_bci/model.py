@@ -64,6 +64,7 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
     'kinematic_context': 22,
 }
 MAX_KINEMATIC_DIMS = 10
+DEBUG_LIMIT_EVAL = 250 # Limit eval `DataKey.time`
 
 class BrainBertInterface(pl.LightningModule):
     r"""
@@ -772,7 +773,9 @@ class BrainBertInterface(pl.LightningModule):
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             # Hm, the flattening needs to happen first, lol.
             # Since there's an ambiguous number of
-
+            if DEBUG_LIMIT_EVAL: # Things are slow atm...
+                breakpoint()
+                batch = {k: v[:DEBUG_LIMIT_EVAL] for k, v in batch.items()}
             tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
@@ -956,6 +959,8 @@ class BrainBertInterface(pl.LightningModule):
                 self.log(f'{prefix}_{m.value}', metrics[m], **kwargs)
 
     def training_step(self, batch, batch_idx):
+        # if batch_idx > 200:
+            # return None # Override, debug
         if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
             self.token_proc_approx += batch[DataKey.spikes].size(0) * batch[DataKey.spikes].size(1)
             self.token_seen_approx += (batch[LENGTH_KEY].sum() * (1 - self.cfg.task.mask_ratio)).item()

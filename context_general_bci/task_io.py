@@ -1495,6 +1495,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 assert self.cfg.decode_tokenize_dims, "blacklist dims not implemented for non tokenized R2"
                 positions: torch.Tensor = batch[f'{DataKey.covariate_space}_target']
                 r2_mask = r2_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
+            # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
             if self.served_tokenized_covariates and not self.served_semantic_covariates: # If semantic, we don't need to reorganize
@@ -1772,14 +1773,20 @@ class CovariateInfill(ClassificationMixin):
 
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr
-            breakpoint()
+            # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
             batch_out[Metric.kinematic_r2] = np.array([r2_score(valid_tgt, valid_bhvr)])
+            # breakpoint() # Something is wildly wrong...
+            if batch_out[Metric.kinematic_r2].mean() < -10000:
+                # zero it out - this is a bug that occurs when the target has minimal variance (i.e. a dull batch with tiny batch size)
+                # Occurs only because we can't easily full batch R2, i.e. uninteresting.
+                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])
             batch[DataKey.covariate_labels] = ['x'] # base default
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
             batch_out[Metric.kinematic_acc] = acc[r2_mask].float().mean()
+        # print(batch_out[Metric.kinematic_r2])
         return batch_out
 
 # === Utils ===
