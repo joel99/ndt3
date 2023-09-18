@@ -657,6 +657,7 @@ class RootConfig:
     slurm_id: int = 0 # for experiment tracking...
     nodes: int = 1
 
+BatchKey = str | DataKey | MetaKey
 
 def propagate_config(config: RootConfig):
     r"""

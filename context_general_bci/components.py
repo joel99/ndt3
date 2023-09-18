@@ -362,6 +362,7 @@ class SpaceTimeTransformer(nn.Module):
         memory: Optional[torch.Tensor] = None, # memory as other context if needed for covariate decoder flow
         memory_times: Optional[torch.Tensor] = None, # solely for causal masking, not for re-embedding
         memory_padding_mask: Optional[torch.Tensor] = None,
+        materialize_causal: bool = True, # For some reason, fastpath warns about materializing src at inference, but errors without materialized src on train. Bruh.
     ) -> torch.Tensor: # T B H
         r"""
             Each H is a token to be transformed with other T x A tokens.
@@ -377,12 +378,15 @@ class SpaceTimeTransformer(nn.Module):
             # raise ValueError(f'Space length {positions.max()} exceeds max space length {self.n_space}')
         # print(f'Debug: Time: {times.unique()} Space: {positions.unique()}')
         # print(f'Debug: Space: {positions.unique()}')
+        # breakpoint()
         src = self.dropout_in(src)
         # === Embeddings ===
         src = src + self.time_encoder(times)
         if self.embed_space:
             src = src + self.space_encoder(positions)
-        if autoregressive:
+        if not materialize_causal:
+            src_mask = None
+        elif autoregressive:
             src_mask = torch.triu(torch.ones(src.size(1), src.size(1)), diagonal=1).bool()
             src_mask = src_mask.to(src.device)
         elif causal:

@@ -25,11 +25,12 @@ sample_query = '10s_loco_regression'
 # Return run
 sample_query = 'sparse'
 sample_query = 'h512_l6_return'
+sample_query = 'base'
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
 run_cfg = cfg.dataset
-# run_cfg.datasets = ['pitt_broad.*']
+run_cfg.datasets = ['pitt_broad.*']
 
 # run_cfg.data_keys = [*run_cfg.data_keys, 'cov_min', 'cov_max', 'cov_mean'] # Load these directly, for some reason they're cast
 dataset = SpikingDataset(run_cfg)
@@ -116,12 +117,16 @@ for session_stat, trial_stat in results:
 # for meta_session in tqdm(dataset.meta_df[MetaKey.session].unique()):
     # session_stats[meta_session], trial_stats = process_session(meta_session)
 torch.save({
-    'session': session_stats,
-    'trial': trial_stats,
+    'session': combined_session_stats,
+    'trial': combined_trial_stats,
 }, 'scripts/proc_data_sampler.pt')
 from pprint import pprint
 # pprint(dimensions)
 # for session in has_brain_control:
 #     if not has_brain_control[session]:
 #         print(session)
-
+#%%
+payload = torch.load('scripts/proc_data_sampler.pt')
+session_stats = payload['session']
+trial_stats = payload['trial']
+print(len(trial_stats))

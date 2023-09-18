@@ -1,10 +1,10 @@
 #%%
+# Autoregressive inference procedure, for generalist model
 from collections import defaultdict
 from typing import Dict, List
-from omegaconf import OmegaConf
 
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
@@ -13,159 +13,245 @@ import torch
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
-from nlb_tools.make_tensors import save_to_h5
-
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from context_general_bci.model import BrainBertInterface
+from context_general_bci.model import BrainBertInterface, transfer_model
 from context_general_bci.dataset import SpikingDataset, DataAttrs
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from context_general_bci.contexts import context_registry
 
-from context_general_bci.analyze_utils import get_wandb_run, load_wandb_run
+from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
+from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
-# dataset_name = 'mc_rtt'
-# dataset_name = 'mc_maze$'
+query = "bhvr-7ca6ncr2"
+wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
+print(wandb_run.id)
 
-wandb_id = "maze_all_small_ft-23vu306p"
+src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 
-ids = [
-    # Parity check (joint NDT1 settings)
-    # "rtt-1maz3ea5",
-    # "maze_small-hr4prtoe",
-    # "maze_med-5v08a4oy",
-    # "maze_large-wuawcvls",
+# cfg.model.task.metrics = [Metric.kinematic_r2]
+cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
-    # Not-quite parity NDT2 check (cf heldin)
-    # "ndt2_32_rtt-05dqi05j",
-    # "ndt2_128_maze_small-tnnvmdkv",
-    # "ndt2_128_maze_med_2a-kvuo6q15",
-    # "ndt2_128_maze_large_1a-irc57zhv",
-
-    # Scale init
-    "m3_150k_large-sweep-simple_lr_sweep-axzvm22s",
-    "m3_150k_med-sweep-simple_lr_sweep-81fvl2ws",
-    "m3_150k_small-sweep-simple_lr_sweep-rpqx4bpq",
-    "m3_150k_rtt-sweep-simple_lr_sweep-81saz29y",
+target = [
+    'odoherty_rtt-Indy-20160407_02',
+    'odoherty_rtt-Indy-20160627_01',
+    'odoherty_rtt-Indy-20161005_06',
+    'odoherty_rtt-Indy-20161026_03',
+    'odoherty_rtt-Indy-20170131_02',
 ]
-# wandb_run = get_wandb_run(wandb_id)
-# heldout_model, cfg, data_attrs = load_wandb_run(wandb_run, tag='val-')
-#%%
-def get_dataloader(dataset: SpikingDataset, batch_size=100, num_workers=1, **kwargs) -> DataLoader:
-    # Defaults set for evaluation on 1 GPU.
+
+# Note: This won't preserve train val split, try to make sure eval datasets were held out
+cfg.dataset.datasets = target
+dataset = SpikingDataset(cfg.dataset)
+
+# Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
+train, val = dataset.create_tv_datasets()
+dataset = val
+print("Eval length: ", len(dataset))
+
+data_attrs = dataset.get_data_attrs()
+print(data_attrs)
+
+# Subset dataset to 16 trials.
+
+
+model = transfer_model(src_model, cfg.model, data_attrs)
+
+trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
         batch_size=batch_size,
         num_workers=num_workers,
         persistent_workers=num_workers > 0,
-        collate_fn=dataset.collater_factory()
+        collate_fn=dataset.tokenized_collater
     )
 
-def stack_batch(batch_out: List[Dict[str, torch.Tensor]]):
-    out = defaultdict(list)
-    for batch in batch_out:
-        for k, v in batch.items():
-            out[k].append(v)
-    for k, v in out.items():
-        out[k] = torch.cat(v)
-    return out
+dataloader = get_dataloader(dataset)
+heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+#%%
+print(heldin_outputs[Output.behavior_pred].shape)
+print(heldin_outputs[Output.behavior].shape)
 
-SPOOFS = { # heldout neuron shapes
-# https://github.com/neurallatents/nlb_tools/blob/main/examples/tutorials/basic_example.ipynb
-    'mc_rtt': [30, 32, 1],
-    'mc_maze_large': [35, 40, 1],
-    'mc_maze_medium': [35, 38, 1],
-    'mc_maze_small': [35, 35, 1],
-}
-HELDIN = {
-    'mc_rtt': [30, 98, 1],
-    'mc_maze_large': [35, 122, 1],
-    'mc_maze_medium': [35, 114, 1],
-    'mc_maze_small': [35, 107, 1],
-}
-def create_submission_dict(wandb_run):
-    print(f"creating submission for {wandb_run.id}")
-    heldout_model, cfg, data_attrs = load_wandb_run(wandb_run, tag='co-bps')
-    # heldout_model, cfg, data_attrs = load_wandb_run(wandb_run, tag='val_loss')
-    heldout_model.cfg.task.outputs = [Output.heldout_logrates, Output.spikes]
-    cfg.dataset.data_keys = [DataKey.spikes, DataKey.heldout_spikes]
-    cfg.dataset.heldout_key_spoof_shape = SPOOFS[cfg.dataset.datasets[0]]
+prediction = heldin_outputs[Output.behavior_pred][..., 0]
+target = heldin_outputs[Output.behavior]
+# Compute R2
+from sklearn.metrics import r2_score
+r2 = r2_score(target, prediction)
+print(f'R2: {r2:.4f}')
 
-    dataset = SpikingDataset(cfg.dataset)
-    test_dataset = deepcopy(dataset)
-    dataset.subset_split()
-    dataset.build_context_index()
-    test_dataset.subset_by_key(['test'], key='split')
-    test_dataset.build_context_index()
-    if cfg.init_from_id:
-        base_run = get_wandb_run(cfg.init_from_id)
-        heldin_model, *_ = load_wandb_run(base_run, tag='val_loss')
-        heldin_model.cfg.task.outputs = [Output.logrates, Output.spikes]
-        # TODO make sure that the heldin model data attrs are transferred
-        # raise NotImplementedError
-    else:
-        heldin_model = heldout_model
-        heldin_model.cfg.task.outputs = [Output.logrates, Output.heldout_logrates, Output.spikes]
+# Scatter
+f = plt.figure(figsize=(10, 10))
+ax = prep_plt(f.gca(), big=True)
+ax.scatter(target, prediction, s=3, alpha=0.4)
+# ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
+# ICL_CROP = 3 * 50 * 2 # Quick hack to eval only a certain portion of data. 3s x 50 bins/s x 2 dims
+# ICL_CROP = 0
 
-    dataloader = get_dataloader(dataset)
-    test_dataloader = get_dataloader(test_dataset)
+# from context_general_bci.config import DEFAULT_KIN_LABELS
+# pred = heldin_outputs[Output.behavior_pred]
+# true = heldin_outputs[Output.behavior]
+# positions = heldin_outputs[f'{DataKey.covariate_space}_target']
+# padding = heldin_outputs[f'covariate_{DataKey.padding}_target']
 
-    trainer = pl.Trainer(gpus=1, default_root_dir='./data/tmp')
-    heldin_outputs = stack_batch(trainer.predict(heldin_model, dataloader))
-    test_heldin_outputs = stack_batch(trainer.predict(heldin_model, test_dataloader))
-    if cfg.init_from_id:
-        heldout_outputs = stack_batch(trainer.predict(heldout_model, dataloader))
-        test_heldout_outputs = stack_batch(trainer.predict(heldout_model, test_dataloader))
-    else:
-        heldout_outputs = heldin_outputs
-        test_heldout_outputs = test_heldin_outputs
+# # ? Why do we only have 100 bins of output here?
+# # I expect 3s * 50 bins * 1 dimension = 150 tokens.
+# if ICL_CROP:
+#     if isinstance(pred, torch.Tensor):
+#         pred = pred[:, -ICL_CROP:]
+#         true = true[:, -ICL_CROP:]
+#         positions = positions[:,-ICL_CROP:]
+#         padding = padding[:, -ICL_CROP:]
+#     else:
+#         print(pred[0].shape)
+#         pred = [p[-ICL_CROP:] for p in pred]
+#         print(pred[0].shape)
+#         true = [t[-ICL_CROP:] for t in true]
+#         positions = [p[-ICL_CROP:] for p in positions]
+#         padding = [p[-ICL_CROP:] for p in padding]
 
-    # Crop heldout neurons
-    heldout_count = SPOOFS[cfg.dataset.datasets[0]][1]
-    heldout_outputs[Output.heldout_rates] = heldout_outputs[Output.heldout_rates][...,:heldout_count]
-    test_heldout_outputs[Output.heldout_rates] = test_heldout_outputs[Output.heldout_rates][...,:heldout_count]
-    heldin_count = HELDIN[cfg.dataset.datasets[0]][1]
-    heldin_outputs[Output.rates] = heldin_outputs[Output.rates][...,:heldin_count]
-    test_heldin_outputs[Output.rates] = test_heldin_outputs[Output.rates][...,:heldin_count]
-    return dataset.cfg.datasets[0], {
-        'train_rates_heldin': heldin_outputs[Output.rates].squeeze(2).numpy(),
-        'train_rates_heldout': heldout_outputs[Output.heldout_rates].numpy(),
-        'eval_rates_heldin': test_heldin_outputs[Output.rates].squeeze(2).numpy(),
-        'eval_rates_heldout': test_heldout_outputs[Output.heldout_rates].numpy(),
-    }
+# print(pred[0].shape)
+# # print(true[0].shape)
+# # print(positions.shape)
+# # print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
+# # print(heldin_outputs[DataKey.covariate_labels])
+
+# def flatten(arr):
+#     return np.concatenate(arr) if isinstance(arr, list) else arr.flatten()
+# flat_padding = flatten(padding)
+
+# if model.data_attrs.semantic_covariates:
+#     flat_space = flatten(positions)
+#     flat_space = flat_space[~flat_padding]
+#     coords = [DEFAULT_KIN_LABELS[i] for i in flat_space]
+# else:
+#     # remap position to global space
+#     coords = []
+#     labels = heldin_outputs[DataKey.covariate_labels]
+#     for i, trial_position in enumerate(positions):
+#         coords.extend(np.array(labels[i])[trial_position])
+#     coords = np.array(coords)
+#     coords = coords[~flat_padding]
+
+# df = pd.DataFrame({
+#     'pred': flatten(pred)[~flat_padding].flatten(), # Extra flatten - in list of tensors path, there's an extra singleton dimension
+#     'true': flatten(true)[~flat_padding].flatten(),
+#     'coord': coords,
+# })
+# # plot marginals
+# subdf = df
+# # subdf = df[df['coord'].isin(['y'])]
+
+# g = sns.jointplot(x='true', y='pred', hue='coord', data=subdf, s=3, alpha=0.4)
+# # Recompute R2 between pred / true
+# from sklearn.metrics import r2_score
+# r2 = r2_score(subdf['true'], subdf['pred'])
+# mse = np.mean((subdf['true'] - subdf['pred'])**2)
+# # set title
+# g.fig.suptitle(f'{query} {mode} {str(target)[:20]} Velocity R2: {r2:.2f}, MSE: {mse:.4f}')
+
+#%%
+# f = plt.figure(figsize=(10, 10))
+# ax = prep_plt(f.gca(), big=True)
+# trials = 4
+# trials = 1
+# trials = min(trials, len(heldin_outputs[Output.behavior_pred]))
+# trials = range(trials)
+
+# colors = sns.color_palette('colorblind', df.coord.nunique())
+# label_unique = list(df.coord.unique())
+# # print(label_unique)
+# def plot_trial(trial, ax, color, label=False):
+#     vel_true = heldin_outputs[Output.behavior][trial]
+#     vel_pred = heldin_outputs[Output.behavior_pred][trial]
+#     dims = heldin_outputs[f'{DataKey.covariate_space}_target'][trial]
+#     pad = heldin_outputs[f'covariate_{DataKey.padding}_target'][trial]
+#     vel_true = vel_true[~pad]
+#     vel_pred = vel_pred[~pad]
+#     dims = dims[~pad]
+#     for i, dim in enumerate(dims.unique()):
+#         dim_mask = dims == dim
+#         true_dim = vel_true[dim_mask]
+#         pred_dim = vel_pred[dim_mask]
+#         dim_label = DEFAULT_KIN_LABELS[dim] if model.data_attrs.semantic_covariates else heldin_outputs[DataKey.covariate_labels][trial][dim]
+#         if dim_label != 'f':
+#             true_dim = true_dim.cumsum(0)
+#             pred_dim = pred_dim.cumsum(0)
+#         color = colors[label_unique.index(dim_label)]
+#         ax.plot(true_dim, label=f'{dim_label} true' if label else None, linestyle='-', color=color)
+#         ax.plot(pred_dim, label=f'{dim_label} pred' if label else None, linestyle='--', color=color)
+
+#     # ax.plot(pos_true[:,0], pos_true[:,1], label='true' if label else '', linestyle='-', color=color)
+#     # ax.plot(pos_pred[:,0], pos_pred[:,1], label='pred' if label else '', linestyle='--', color=color)
+#     # ax.set_xlabel('X-pos')
+#     # ax.set_ylabel('Y-pos')
+#     # make limits square
+#     # ax.set_aspect('equal', 'box')
+
+
+# for i, trial in enumerate(trials):
+#     plot_trial(trial, ax, colors[i], label=i==0)
+# ax.legend()
+# ax.set_title(f'{mode} {str(target)[:20]} Trajectories')
+# # ax.set_ylabel(f'Force (minmax normalized)')
+# # xticks - 1 bin is 20ms. Express in seconds
+# ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms / 1000)
+# # express in seconds
+# ax.set_xlabel('Time (s)')
 
 # #%%
-# wandb_runs = [get_wandb_run(wandb_id) for wandb_id in ids]
-# submit_dict = create_submission_dict(wandb_runs[0])
-# # test = heldin_outputs[Output.rates].squeeze(2).numpy()
-# # test = test_heldin_outputs[Output.rates].squeeze(2).numpy()
-# test = submit_dict['eval_rates_heldout']
-# for trial in range(len(test)):
-#     plt.plot(test[trial,:,20])
-#     # plt.plot(test[trial,:,10])
-#     if trial > 5:
-#         break
-# # plt.plot(test[0,:,0])
-# print("done")
-#%%
-wandb_runs = [get_wandb_run(wandb_id) for wandb_id in ids]
-# Create spikes for NLB submission https://github.com/neurallatents/nlb_tools/blob/main/examples/tutorials/basic_example.ipynb
-suffix = '' # no suffix needed for 5ms submissions
-suffix = '_20'
-output_dict = {}
-for r in wandb_runs:
-    dataset_name, payload = create_submission_dict(r)
-    if dataset_name == "mc_maze_med":
-        dataset_name = "mc_maze_medium"
-    output_dict[dataset_name + suffix] = payload
-
-print(output_dict.keys())
-print(output_dict[dataset_name + suffix].keys()) # sanity check
-# for rtt, expected shapes are 1080 / 272, 120, 98 / 32
-print(output_dict[dataset_name + suffix]['train_rates_heldin'].shape) # should be trial x time x neuron
-# print(output_dict[dataset_name + suffix]['train_rates_heldout'])
-
-# remove file if exists
-if os.path.exists("submission.h5"):
-    os.remove("submission.h5")
-save_to_h5(output_dict, "submission.h5")
-#%%
-print(output_dict[dataset_name+suffix]['train_rates_heldin'].sum())
+# # Look for the raw data
+# from pathlib import Path
+# from context_general_bci.tasks.rtt import ODohertyRTTLoader
+# mins = []
+# maxes = []
+# raw_mins = []
+# raw_maxes = []
+# bhvr_vels = []
+# bhvr_pos = []
+# for i in dataset.meta_df[MetaKey.session].unique():
+#     # sample a trial
+#     trial = dataset.meta_df[dataset.meta_df[MetaKey.session] == i].iloc[0]
+#     print(trial.path)
+#     # Open the processed payload, print minmax
+#     payload = torch.load(trial.path)
+#     print(payload['cov_min'])
+#     print(payload['cov_max'])
+#     # append and plot
+#     mins.extend(payload['cov_min'].numpy())
+#     maxes.extend(payload['cov_max'].numpy())
+#     # open the original payload
+#     path_pieces = Path(trial.path).parts
+#     og_path = Path(path_pieces[0], *path_pieces[2:-1])
+#     spike_arr, bhvr_raw, _ = ODohertyRTTLoader.load_raw(og_path, cfg.dataset, ['Indy-M1', 'Loco-M1'])
+#     bhvr_vel = bhvr_raw[DataKey.bhvr_vel].flatten()
+#     bhvr_vels.append(bhvr_vel)
+#     # bhvr_pos.append(bhvr_raw['position'])
+#     raw_mins.append(bhvr_vel.min().item())
+#     raw_maxes.append(bhvr_vel.max().item())
+# ax = prep_plt()
+# ax.set_title(f'{query} Raw MinMax bounds')
+# ax.scatter(mins, maxes)
+# ax.scatter(raw_mins, raw_maxes)
+# ax.set_xlabel('Min')
+# ax.set_ylabel('Max')
+# # ax.plot(mins, label='min')
+# # ax.plot(maxes, label='max')
+# # ax.legend()
+# #%%
+# print(bhvr_pos[0][:,1:3].shape)
+# # plt.plot(bhvr_pos[0][:, 1:3])
+# # plt.plot(bhvr_vels[3])
+# # plt.plot(bhvr_vels[2])
+# # plt.plot(bhvr_vels[1])
+# # plt.plot(bhvr_vels[0])
+# import scipy.signal as signal
+# def resample(data):
+#     covariate_rate = cfg.dataset.odoherty_rtt.covariate_sampling_rate
+#     base_rate = int(1000 / cfg.dataset.bin_size_ms)
+#     # print(base_rate, covariate_rate, base_rate / covariate_rate)
+#     return torch.tensor(
+#         # signal.resample(data, int(len(data) / cfg.dataset.odoherty_rtt.covariate_sampling_rate / (cfg.dataset.bin_size_ms / 1000))) # This produces an edge artifact
+#         signal.resample_poly(data, base_rate, covariate_rate, padtype='line')
+#     )
+# # 250Hz to 5Hz - > 2000
+# # plt.plot(bhvr_pos[0][:, 1:3])
+# plt.plot(resample(bhvr_pos[0][:, 1:3]))

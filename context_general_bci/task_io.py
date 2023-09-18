@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 from context_general_bci.config import (
     ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey,
+    BatchKey
 )
 
 from context_general_bci.dataset import (
@@ -1670,8 +1671,8 @@ class ClassificationMixin(QuantizeBehavior):
         # covariate = self.inp_norm(covariate)
         return covariate
 
-    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
-        return self.dequantize(bhvr.argmax(1))
+    def simplify_logits_to_prediction(self, bhvr: torch.Tensor, logit_dim=1):
+        return self.dequantize(bhvr.argmax(logit_dim))
 
     def compute_loss(self, bhvr: torch.Tensor, bhvr_tgt: torch.Tensor):
         # breakpoint()
@@ -1750,17 +1751,15 @@ class CovariateInfill(ClassificationMixin):
         backbone_space: torch.Tensor,
         backbone_padding: torch.Tensor,
         compute_metrics=True,
-        eval_mode=False
-    ) -> torch.Tensor:
-        assert compute_metrics, "Inference path should be implemented elsewhere"
+        eval_mode=False,
+    ) -> Dict[BatchKey, torch.Tensor]:
         batch_out = {}
         bhvr: torch.Tensor = self.out(backbone_features)
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
-            raise NotImplementedError
+            batch_out[Output.behavior_pred] = bhvr # returns logits
         bhvr_tgt = batch[self.cfg.behavior_target].flatten()
         if Output.behavior in self.cfg.outputs:
-            raise NotImplementedError
-            # batch_out[Output.behavior] = bhvr_tgt
+            batch_out[Output.behavior] = bhvr_tgt # Flat aspect is not ideal, watch the timestamps..
         if not compute_metrics:
             return batch_out
 
@@ -1773,6 +1772,7 @@ class CovariateInfill(ClassificationMixin):
 
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr
+            breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
             batch_out[Metric.kinematic_r2] = np.array([r2_score(valid_tgt, valid_bhvr)])

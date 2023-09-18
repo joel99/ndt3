@@ -15,7 +15,7 @@ def enum_backport(old_inst, new_enum_cls):
     # so we add a cast
     return new_enum_cls[old_inst.name]
 
-def sort_A_by_B(A: torch.Tensor, B: torch.Tensor, indices: torch.Tensor | None = None):
+def sort_A_by_B(A: torch.Tensor, B: torch.Tensor, indices: torch.Tensor | None = None) -> Tuple[torch.Tensor, torch.Tensor | None]:
     # Generally expecting Batch T * dimensions
     # Sort B along the Time dimension (dim=1) and get the sorting indices
     _, indices = torch.sort(B, dim=1)

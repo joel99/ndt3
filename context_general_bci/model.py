@@ -24,7 +24,8 @@ from context_general_bci.config import (
     DataKey,
     MetaKey,
     Architecture,
-    DEFAULT_KIN_LABELS
+    DEFAULT_KIN_LABELS,
+    BatchKey
 )
 
 from context_general_bci.dataset import DataAttrs, LENGTH_KEY, CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
@@ -482,7 +483,7 @@ class BrainBertInterface(pl.LightningModule):
             for p in m.parameters():
                 p.requires_grad = False
 
-    def _prepare_trial_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    def _prepare_trial_context(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
         r"""
             Format spikes and context into tokens for backbone.
             In:
@@ -542,16 +543,10 @@ class BrainBertInterface(pl.LightningModule):
             torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
         )
 
-    def forward(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
-        r"""
-            returns backbone features B T H, and timesteps B T
-            modalities is flag indicating _target_ modality.
-        """
-
-        # There are two main types of tokens: conditioning and data tokens
-        # Conditioning tokens are never meant to be retrieved, solely to condition the backbone
-        # Data token may serve as prediction targets
-
+    def assemble_pipeline(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[
+        List[str], List[Any],
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None
+    ]:
         # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
         trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
@@ -573,15 +568,18 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_space = [pipeline_space[i] for i in filtered]
         pipeline_padding = [pipeline_padding[i] for i in filtered]
 
+
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
         if getattr(self.cfg, 'next_step_prediction', False):
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
                 pipeline_space[i] = s + MODALITY_SPACE_RANGE_START[tk]
             modalities = [torch.full_like(s, filtered[i], dtype=torch.uint8) for i, s in enumerate(pipeline_space)] # track original task pipeline index
+            modalities, _ = pack(modalities, 'b *')
         else:
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
-                pipeline_space[i] = (s + 1) if tk == 'trial' else s
+                pipeline_space[i] = (s + 1) if tk != 'trial' else s
+            modalities = None
 
         pipeline_context, ps = pack(pipeline_context, 'b * h')
         times, _ = pack(pipeline_times, 'b *')
@@ -590,7 +588,7 @@ class BrainBertInterface(pl.LightningModule):
 
         if getattr(self.cfg, 'next_step_prediction', False):
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
-            modalities, _ = pack(modalities, 'b *')
+
             # breakpoint()
             # TODO this op may be redundant - we may be able to address it directly in data loader
             times[pipeline_padding] = self.cfg.transformer.max_trial_length # Assumes dataloader currently doesn't serve pad time especially
@@ -611,9 +609,22 @@ class BrainBertInterface(pl.LightningModule):
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
             pipeline_context[:, 0] = self.start_of_sentence
-        else:
-            modalities = None
 
+        return (
+            tks, ps,
+            pipeline_context,
+            times,
+            space,
+            pipeline_padding,
+            modalities
+        )
+
+    def forward(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+        r"""
+            returns backbone features B T H, and timesteps B T
+            modalities is flag indicating _target_ modality.
+        """
+        tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             autoregressive=getattr(self.cfg, 'next_step_prediction', False),
@@ -629,14 +640,13 @@ class BrainBertInterface(pl.LightningModule):
             times = unpack(times, ps, 'b *')
             space = unpack(space, ps, 'b *')
             pipeline_padding = unpack(pipeline_padding, ps, 'b *')
-            # tks = list(self.task_pipelines.keys())
             if 'shuffle_infill' in tks:
                 enc_index = tks.index('shuffle_infill') # TODO replace with something that targets the spike context provider...
             else:
                 enc_index = tks.index('spike_context')
             return outputs[enc_index], times[enc_index], space[enc_index], pipeline_padding[enc_index]
 
-    def _step(self, batch: Dict[str, torch.Tensor], eval_mode=False) -> Dict[str, torch.Tensor]:
+    def _step(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False) -> Dict[BatchKey, torch.Tensor]:
         r"""
             batch provided contains all configured data_keys and meta_keys
             - The distinction with `forward` is not currently clear, but `_step` is specifically oriented around training.
@@ -650,16 +660,9 @@ class BrainBertInterface(pl.LightningModule):
             So a shared backbone is assumed. And a single "batch" exists for all paths.
             And moreover, any task-specific _input_ steps (such as masking/shifting) is not well interfaced right now
             (currently overloading `batch` variable, think more clearly either by studying HF repo or considering other use cases)
-
-            Shapes:
-                spikes: B T A/S C H=1 (C is electrode channel) (H=1 legacy decision, hypothetically could contain other spike features)
-                - if serve_tokens: third dim is space, else it's array
-                - if serve tokens flat: Time x A/S is flattened
-                stim: B T C H
-                channel_counts: B A (counts per array)
         """
         # breakpoint()
-        batch_out: Dict[str, torch.Tensor] = {}
+        batch_out: Dict[BatchKey | Output, torch.Tensor] = {}
         if Output.spikes in self.cfg.task.outputs:
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
@@ -703,10 +706,10 @@ class BrainBertInterface(pl.LightningModule):
 
     @torch.inference_mode()
     def predict(
-        self, batch: Dict[str, torch.Tensor], transform_logrates=True, mask=True,
+        self, batch: Dict[BatchKey, torch.Tensor], transform_logrates=True, mask=True,
         eval_mode=True,
         # eval_mode=False,
-    ) -> Dict[str, torch.Tensor]:
+    ) -> Dict[BatchKey | Output, torch.Tensor]:
         r"""
             Note: kind of annoying to change keywords here manually (no args can be passed in)
             batch should provide info needed by model. (responsibility of user)
@@ -732,18 +735,22 @@ class BrainBertInterface(pl.LightningModule):
             DataKey.covariate_time: '* t',
             DataKey.covariate_space: '* t',
             DataKey.covariate_labels: '*',
+            DataKey.constraint: '* t constraint_dim',
             DataKey.constraint_space: '* t',
             DataKey.constraint_time: '* t',
+            DataKey.task_return: '* t h',
+            DataKey.task_reward: '* t h',
+            DataKey.task_return_time: '* t',
+            # DataKey.task_return_space: '* t',
             'constraint_length': '*',
-            DataKey.constraint: '* t constraint_dim',
+            'return_length': '*',
         }
         pack_info = {}
-        # breakpoint()
         for k in batch:
             if k == DataKey.covariate_labels:
                 continue
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
-        batch_out: Dict[str, torch.Tensor] = {}
+        batch_out: Dict[str | DataKey | MetaKey | Output, torch.Tensor] = {}
         # auto-debug
         for k in [MetaKey.session, MetaKey.subject, MetaKey.task]:
             if k in batch:
@@ -756,50 +763,102 @@ class BrainBertInterface(pl.LightningModule):
                 batch_out[DataKey.position] = batch[DataKey.position].clone() # pre mask
             else:
                 batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
-        if mask:
-            for k in self.cfg.task.tasks:
-                self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
-        # breakpoint()
-        features, times, space, padding = self(batch)
-        task_order = self.cfg.task.tasks
-        for task in task_order:
-            update = self.task_pipelines[task.value](
-                batch,
-                features,
-                times,
-                space,
-                padding,
-                compute_metrics=False,
-                eval_mode=eval_mode
-            )
-            for k in update:
-                if 'update' in str(k):
-                    if k == 'update_features':
-                        features = update[k]
-                    batch[k] = update[k]
-                else:
-                    batch_out[k] = update[k]
+        for k in self.cfg.task.tasks:
+            self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
-        if self.data_attrs.serve_tokens_flat and Output.logrates in batch_out:
-            batch_out[Output.logrates] = unflatten(batch_out[Output.logrates], batch_out['time'], batch_out['position'])
-        if transform_logrates:
-            if Output.logrates in batch_out:
-                if self.data_attrs.serve_tokens_flat:
-                    logger.warning('Assuming square data for rate transform')
-                    batch_out[Output.rates] = self.unpad_and_transform_rates(batch_out[Output.logrates])
-                else:
-                    batch_out[Output.rates] = self.unpad_and_transform_rates(
-                        batch_out[Output.logrates], batch[LENGTH_KEY], batch[CHANNEL_KEY] if CHANNEL_KEY in batch else None
-                    )
-            if Output.heldout_logrates in batch_out:
-                if self.data_attrs.serve_tokens_flat:
-                    logger.warning('Assuming square data for rate transform')
-                    batch_out[Output.heldout_rates] = self.unpad_and_transform_rates(batch_out[Output.heldout_logrates])
-                else:
-                    batch_out[Output.heldout_rates] = self.unpad_and_transform_rates(
-                        batch_out[Output.heldout_logrates], batch[LENGTH_KEY]
-                    )
+        if getattr(self.cfg, 'next_step_prediction', False):
+            # OK practically one way to achieve this is to crop all data (and length keys)
+            # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
+            # Hm, the flattening needs to happen first, lol.
+            # Since there's an ambiguous number of
+
+            tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
+            to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
+            to_infer_mask = torch.isin(modalities, to_infer_indices)
+            # I'd like to not be wasteful
+            # Specifically note this is autoregressive, not per timestep. So we need to generate flat steps, not timesteps
+            # First assemble the flat sequence...
+            proc_step = 0
+            raw_stream = []
+            raw_stream_mask = []
+            decode = {}
+            while proc_step < pipeline_context.size(1):
+                # Jump to the next inferrable step
+                if not to_infer_mask[:, proc_step].any():
+                    proc_step += 1
+                    continue
+                outputs = self.backbone(
+                    pipeline_context[:, :proc_step],
+                    autoregressive=True,
+                    padding_mask=None,
+                    causal=self.cfg.causal,
+                    times=times[:, :proc_step],
+                    positions=space[:, :proc_step],
+                    materialize_causal=False,
+                )
+                # Sample the output from the kinematic pipeline
+                decode = self.task_pipelines['kinematic_infill'](
+                    batch,
+                    outputs[:, -1:],
+                    times[:, proc_step: proc_step + 1],
+                    space[:, proc_step: proc_step + 1],
+                    pipeline_padding[:, proc_step: proc_step + 1],
+                    compute_metrics=False,
+                )
+                # breakpoint()
+                # We run prediction even if modality is wrong; we slice out correct trials only when forced.
+                raw_pred = self.task_pipelines['kinematic_infill'].simplify_logits_to_prediction(
+                    decode[Output.behavior_pred], logit_dim=-1
+                )
+                raw_stream.append(raw_pred)
+                raw_stream_mask.append(to_infer_mask[:, proc_step])
+                re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
+                # Need to decode and quantize again... (redundant work but IDRC)
+                # Greedy decoding - subset to only the relevant pieces
+                pipeline_context[:, proc_step][to_infer_mask[:, proc_step]] = re_enc[to_infer_mask[:, proc_step]]
+                proc_step += 1
+                if True or proc_step % 100 == 0:
+                    print(f'Inferred {proc_step} of {pipeline_context.size(1)} steps.')
+            raw_stream = torch.stack(raw_stream, 1) # B T H=1
+            raw_stream_mask = torch.stack(raw_stream_mask, 1) # B T
+            batch_out = {
+                Output.behavior_pred: raw_stream[raw_stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
+                Output.behavior: decode[Output.behavior],
+            }
+        else:
+            features, times, space, padding = self(batch)
+            task_order = self.cfg.task.tasks
+            for task in task_order:
+                update = self.task_pipelines[task.value](
+                    batch,
+                    features,
+                    times,
+                    space,
+                    padding,
+                    compute_metrics=False,
+                    eval_mode=eval_mode
+                )
+                batch_out.update(update)
+            if self.data_attrs.serve_tokens_flat and Output.logrates in batch_out:
+                batch_out[Output.logrates] = unflatten(batch_out[Output.logrates], batch_out['time'], batch_out['position'])
+            if transform_logrates:
+                if Output.logrates in batch_out:
+                    if self.data_attrs.serve_tokens_flat:
+                        logger.warning('Assuming square data for rate transform')
+                        batch_out[Output.rates] = self.unpad_and_transform_rates(batch_out[Output.logrates])
+                    else:
+                        batch_out[Output.rates] = self.unpad_and_transform_rates(
+                            batch_out[Output.logrates], batch[LENGTH_KEY], batch[CHANNEL_KEY] if CHANNEL_KEY in batch else None
+                        )
+                if Output.heldout_logrates in batch_out:
+                    if self.data_attrs.serve_tokens_flat:
+                        logger.warning('Assuming square data for rate transform')
+                        batch_out[Output.heldout_rates] = self.unpad_and_transform_rates(batch_out[Output.heldout_logrates])
+                    else:
+                        batch_out[Output.heldout_rates] = self.unpad_and_transform_rates(
+                            batch_out[Output.heldout_logrates], batch[LENGTH_KEY]
+                        )
         return batch_out
 
     def predict_step(
@@ -1203,7 +1262,7 @@ def unflatten(
     time: torch.Tensor,
     position: torch.Tensor,
     default_value=-100,
-):
+) -> torch.Tensor:
     r"""
         Unflatten data into (time, position) space
         Args:

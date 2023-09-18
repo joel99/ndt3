@@ -1,0 +1,16 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  next_step_prediction: True
+  task:
+    tasks: [ModelTask.spike_infill, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_infill]
+    task_weights: [1., 1., 0., 1.]
+  hidden_size: 512
+  transformer:
+    n_layers: 12
+dataset:
+  max_tokens: 2048 # from 8192, significantly crops time, just for debugging (bring in flash to aid)
+  sparse_rewards: True
+train:
+  batch_size: 16
