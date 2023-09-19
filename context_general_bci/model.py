@@ -766,11 +766,6 @@ class BrainBertInterface(pl.LightningModule):
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
         if getattr(self.cfg, 'next_step_prediction', False):
-            # Parity ...
-            # breakpoint()
-            # outputs, times, space, pipeline_padding, modalities = self(batch)
-            # tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
-
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
 
@@ -780,13 +775,8 @@ class BrainBertInterface(pl.LightningModule):
             # ! We can't support evaluating up to a slice - I don't know what index to slice the targets at; from the flat datastream...
             # * I could take the flattened stream, without an offset. That seems reasonable, at a little overhead.
             if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache, we need to iterate faster
+                logger.warning('Assuming even batches for cropped prediction!!!')
                 to_infer_mask[:, DEBUG_LIMIT_EVAL:] = False
-            # breakpoint()
-            # batch_out = {
-            #     Output.behavior_pred: decode_all[Output.behavior_pred][to_infer_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
-            #     Output.behavior: batch[DataKey.bhvr_vel].flatten(),
-            # }
-
             proc_step = 0
             raw_stream = []
             stream_mask = []
@@ -796,21 +786,17 @@ class BrainBertInterface(pl.LightningModule):
                     proc_step += 1
                     continue
                 outputs = self.backbone(
-                    pipeline_context,
-                    # pipeline_context[:, :proc_step],
+                    pipeline_context[:, :proc_step+1], # We want predictions at the current step - provide input up to current step
                     autoregressive=True,
                     padding_mask=None,
                     causal=self.cfg.causal,
-                    times=times,
-                    # times=times[:, :proc_step],
-                    positions=space,
-                    # positions=space[:, :proc_step],
+                    times=times[:, :proc_step+1],
+                    positions=space[:, :proc_step+1],
                 )
                 # Sample the output from the kinematic pipeline
                 decode = self.task_pipelines['kinematic_infill'](
                     batch,
-                    outputs[:, proc_step : proc_step+1],
-                    # outputs[:, -1:],
+                    outputs[:, -1:],
                     times[:, proc_step: proc_step + 1],
                     space[:, proc_step: proc_step + 1],
                     pipeline_padding[:, proc_step: proc_step + 1],
@@ -836,7 +822,6 @@ class BrainBertInterface(pl.LightningModule):
             stream_mask = torch.cat(stream_mask, 1) # B T
             # target_stream = torch.stack(target_stream, 1) # B T H
             # breakpoint()
-            logger.warning('Assuming even batches for cropped prediction')
             batch_out = {
                 Output.behavior_pred: raw_stream[stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
                 Output.behavior: batch[DataKey.bhvr_vel][:,:stream_mask.size(1)].flatten(), # ! Assuming continuous
