@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
 # Load BrainBertInterface and SpikingDataset to make some predictions
-from context_general_bci.model import BrainBertInterface, transfer_model
+from context_general_bci.model import transfer_model
 from context_general_bci.dataset import SpikingDataset, DataAttrs
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, DataKey, MetaKey
 from context_general_bci.contexts import context_registry

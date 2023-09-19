@@ -765,53 +765,75 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
-        if False and getattr(self.cfg, 'next_step_prediction', False):
+        if getattr(self.cfg, 'next_step_prediction', False):
+            # Parity ...
+            outputs, times, space, pipeline_padding, modalities = self(batch)
+            tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
+            tks.append('trial')
+            decode_all = self.task_pipelines['kinematic_infill'](
+                batch,
+                outputs,
+                times,
+                space,
+                pipeline_padding,
+                compute_metrics=False,
+            ) # ! We should be able to pass all inputs in, since the processing inside is just a linear layer...
+
+            # Let's check if we can't extract the right steps now.
+            # breakpoint()
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
-            # Hm, the flattening needs to happen first, lol.
-            tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
+            # tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
 
             # There are only certain tokens I want model predictions for - the tokens that have kinematic modality targets.
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
-            if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache, we need to iterate faster
-                to_infer_mask[:, DEBUG_LIMIT_EVAL:] = False
+            # ! We can't support evaluating up to a slice - I don't know what index to slice the targets at; from the flat datastream...
+            # * I could take the flattened stream, without an offset. That seems reasonable, at a little overhead.
+            # if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache, we need to iterate faster
+                # to_infer_mask[:, DEBUG_LIMIT_EVAL:] = False
+            # breakpoint()
+            # batch_out = {
+            #     Output.behavior_pred: decode_all[Output.behavior_pred][to_infer_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
+            #     Output.behavior: batch[DataKey.bhvr_vel].flatten(),
+            # }
+
             proc_step = 0
             raw_stream = []
-            stream_mask = []
             target_stream = [] # assemble
-            decode = {}
-            while proc_step < pipeline_context.size(1):
+            stream_mask = []
+            while proc_step < times.size(1):
                 # Jump to the next inferrable step
                 if not to_infer_mask[:, proc_step].any():
                     proc_step += 1
                     continue
-                outputs = self.backbone(
-                    pipeline_context,
-                    # pipeline_context[:, :proc_step],
-                    autoregressive=True,
-                    padding_mask=None,
-                    causal=self.cfg.causal,
-                    times=times,
-                    # times=times[:, :proc_step],
-                    positions=space,
-                    # positions=space[:, :proc_step],
-                )
+                # outputs = self.backbone(
+                #     pipeline_context,
+                #     # pipeline_context[:, :proc_step],
+                #     autoregressive=True,
+                #     padding_mask=None,
+                #     causal=self.cfg.causal,
+                #     times=times,
+                #     # times=times[:, :proc_step],
+                #     positions=space,
+                #     # positions=space[:, :proc_step],
+                # )
                 # Sample the output from the kinematic pipeline
-                decode = self.task_pipelines['kinematic_infill'](
-                    batch,
-                    outputs[:, proc_step:proc_step+1],
-                    # outputs[:, -1:],
-                    times[:, proc_step: proc_step + 1],
-                    space[:, proc_step: proc_step + 1],
-                    pipeline_padding[:, proc_step: proc_step + 1],
-                    compute_metrics=False,
-                )
-                # breakpoint()
+                # decode = self.task_pipelines['kinematic_infill'](
+                #     batch,
+                #     outputs[:, proc_step:proc_step+1],
+                #     # outputs[:, -1:],
+                #     times[:, proc_step: proc_step + 1],
+                #     space[:, proc_step: proc_step + 1],
+                #     pipeline_padding[:, proc_step: proc_step + 1],
+                #     compute_metrics=False,
+                # )
+
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
-                raw_pred = decode[Output.behavior_pred]
+                raw_pred = decode_all[Output.behavior_pred][:, proc_step]
+                # raw_pred = decode[Output.behavior_pred]
                 raw_stream.append(raw_pred)
+                # target_stream.append(batch[DataKey.bhvr_vel][:, proc_step]) # ! It's because the
                 stream_mask.append(to_infer_mask[:, proc_step]) # Mark relevant tokens in timestep
-                target_stream.append(batch[DataKey.bhvr_vel][:, proc_step])
                 # Need to decode and quantize again... (redundant work but IDRC)
                 # Greedy decoding - subset to only the relevant pieces
                 # No student replacement - just debugging atm!
@@ -820,14 +842,14 @@ class BrainBertInterface(pl.LightningModule):
                 # pipeline_context[:, proc_step][to_infer_mask[:, proc_step] & should_student] = re_enc[to_infer_mask[:, proc_step] & should_student]
                 proc_step += 1
                 if True or proc_step % 100 == 0:
-                    print(f'Inferred {proc_step} of {pipeline_context.size(1)} steps.')
+                    print(f'Inferred {proc_step} of {times.size(1)} steps.')
             raw_stream = torch.stack(raw_stream, 1) # B T H=1
             stream_mask = torch.stack(stream_mask, 1) # B T
-            target_stream = torch.stack(target_stream, 1) # B T H
-            breakpoint()
+            # target_stream = torch.stack(target_stream, 1) # B T H
+            # breakpoint()
             batch_out = {
                 Output.behavior_pred: raw_stream[stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
-                Output.behavior: target_stream[stream_mask],
+                Output.behavior: batch[DataKey.bhvr_vel].flatten(), # There's essentially no way to just grab a slice out.
             }
         else:
             features, times, space, padding, modalities = self(batch)
