@@ -385,6 +385,12 @@ class SpaceTimeTransformer(nn.Module):
         if self.embed_space:
             src = src + self.space_encoder(positions)
         if not materialize_causal:
+            assert False
+            # https://github.com/pytorch/pytorch/issues/96941
+            # ! Apparently is_causal is just a type hint and won't actually materialize the mask, so this is bad code to run.
+            # i.e. the encoder call, with our materialized mask, succeeds, regardless of is_causal, and produces a different result than no mask, is_causal=True, which has undefined behavior.
+            # * Annoyingly, pytorch casts the mask to float during checks and then whine about the mask being float ... we'll just have to live with nn.TransformerEncoderLayer warnings for now, unless we adopt SDPA directly
+            # https://github.com/pytorch/pytorch/issues/97532
             src_mask = None
         elif autoregressive:
             src_mask = torch.triu(torch.ones(src.size(1), src.size(1)), diagonal=1).bool()

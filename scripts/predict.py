@@ -16,7 +16,7 @@ import lightning.pytorch as pl
 # Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.model import BrainBertInterface, transfer_model
 from context_general_bci.dataset import SpikingDataset, DataAttrs
-from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
+from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, DataKey, MetaKey
 from context_general_bci.contexts import context_registry
 
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
@@ -75,6 +75,7 @@ heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 #%%
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
+
 prediction = heldin_outputs[Output.behavior_pred]
 target = heldin_outputs[Output.behavior]
 # Compute R2
