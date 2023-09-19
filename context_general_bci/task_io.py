@@ -650,7 +650,8 @@ class SpikeBase(SpikeContext, RatePrediction):
             compute_metrics=True,
             eval_mode=False
     ) -> torch.Tensor:
-        assert compute_metrics, "No direct outputs supported, code inference separately"
+        if not compute_metrics:
+            return {}
         # ! We assume that backbone features arrives in a batch-major, time-minor format, that has already been flattened
         # We need to similarly flatten
         # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
@@ -1070,7 +1071,8 @@ class ReturnInfill(ReturnContext):
         compute_metrics=True,
         eval_mode=False
     ) -> torch.Tensor:
-        assert compute_metrics, "No direct outputs supported, code inference separately"
+        if not compute_metrics:
+            return {}
         target = batch[DataKey.task_return].flatten()
         pred = self.out(backbone_features)
         return {
@@ -1756,8 +1758,10 @@ class CovariateInfill(ClassificationMixin):
     ) -> Dict[BatchKey, torch.Tensor]:
         batch_out = {}
         bhvr: torch.Tensor = self.out(backbone_features)
+        if Output.behavior_logits in self.cfg.outputs:
+            batch_out[Output.behavior_logits] = bhvr
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
-            batch_out[Output.behavior_pred] = bhvr # returns logits
+            batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr, logit_dim=-1) # returns logits
         bhvr_tgt = batch[self.cfg.behavior_target].flatten()
         if Output.behavior in self.cfg.outputs:
             batch_out[Output.behavior] = bhvr_tgt # Flat aspect is not ideal, watch the timestamps..

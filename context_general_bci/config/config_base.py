@@ -60,7 +60,8 @@ class Output(Enum):
     spikes = 'spikes' # for debugging
 
     behavior = 'behavior'
-    behavior_pred = 'behavior_pred'
+    behavior_pred = 'behavior_pred' # pred, not logits (in classification case)
+    behavior_logits = 'behavior_logits' # logits, not pred (in classification case)
     behavior_query_mask = 'behavior_query_mask' # Which ones were actual predictions vs inputs?
 
     # Debug

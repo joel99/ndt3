@@ -1,13 +1,10 @@
 from typing import Tuple, Dict, List, Optional, Any, Mapping, Union
-import dataclasses
-import time
 from copy import deepcopy
 import math
 import numpy as np
 import torch
 from torch import nn, optim
 import torch.nn.functional as F
-# import lightning.pytorch as pl
 import lightning.pytorch as pl
 from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
 from omegaconf import OmegaConf, ListConfig, DictConfig
@@ -768,7 +765,7 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
-        if getattr(self.cfg, 'next_step_prediction', False):
+        if False and getattr(self.cfg, 'next_step_prediction', False):
             # OK practically one way to achieve this is to crop all data (and length keys)
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             # Hm, the flattening needs to happen first, lol.
@@ -811,9 +808,7 @@ class BrainBertInterface(pl.LightningModule):
                 )
                 # breakpoint()
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
-                raw_pred = self.task_pipelines['kinematic_infill'].simplify_logits_to_prediction(
-                    decode[Output.behavior_pred], logit_dim=-1
-                )
+                raw_pred = decode[Output.behavior_pred]
                 raw_stream.append(raw_pred)
                 raw_stream_mask.append(to_infer_mask[:, proc_step])
                 re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
@@ -831,15 +826,24 @@ class BrainBertInterface(pl.LightningModule):
                 Output.behavior: decode[Output.behavior],
             }
         else:
-            features, times, space, padding = self(batch)
-            task_order = self.cfg.task.tasks
-            for task in task_order:
+            features, times, space, padding, modalities = self(batch)
+            for i, task in enumerate(self.cfg.task.tasks):
+                if getattr(self.cfg, 'next_step_prediction', False):
+                    sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything. # B* H (flattened)
+                    sub_times = times[modalities == i]
+                    sub_space = space[modalities == i]
+                    sub_padding = padding[modalities == i]
+                else:
+                    sub_features = features
+                    sub_times = times
+                    sub_space = space
+                    sub_padding = padding
                 update = self.task_pipelines[task.value](
                     batch,
-                    features,
-                    times,
-                    space,
-                    padding,
+                    sub_features,
+                    sub_times,
+                    sub_space,
+                    sub_padding,
                     compute_metrics=False,
                     eval_mode=eval_mode
                 )

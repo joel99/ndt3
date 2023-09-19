@@ -23,6 +23,7 @@ from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
 query = "bhvr-7ca6ncr2"
+# query = "rtt-ic4ly53t"
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -74,8 +75,7 @@ heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 #%%
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
-
-prediction = heldin_outputs[Output.behavior_pred][..., 0]
+prediction = heldin_outputs[Output.behavior_pred]
 target = heldin_outputs[Output.behavior]
 # Compute R2
 from sklearn.metrics import r2_score
@@ -85,6 +85,7 @@ print(f'R2: {r2:.4f}')
 # Scatter
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
+print(prediction.shape)
 ax.scatter(target, prediction, s=3, alpha=0.4)
 
 #%%
