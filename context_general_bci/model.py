@@ -769,15 +769,14 @@ class BrainBertInterface(pl.LightningModule):
             # Parity ...
             outputs, times, space, pipeline_padding, modalities = self(batch)
             tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
-            tks.append('trial')
-            decode_all = self.task_pipelines['kinematic_infill'](
-                batch,
-                outputs,
-                times,
-                space,
-                pipeline_padding,
-                compute_metrics=False,
-            ) # ! We should be able to pass all inputs in, since the processing inside is just a linear layer...
+            # decode_all = self.task_pipelines['kinematic_infill'](
+            #     batch,
+            #     outputs,
+            #     times,
+            #     space,
+            #     pipeline_padding,
+            #     compute_metrics=False,
+            # ) # ! We should be able to pass all inputs in, since the processing inside is just a linear layer...
 
             # Let's check if we can't extract the right steps now.
             # breakpoint()
@@ -799,7 +798,6 @@ class BrainBertInterface(pl.LightningModule):
 
             proc_step = 0
             raw_stream = []
-            target_stream = [] # assemble
             stream_mask = []
             while proc_step < times.size(1):
                 # Jump to the next inferrable step
@@ -807,33 +805,33 @@ class BrainBertInterface(pl.LightningModule):
                     proc_step += 1
                     continue
                 # outputs = self.backbone(
-                #     pipeline_context,
-                #     # pipeline_context[:, :proc_step],
+                #     # pipeline_context,
+                #     pipeline_context[:, :proc_step],
                 #     autoregressive=True,
                 #     padding_mask=None,
                 #     causal=self.cfg.causal,
-                #     times=times,
-                #     # times=times[:, :proc_step],
-                #     positions=space,
-                #     # positions=space[:, :proc_step],
+                #     # times=times,
+                #     times=times[:, :proc_step],
+                #     # positions=space,
+                #     positions=space[:, :proc_step],
                 # )
                 # Sample the output from the kinematic pipeline
-                # decode = self.task_pipelines['kinematic_infill'](
-                #     batch,
-                #     outputs[:, proc_step:proc_step+1],
-                #     # outputs[:, -1:],
-                #     times[:, proc_step: proc_step + 1],
-                #     space[:, proc_step: proc_step + 1],
-                #     pipeline_padding[:, proc_step: proc_step + 1],
-                #     compute_metrics=False,
-                # )
+                decode = self.task_pipelines['kinematic_infill'](
+                    batch,
+                    outputs[:, proc_step : proc_step+1],
+                    # outputs[:, -1:],
+                    times[:, proc_step: proc_step + 1],
+                    space[:, proc_step: proc_step + 1],
+                    pipeline_padding[:, proc_step: proc_step + 1],
+                    compute_metrics=False,
+                )
 
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
-                raw_pred = decode_all[Output.behavior_pred][:, proc_step]
-                # raw_pred = decode[Output.behavior_pred]
+                # raw_pred = decode_all[Output.behavior_pred][:, proc_step]
+                raw_pred = decode[Output.behavior_pred]
                 raw_stream.append(raw_pred)
                 # target_stream.append(batch[DataKey.bhvr_vel][:, proc_step]) # ! It's because the
-                stream_mask.append(to_infer_mask[:, proc_step]) # Mark relevant tokens in timestep
+                stream_mask.append(to_infer_mask[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
                 # Need to decode and quantize again... (redundant work but IDRC)
                 # Greedy decoding - subset to only the relevant pieces
                 # No student replacement - just debugging atm!
@@ -843,8 +841,8 @@ class BrainBertInterface(pl.LightningModule):
                 proc_step += 1
                 if True or proc_step % 100 == 0:
                     print(f'Inferred {proc_step} of {times.size(1)} steps.')
-            raw_stream = torch.stack(raw_stream, 1) # B T H=1
-            stream_mask = torch.stack(stream_mask, 1) # B T
+            raw_stream = torch.cat(raw_stream, 1) # B T
+            stream_mask = torch.cat(stream_mask, 1) # B T
             # target_stream = torch.stack(target_stream, 1) # B T H
             # breakpoint()
             batch_out = {

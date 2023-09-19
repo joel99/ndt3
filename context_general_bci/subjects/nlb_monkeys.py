@@ -103,3 +103,10 @@ class Nigel(SubjectInfo):
     _arrays = {
         'M1': SortedArrayInfo(_max_channels=96), # max seen 58
     }
+
+@SubjectArrayRegistry.register
+class Jango(SubjectInfo):
+    name = SubjectName.jango
+    _arrays = {
+        'M1': GeometricArrayInfo(array=np.arange(96)),
+    }

@@ -10,6 +10,7 @@ from copy import deepcopy
 from matplotlib import pyplot as plt
 import seaborn as sns
 import torch
+torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
