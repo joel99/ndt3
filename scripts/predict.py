@@ -1,30 +1,32 @@
 #%%
 # Autoregressive inference procedure, for generalist model
-from collections import defaultdict
-from typing import Dict, List
-
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-from copy import deepcopy
+
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+# torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
 
 from matplotlib import pyplot as plt
 import seaborn as sns
 import torch
-torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
-# Load BrainBertInterface and SpikingDataset to make some predictions
 from context_general_bci.model import transfer_model
-from context_general_bci.dataset import SpikingDataset, DataAttrs
+from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, DataKey, MetaKey
 from context_general_bci.contexts import context_registry
 
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
-query = "bhvr-7ca6ncr2"
-# query = "rtt-ic4ly53t"
+# query = "bhvr-7ca6ncr2"
+query = "rtt-ic4ly53t"
+# query = "bhvr_only_12l_512-ao0hkz0q"
+# query = 'bhvr_12l_512_t_2048-qu2ssi6d'
+# query = '12l_512-v1cisvey'
+
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -34,12 +36,20 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 target = [
-    'odoherty_rtt-Indy-20160407_02',
-    'odoherty_rtt-Indy-20160627_01',
-    'odoherty_rtt-Indy-20161005_06',
-    'odoherty_rtt-Indy-20161026_03',
-    'odoherty_rtt-Indy-20170131_02',
+    # 'odoherty_rtt-Indy-20160407_02',
+    # 'odoherty_rtt-Indy-20160627_01',
+    # 'odoherty_rtt-Indy-20161005_06',
+    # 'odoherty_rtt-Indy-20161026_03',
+    # 'odoherty_rtt-Indy-20170131_02',
+    # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
+    # 'pitt_broad_pitt_co_CRS02bLab_1761',
+    # 'pitt_broad_pitt_co_CRS07Home_32',
+    # 'pitt_broad_pitt_co_CRS07Home_88',
 ]
+target = [
+    'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+]
+
 target = ['odoherty_rtt-Loco-20170213_02']
 
 
@@ -48,8 +58,8 @@ cfg.dataset.datasets = target
 dataset = SpikingDataset(cfg.dataset)
 
 # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
-train, val = dataset.create_tv_datasets()
-dataset = val
+# train, val = dataset.create_tv_datasets()
+# dataset = val
 print("Eval length: ", len(dataset))
 
 data_attrs = dataset.get_data_attrs()
@@ -60,7 +70,8 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
-model.cfg.eval_teacher_timesteps = 500 # 10s. We take remaining 5s.
+model.cfg.eval_teacher_timesteps = 25 # 4s. We take remaining 11s.
+model.cfg.eval_teacher_timesteps = 50 # 4s. We take remaining 11s.
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
@@ -76,25 +87,64 @@ heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 #%%
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
+print(heldin_outputs[Output.behavior_query_mask].shape)
 
 prediction = heldin_outputs[Output.behavior_pred]
 target = heldin_outputs[Output.behavior]
+is_student = heldin_outputs[Output.behavior_query_mask]
 # Compute R2
 from sklearn.metrics import r2_score
 r2 = r2_score(target, prediction)
 print(f'R2: {r2:.4f}')
 
-# Scatter
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
-print(prediction.shape)
-ax.scatter(target, prediction, s=3, alpha=0.4)
-
+palette = sns.color_palette(n_colors=2)
+colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
+ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
+ax.set_xlabel('True')
+ax.set_ylabel('Pred')
+ax.set_title(f'{query} {str(target)[:20]} Velocity R2: {r2:.2f}')
 #%%
-ax = prep_plt()
-ax.plot(target[::2])
-ax.plot(prediction[::2])
-ax.set_xlim(0, 1000)
+fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
+print(target.shape)
+
+def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None):
+    # Prepare the plot
+    ax = prep_plt(ax)
+
+    # Plot true and predicted values
+    ax.plot(target, label=f'true {label}', linestyle='-', alpha=0.75)
+    ax.plot(prediction, label=f'pred {label}', linestyle='--', alpha=0.75)
+
+    # Overlay student-guided traces
+    ax.scatter(
+        is_student.nonzero(),
+        target[is_student],
+        label=f'student true {label}',
+        color='k',
+        alpha=0.5,
+    )
+    ax.scatter(
+        is_student.nonzero(),
+        prediction[is_student],
+        label=f'student pred {label}',
+        alpha=0.5,
+        color='red'
+    )
+
+    ax.set_xlim(0, 1000)
+    ax.legend()
+    ax.set_title(f'{label} values')
+
+# For X values
+plot_target_pred_overlay(target[::2], prediction[::2], is_student[::2], label='x', ax=axs[0])
+
+# For Y values
+plot_target_pred_overlay(target[1::2], prediction[1::2], is_student[1::2], label='y', ax=axs[1])
+
+plt.tight_layout()
+
 #%%
 # ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
 # ICL_CROP = 3 * 50 * 2 # Quick hack to eval only a certain portion of data. 3s x 50 bins/s x 2 dims

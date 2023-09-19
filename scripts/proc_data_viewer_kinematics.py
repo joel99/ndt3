@@ -24,8 +24,11 @@ sample_query = '10s_loco_regression'
 
 # Return run
 sample_query = 'sparse'
+sample_query = 'bhvr_12l_512_t_2048-qu2ssi6d'
 
-wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
+# wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
+wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
+
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 run_cfg = cfg.dataset
@@ -35,7 +38,7 @@ run_cfg = cfg.dataset
 run_cfg.datasets = [
     'pitt_return_pitt_co_CRS07Lab_97_13',
     'pitt_return_pitt_co_CRS07Lab_97_15',
-    'pitt_return_pitt_co_CRS07Lab_97_17',
+    # 'pitt_return_pitt_co_CRS07Lab_97_17',
 ] # 13, 15, 17 are all FBC
 
 # Helicopter spot check
@@ -48,7 +51,7 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 # ]
 
-# run_cfg.datasets = [
+run_cfg.datasets = [
     # Force
     # 'pitt_broad_pitt_co_CRS07Home_108_1',
     # 'pitt_broad_pitt_co_CRS07Home_108_3',
@@ -58,7 +61,25 @@ run_cfg.datasets = [
 
     # Archival
     # 'pitt_broad_pitt_co_CRS02bLab_100_1',
-# ]
+
+#     'pitt_broad_pitt_co_CRS07Home_32',
+#     'pitt_broad_pitt_co_CRS07Home_33',
+#     'pitt_broad_pitt_co_CRS07Home_34',
+#     'pitt_broad_pitt_co_CRS07Home_35',
+#     'pitt_broad_pitt_co_CRS07Home_52', # mislabel
+#   # - pitt_broad_pitt_co_CRS07Lab_52
+#     'pitt_broad_pitt_co_CRS07Home_53',
+#     'pitt_broad_pitt_co_CRS07Home_49',
+#   # - pitt_broad_pitt_co_CRS07Home_57 # ! Not found
+#     'pitt_broad_pitt_co_CRS07Home_69',
+#     'pitt_broad_pitt_co_CRS07Home_71',
+#     'pitt_broad_pitt_co_CRS07Home_83',
+#     'pitt_broad_pitt_co_CRS07Home_88',
+#     'pitt_broad_pitt_co_CRS07Home_61',
+#     'pitt_broad_pitt_co_CRS07Home_108',
+
+    'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+]
 
 dataset = SpikingDataset(run_cfg)
 dataset.build_context_index()

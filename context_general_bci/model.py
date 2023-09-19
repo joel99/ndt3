@@ -61,7 +61,8 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
     'kinematic_context': 22,
 }
 MAX_KINEMATIC_DIMS = 10
-DEBUG_LIMIT_EVAL = 100 # Limit eval `DataKey.time`
+DEBUG_LIMIT_EVAL = 0
+DEBUG_LIMIT_EVAL = 500 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
 
 class BrainBertInterface(pl.LightningModule):
     r"""
@@ -780,6 +781,8 @@ class BrainBertInterface(pl.LightningModule):
             proc_step = 0
             raw_stream = []
             stream_mask = []
+            cue_mask = []
+            # breakpoint()
             while proc_step < times.size(1):
                 # Jump to the next inferrable step
                 if not to_infer_mask[:, proc_step].any():
@@ -811,20 +814,27 @@ class BrainBertInterface(pl.LightningModule):
                 # Need to decode and quantize again... (redundant work but IDRC)
                 # Greedy decoding - subset to only the relevant pieces
                 # No student replacement - just debugging atm!
-                # re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
-                # should_student = times[:, proc_step] >= getattr(self.cfg, 'eval_teacher_timesteps', 0)
-                # pipeline_context[:, proc_step][to_infer_mask[:, proc_step] & should_student] = re_enc[to_infer_mask[:, proc_step] & should_student]
-
+                re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
+                if proc_step < times.size(1) - 1:
+                    should_student = times[:, proc_step+1] >= getattr(self.cfg, 'eval_teacher_timesteps', 0)
+                    cue_mask.append(should_student)
+                    # Only student force the tokens that we predicted - hence use `to_infer_mask` of current step
+                    pipeline_context[:, proc_step+1][
+                        to_infer_mask[:, proc_step] & should_student
+                    ] = re_enc[
+                        to_infer_mask[:, proc_step] & should_student
+                    ]
                 proc_step += 1
                 if True or proc_step % 100 == 0:
                     print(f'Inferred {proc_step} of {times.size(1)} steps.')
             raw_stream = torch.cat(raw_stream, 1) # B T
             stream_mask = torch.cat(stream_mask, 1) # B T
-            # target_stream = torch.stack(target_stream, 1) # B T H
+            cue_mask = torch.stack(cue_mask, 1) # B T
             # breakpoint()
             batch_out = {
                 Output.behavior_pred: raw_stream[stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
                 Output.behavior: batch[DataKey.bhvr_vel][:,:stream_mask.size(1)].flatten(), # ! Assuming continuous
+                Output.behavior_query_mask: cue_mask[stream_mask],
                 # Output.behavior: batch[DataKey.bhvr_vel].flatten(), # There's essentially no way to just grab a slice out.
             }
         else:
