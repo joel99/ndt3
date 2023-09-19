@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Dict, List
 
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 from copy import deepcopy
 
 from matplotlib import pyplot as plt
@@ -58,6 +58,8 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
+model.cfg.eval_teacher_timesteps = 500 # 10s. We take remaining 5s.
+
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
@@ -84,6 +86,13 @@ print(f'R2: {r2:.4f}')
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
 ax.scatter(target, prediction, s=3, alpha=0.4)
+
+#%%
+ax = prep_plt()
+ax.plot(target[::2])
+ax.plot(prediction[::2])
+ax.set_xlim(0, 1000)
+#%%
 # ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
 # ICL_CROP = 3 * 50 * 2 # Quick hack to eval only a certain portion of data. 3s x 50 bins/s x 2 dims
 # ICL_CROP = 0

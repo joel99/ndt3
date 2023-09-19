@@ -1,0 +1,15 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  next_step_prediction: True
+  task:
+    tasks: [ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_context]
+    task_weights: [1., 0., 0.]
+  hidden_size: 512
+  transformer:
+    n_layers: 12
+dataset:
+  sparse_rewards: True
+train:
+  batch_size: 16

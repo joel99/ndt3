@@ -773,9 +773,9 @@ class BrainBertInterface(pl.LightningModule):
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             # Hm, the flattening needs to happen first, lol.
             # Since there's an ambiguous number of
-            if DEBUG_LIMIT_EVAL: # Things are slow atm...
-                breakpoint()
-                batch = {k: v[:DEBUG_LIMIT_EVAL] for k, v in batch.items()}
+            # if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache
+                # breakpoint()
+                # batch = {k: v[:DEBUG_LIMIT_EVAL] for k, v in batch.items()}
             tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
@@ -819,7 +819,8 @@ class BrainBertInterface(pl.LightningModule):
                 re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
                 # Need to decode and quantize again... (redundant work but IDRC)
                 # Greedy decoding - subset to only the relevant pieces
-                pipeline_context[:, proc_step][to_infer_mask[:, proc_step]] = re_enc[to_infer_mask[:, proc_step]]
+                should_student = times[:, proc_step] >= getattr(self.cfg, 'eval_teacher_timesteps', 0)
+                pipeline_context[:, proc_step][to_infer_mask[:, proc_step] & should_student] = re_enc[to_infer_mask[:, proc_step] & should_student]
                 proc_step += 1
                 if True or proc_step % 100 == 0:
                     print(f'Inferred {proc_step} of {pipeline_context.size(1)} steps.')

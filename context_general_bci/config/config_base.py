@@ -360,6 +360,9 @@ class ModelConfig:
     extra_task_embed_ckpt: str = "" # for loading task embeddings from a different ckpt. Only implemented via `model_decode`.
     extra_subject_embed_ckpt: str = "" # for loading subject embeddings from a different ckpt. Only implemented via `model_decode`.
 
+    eval_teacher_timesteps: int = 0 # provide true labels up to N _timesteps_ in. In units of timebins
+    # Specifically re: off by 1 - do we use the predictions from >= this timestep as student labels?
+
 @dataclass
 class ExperimentalConfig:
     r"""
