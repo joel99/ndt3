@@ -20,6 +20,7 @@ model:
     # - ModelTask.constraints
     # - ModelTask.return_context
     task_weights: [0., 1.0,]
+    decode_quantize_classes: 512
     metrics:
     - Metric.kinematic_r2
     - Metric.kinematic_acc

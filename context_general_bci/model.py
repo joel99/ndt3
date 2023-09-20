@@ -607,6 +607,9 @@ class BrainBertInterface(pl.LightningModule):
             # As _input_, we provide the previous step (teacher-forcing).
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
+            if self.training and getattr(self.cfg, 'token_maskout', 0.0) > 0:
+                mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
+                pipeline_context[:, mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
         return (

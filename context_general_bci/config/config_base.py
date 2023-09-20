@@ -263,6 +263,10 @@ class ModelConfig:
     use_full_encode: bool = False # ! Major change, return all tokens in decode stream
 
     next_step_prediction: bool = False # Major change, autoregressive path, limited compatibility with most NDT2 settigs
+    # Behavioral data is nearly Markovian, nearly constant; we want to learn longer order dependencies, so upweight that learning
+    # By occassionally blanking timesteps
+    token_maskout: float = 0. # If true, blank the previous timestep in the backbone stream
+
     max_spatial_position: int = 32 # For next step prediction
 
     half_precision: bool = True
