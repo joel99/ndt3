@@ -6,6 +6,8 @@ from omegaconf import MISSING
 
 DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null'] # Null dimension only used for padding in tokenized case
 REACH_DEFAULT_KIN_LABELS = ['y', 'z']
+EMG_CANON_LABELS = ['EMG_FCU', 'EMG_EDCr', 'EMG_ECU', 'EMG_ECRb', 'EMG_ECRl', 'EMG_FDP', 'EMG_FCR'] # Just an order pulled from xds tutorial: https://github.com/limblab/adversarial_BCI/blob/main/xds_tutorial.ipynb
+
 LENGTH = 'length'
 
 # Convention note to self - switching to lowercase, which is more readable and much less risky now that
@@ -343,7 +345,8 @@ class ModelConfig:
     neurons_per_token: int = 1 # how many neurons to embed per token (only makes sense for token/project)
     # This needs to match neurons_per_token in data config if data is in serve_tokenized mode
     max_neuron_count: int = 21 # pretty safe upper bound on number of neurons that can be embedded. Must be > data.pad_value
-    max_return: int = 50 # max reward expected to embed or decode # ! Somehow 30 isn't high enough, need to sanitize...
+    max_return: int = 50 # max reward expected to embed or decode
+    # We observe max is 13 in 15s trials (`proc_data_sampler`). Even if we rebin to 60ms bins and go to 45s, I doubt we'll go over 50; overhead of having a high max is low.
 
     causal: bool = True
     # autoregressive: bool = False # Stronger flag - does transformer only allow attending to literal previous tokens (For decoder only operations); not just in `time`
@@ -388,6 +391,7 @@ class ExperimentalConfig:
     arrays: List[str] = field(default_factory=lambda: []) # Empty list means don't filter
     firing_hz_floor: float = 0.5
     minmax: bool = True # rescale kinematics to -1, 1
+    chop_size_ms: int = 15000 # Not universally used but enough that I'm putting it for NDT3
 
     def reproc_dict(self) -> Dict[str, List[str]]:
         r"""
@@ -401,7 +405,6 @@ class ExperimentalConfig:
 
 @dataclass
 class RTTConfig(ExperimentalConfig):
-    chop_size_ms: int = 1000
     load_covariates: bool = True
     include_sorted: bool = False
 
@@ -557,6 +560,8 @@ class DatasetConfig:
     marino_batista_mp_bci: ExperimentalConfig = field(default_factory=ExperimentalConfig)
     marino_batista_mp_iso_force: ExperimentalConfig = field(default_factory=ExperimentalConfig)
     marino_batista_mp_reaching: ExperimentalConfig = field(default_factory=ExperimentalConfig)
+
+    miller: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
     pitt_co: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([ # This is actually the catch all for Pitt, and doesn't have any particular structure. No guarantees, might not even be CO.
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',

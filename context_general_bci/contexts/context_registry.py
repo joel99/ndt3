@@ -19,6 +19,7 @@ from .context_info import (
     GDrivePathContextInfo,
     BCIContextInfo,
     BatistaContextInfo,
+    MillerContextInfo,
 )
 
 from context_general_bci.tasks import ExperimentalTask
@@ -70,7 +71,7 @@ class ContextRegistry:
         return pd.DataFrame(index)
 
     # ! Note, current pattern is to put all experiments in a big list below; not use this register handle.
-    def register(self, context_info: List[ContextInfo]):
+    def register(self, context_info: List[ContextInfo | None]):
         context_info = [item for item in context_info if item is not None]
         self.search_index = pd.concat([self.search_index, self.build_search_index(context_info)])
         for item in context_info:
@@ -171,7 +172,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
         #     'free_play': ExperimentalTask.unstructured,
         #     'default': ExperimentalTask.pitt_co,
         # }),
-
+        *MillerContextInfo.build_from_dir('./data/miller/adversarial', task=ExperimentalTask.miller),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_isometric_force', task=ExperimentalTask.marino_batista_mp_iso_force),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_bci', task=ExperimentalTask.marino_batista_mp_bci),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_dco_reaching', task=ExperimentalTask.marino_batista_mp_reaching),

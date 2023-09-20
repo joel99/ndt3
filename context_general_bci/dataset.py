@@ -520,8 +520,10 @@ class SpikingDataset(Dataset):
                         # +1 since 0 is reserved for padding. Note that since this is a dataloader-level offset... um...
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
-                        if (data_items[DataKey.task_return]).any() < 0:
-                            breakpoint()
+                    if (data_items[DataKey.task_return]).any() < 0:
+                        breakpoint()
+                    if (data_items[DataKey.task_reward]).any() < 0:
+                        breakpoint()
                 else:
                     data_items[k] = payload[k]
         out = {
@@ -595,6 +597,10 @@ class SpikingDataset(Dataset):
                         stack_batch[DataKey.task_return_time].append(task_return_time)
                         stack_batch[k].append(task_return)
                         stack_batch[DataKey.task_reward].append(task_reward)
+                        if (task_return < 0).any():
+                            breakpoint()
+                        if (task_reward < 0).any():
+                            breakpoint()
                     elif k in [DataKey.task_return_time, DataKey.task_reward]:
                         continue # treated above
                     elif k == DataKey.bhvr_vel:
@@ -673,7 +679,10 @@ class SpikingDataset(Dataset):
             stack_batch[RETURN_LENGTH_KEY] = task_return_lengths
         if covariate_key is not None:
             stack_batch[COVARIATE_LENGTH_KEY] = covariate_lengths
-            # stack_batch[COVARIATE_CHANNEL_KEY] = covariate_channels
+        if DataKey.task_return in stack_batch and (stack_batch[DataKey.task_return] < 0).any():
+            breakpoint()
+        if DataKey.task_return in stack_batch and (stack_batch[DataKey.task_reward] < 0).any():
+            breakpoint()
         return dict(stack_batch) # cast back to dict as pytorch distributed can act up with defaultdicts
 
     def collater_factory(self):

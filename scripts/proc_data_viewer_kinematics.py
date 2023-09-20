@@ -78,7 +78,8 @@ run_cfg.datasets = [
 #     'pitt_broad_pitt_co_CRS07Home_61',
 #     'pitt_broad_pitt_co_CRS07Home_108',
 
-    'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+    # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+    'pitt_broad_pitt_co_CRS02bLab_245_12.*'
 ]
 
 dataset = SpikingDataset(run_cfg)
@@ -288,3 +289,7 @@ ax.set_xticks(xticks)
 ax.set_xticklabels((xticks * 20).astype(int))
 ax.set_xlabel('ms')
 ax.set_title(f'Velocity {datapath.stem}')
+
+#%%
+passed = payload['passed']
+print(payload['trial_num'])

@@ -523,6 +523,29 @@ class BatistaContextInfo(ContextInfo):
         infos = map(make_info, root.glob("*.mat"))
         return filter(lambda x: x is not None, infos)
 
+@dataclass
+class MillerContextInfo(ContextInfo):
+    def _id(self):
+        return self.alias
+
+    @classmethod
+    def build_from_dir(cls, root: str, task: ExperimentalTask, arrays=["M1"]):
+        root = Path(root)
+        if not root.exists():
+            logger.warning(f"Datapath folder {root} does not exist. Skipping.")
+            return []
+        def make_info(path: Path):
+            subject, *_ = path.stem.split("_")
+            subject = SubjectArrayRegistry.query_by_subject(subject.lower())
+            return MillerContextInfo(
+                subject=subject,
+                task=task,
+                _arrays=arrays,
+                alias=f"miller_{subject.name.value}-{path.stem}",
+                datapath=path,
+            )
+        infos = map(make_info, root.glob("*.mat"))
+        return filter(lambda x: x is not None, infos)
 # ====
 # Archive
 

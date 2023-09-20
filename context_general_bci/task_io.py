@@ -875,8 +875,10 @@ class NextStepPrediction(RatePrediction):
         self.separator_token = nn.Parameter(torch.randn(cfg.hidden_size)) # Delimits action modality, per GATO. # TODO ablate
 
     def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+        assert False, 'deprecated. Use `next_step_prediction` modelConfig to directly specify'
         spikes = batch[DataKey.spikes]
         target = spikes[..., 0]
+        breakpoint()
         batch.update({
             DataKey.spikes: torch.cat([
                 rearrange(self.start_token, 'h -> () () () h').expand(spikes.size(0), 1, spikes.size(2), -1),
@@ -1003,39 +1005,9 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[str, torch.Tensor]):
-        # if batch[DataKey.task_return].numel() == 0:
-        #     breakpoint()
-        # if batch[DataKey.task_return].max() >= self.max_return - 1:
-        #     print('Return max: ', batch[DataKey.task_return].max(dim=1), batch[MetaKey.session][batch[DataKey.task_return].argmax(dim=1)])
-        #     batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], max=self.max_return - 2) # Really got to understand what's happening here... guard against off by 1 errors.
-        #     breakpoint()
-        # * Don't understand why we're OOB-ing based on dataloader, it's one of these two. We need a data check, but scrape is taking a while.
-        # if (batch[DataKey.task_return] < 0).any():
-        #     breakpoint()
-        # if (batch[DataKey.task_reward] < 0).any():
-        #     breakpoint()
+        # TODO phase these out given re-generation of PittCO
         batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
-        # batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0, max=self.max_return-1) # Really got to understand what's happening here... guard against off by 1 errors.
-        # batch[DataKey.task_return_time] = batch[DataKey.task_return_time].clamp(min=0) # This is necessary
-        # batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(max=2)
         batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(min=0)
-
-        # if batch[DataKey.task_return].min() < 0:
-        #     print('Return min: ', batch[DataKey.task_return].min(dim=1), batch[MetaKey.session][batch[DataKey.task_return].argmin(dim=1)])
-        #     # clamp # TODO bake down, we shouldn't need a posthoc fix like this. Understand the data
-        #     breakpoint()
-        # if batch[DataKey.task_reward].max() >= 3:
-        #     print('Reward max: ', batch[DataKey.task_reward].max(dim=1), batch[MetaKey.session][batch[DataKey.task_reward].argmax(dim=1)])
-        #     batch[DataKey.task_reward] = torch.clamp(batch[DataKey.task_reward], max=2)
-        #     breakpoint()
-        # if batch[DataKey.task_reward].min() < 0: # assumes pad token atm
-        #     print('Reward min: ', batch[DataKey.task_reward].min(dim=1), batch[MetaKey.session][batch[DataKey.task_reward].argmin(dim=1)])
-        #     # This should have already happened, but just in case.
-        #     batch[DataKey.task_reward] = torch.clamp(batch[DataKey.task_reward], min=0)
-        #     breakpoint()
-
-        # print('Reward max: ', batch[DataKey.task_reward].max())
-        # print(f'Time max: {batch[DataKey.task_return_time].max()} min: {batch[DataKey.task_return_time].min()}')
         return_embed = self.return_enc(batch[DataKey.task_return])
         reward_embed = self.reward_enc(batch[DataKey.task_reward])
         times = batch[DataKey.task_return_time]

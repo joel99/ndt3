@@ -1,0 +1,52 @@
+# @package _global_
+# Updated to direct ICL experiments. No pretraining, for simplicity.
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+  - /model/task:
+    - decode_flat_v2
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - midscale
+model:
+  next_step_prediction: True
+  task:
+    tasks:
+    - ModelTask.spike_context
+    - ModelTask.kinematic_infill
+    # - ModelTask.constraints
+    # - ModelTask.return_context
+    task_weights: [0., 1.0,]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    encode_constraints: True
+    use_constraint_cls: False # No need
+  transformer:
+    n_layers: 8
+    max_trial_length: 1500 # Up to 30s
+  use_full_encode: True
+  decoder_context_integration: 'cross_attn' # Literally not even used
+dataset:
+  max_length_ms: 15000
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 15000
+  pitt_co:
+    chop_size_ms: 15000
+
+  tokenize_covariates: True
+  sparse_constraints: True
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
+  datasets:
+  - miller.* # Currently has obs, fbc, helicopter rescue; i.e. this was a repull of NDT2 `pitt_co` criteria, the script for pulling might no longer exist. I also don't think this has ortho.
+  data_keys:
+  - DataKey.spikes
+  - DataKey.bhvr_vel
+train:
+  autoscale_batch_size: true
+  batch_size: 16
+  effective_batch_size: 128

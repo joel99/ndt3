@@ -108,5 +108,6 @@ class Nigel(SubjectInfo):
 class Jango(SubjectInfo):
     name = SubjectName.jango
     _arrays = {
-        'M1': GeometricArrayInfo(array=np.arange(96)),
+        'M1': SortedArrayInfo(_max_channels=np.arange(96)), # Sometimes not included
+        # 'M1': GeometricArrayInfo(array=np.arange(96)),
     }

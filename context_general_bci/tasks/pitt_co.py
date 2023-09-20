@@ -344,7 +344,12 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # * Since this marks end of episode, it also marks when reward is provided
 
                 per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=int)
+                # if (per_trial_pass < 0).any():
+                    # breakpoint()
                 per_trial_pass = torch.clamp(per_trial_pass, min=0, max=1) # Literally, clamp that. What does > 1 reward even mean? (It shows up sometimes...)
+                # In some small # of datasets, num_passed randomly drops (significantly, i.e. not decrement of 1). JY assuming this means some task change to reset counter
+                # e.g. CRS02bLab_245_12
+                # So we clamp at 0; so only that trial gets DQ-ed; rest of counters should resume as normal
                 reward_dense = torch.zeros_like(trial_num, dtype=int) # only 0 or 1 reward
                 reward_dense.scatter_(0, trial_change_step, per_trial_pass)
                 return_dense = compute_return_to_go(reward_dense, horizon=int((cfg.return_horizon_s * 1000) // cfg.bin_size_ms))

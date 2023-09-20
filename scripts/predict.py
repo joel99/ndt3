@@ -28,6 +28,7 @@ query = "rtt-ic4ly53t"
 query = '12l_512-v1cisvey'
 query = 'rtt-gvgaiv76'
 query = 'bhvr_12l_512-ijdvhprq'
+query = 'rtt_c512-fr4nb2hw'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)

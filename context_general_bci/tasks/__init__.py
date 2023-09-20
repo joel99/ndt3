@@ -39,3 +39,4 @@ from .churchland_misc import ChurchlandMiscLoader
 from .pitt_co import PittCOLoader
 from .delay_reach import DelayReachLoader
 from .marino_batista import MarinoBatistaLoader
+from .miller import MillerLoader
