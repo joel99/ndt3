@@ -786,23 +786,38 @@ class BrainBertInterface(pl.LightningModule):
             stream_mask = []
             cue_mask = []
             # breakpoint()
+            predicted_to = 0 # Exclusive, do we have a prediction up till this step?
+            predict_until = 0 # The goalpost hasn't been set yet.
+            # Want the first slice (batch wise) where anyone needs student force; predict up to that step (exclusvie)
+            # breakpoint()
+            need_student_slice = (times >= getattr(self.cfg, 'eval_teacher_timesteps', 0)).any(0)
+            if not need_student_slice.any():
+                predict_until = times.size(1)
+            else:
+                predict_until = need_student_slice.nonzero()[0][0].item() # Predict_until is exclusive.
             while proc_step < times.size(1):
                 # Jump to the next inferrable step
                 if not to_infer_mask[:, proc_step].any():
                     proc_step += 1
                     continue
-                outputs = self.backbone(
-                    pipeline_context[:, :proc_step+1], # We want predictions at the current step - provide input up to current step
-                    autoregressive=True,
-                    padding_mask=None,
-                    causal=self.cfg.causal,
-                    times=times[:, :proc_step+1],
-                    positions=space[:, :proc_step+1],
-                )
+                if proc_step + 1 > predicted_to:
+                    if proc_step + 1 > predict_until: # If we want step 100, and we haven't predicted until 101 exclusive, we need to predict until 101
+                        predict_until = proc_step + 1
+                    outputs = self.backbone( # No, this isn't enough. If I want a prediction at proc_step, I need to predict until proc_step+1
+                        pipeline_context[:, :predict_until], # We want predictions at the current step - provide input up to current step
+                        autoregressive=True,
+                        padding_mask=None,
+                        causal=self.cfg.causal,
+                        times=times[:, :predict_until],
+                        positions=space[:, :predict_until],
+                    )
+                    predicted_to = predict_until
+                    # breakpoint()
+                    # The question hereafter is - is a prediction for proc_step ready?
                 # Sample the output from the kinematic pipeline
                 decode = self.task_pipelines['kinematic_infill'](
                     batch,
-                    outputs[:, -1:],
+                    outputs[:, proc_step: proc_step + 1],
                     times[:, proc_step: proc_step + 1],
                     space[:, proc_step: proc_step + 1],
                     pipeline_padding[:, proc_step: proc_step + 1],
@@ -819,6 +834,7 @@ class BrainBertInterface(pl.LightningModule):
                 # No student replacement - just debugging atm!
                 re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
                 if proc_step < times.size(1) - 1:
+                    # Will the next step need a student?
                     should_student = times[:, proc_step+1] >= getattr(self.cfg, 'eval_teacher_timesteps', 0)
                     cue_mask.append(should_student)
                     # Only student force the tokens that we predicted - hence use `to_infer_mask` of current step
