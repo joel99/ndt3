@@ -520,6 +520,8 @@ class SpikingDataset(Dataset):
                         # +1 since 0 is reserved for padding. Note that since this is a dataloader-level offset... um...
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
+                        if (data_items[DataKey.task_return]).any() < 0:
+                            breakpoint()
                 else:
                     data_items[k] = payload[k]
         out = {
@@ -582,14 +584,14 @@ class SpikingDataset(Dataset):
                         if self.cfg.sparse_rewards:
                             # assumes return time is present, note we are aware of diff with constraints
                             time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i]) & (b[DataKey.task_return_time] >= crop_start[i])
-                            if not time_mask.any():
+                            if not time_mask.any(): # Return is always declared at start of trial, so we should always have at least one timestep below
                                 time_mask = (b[DataKey.task_return_time] < crop_start[i] + time_budget[i])
                                 last_valid = b[DataKey.task_return_time][time_mask].max()
                                 time_mask = (b[DataKey.task_return_time] == last_valid)
                                 b[DataKey.task_return_time] = torch.where(time_mask, crop_start[i], b[DataKey.task_return_time])
                             task_return = task_return[time_mask]
                             task_reward = task_reward[time_mask]
-                            task_return_time = task_return_time[time_mask] - crop_start[i] # assumes time starts at 0
+                            task_return_time = b[DataKey.task_return_time][time_mask] - crop_start[i] # assumes time starts at 0
                         stack_batch[DataKey.task_return_time].append(task_return_time)
                         stack_batch[k].append(task_return)
                         stack_batch[DataKey.task_reward].append(task_reward)

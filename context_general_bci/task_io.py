@@ -1010,9 +1010,16 @@ class ReturnContext(ContextPipeline):
         #     batch[DataKey.task_return] = torch.clamp(batch[DataKey.task_return], max=self.max_return - 2) # Really got to understand what's happening here... guard against off by 1 errors.
         #     breakpoint()
         # * Don't understand why we're OOB-ing based on dataloader, it's one of these two. We need a data check, but scrape is taking a while.
-        batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0, max=self.max_return-1) # Really got to understand what's happening here... guard against off by 1 errors.
-        batch[DataKey.task_return_time] = batch[DataKey.task_return_time].clamp(min=0)
-        batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(min=0, max=2)
+        # if (batch[DataKey.task_return] < 0).any():
+        #     breakpoint()
+        # if (batch[DataKey.task_reward] < 0).any():
+        #     breakpoint()
+        batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
+        # batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0, max=self.max_return-1) # Really got to understand what's happening here... guard against off by 1 errors.
+        # batch[DataKey.task_return_time] = batch[DataKey.task_return_time].clamp(min=0) # This is necessary
+        # batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(max=2)
+        batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(min=0)
+
         # if batch[DataKey.task_return].min() < 0:
         #     print('Return min: ', batch[DataKey.task_return].min(dim=1), batch[MetaKey.session][batch[DataKey.task_return].argmin(dim=1)])
         #     # clamp # TODO bake down, we shouldn't need a posthoc fix like this. Understand the data
@@ -1587,8 +1594,6 @@ def unsymlog(x: torch.Tensor):
 
 
 class QuantizeBehavior(TaskPipeline): # Mixin
-    QUANTIZE_CLASSES = 128 # coarse classes are insufficient, starting relatively fine grained (assuming large pretraining)
-    # TODO bake above into config
 
     def __init__(self,
         backbone_out_size: int,
@@ -1605,7 +1610,7 @@ class QuantizeBehavior(TaskPipeline): # Mixin
         quantize_bound = 1.001 if not self.cfg.decode_symlog else symlog(torch.tensor(1.001))
         self.is_next_step = getattr(cfg, 'next_step_prediction', False)
         self.cov_dims = data_attrs.behavior_dim
-        self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, self.QUANTIZE_CLASSES + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
+        self.register_buffer('zscore_quantize_buckets', torch.linspace(-quantize_bound, quantize_bound, getattr(self.cfg, 'decode_quantize_classes', 128) + 1)) # This will produce values from 1 - self.quantize_classes, as we rule out OOB. Asymmetric as bucketize is asymmetric; on bound value is legal for left, quite safe for expected z-score range. +1 as these are boundaries, not centers
 
     def quantize(self, x: torch.Tensor) -> torch.Tensor:
         x = torch.where(x != self.pad_value, x, 0) # actually redundant if padding is sensibly set to 0, but sometimes it's not
@@ -1645,24 +1650,24 @@ class BehaviorContext(ContextPipeline, QuantizeBehavior):
 
 class ClassificationMixin(QuantizeBehavior):
     def initialize_readin(self, backbone_size): # Assume quantized readin...
-        self.inp = nn.Embedding(self.QUANTIZE_CLASSES + 1, backbone_size, padding_idx=0)
+        self.inp = nn.Embedding(getattr(self.cfg, 'decode_quantize_classes', 128) + 1, backbone_size, padding_idx=0)
         # self.inp_norm = nn.LayerNorm(backbone_size)
 
     def initialize_readout(self, backbone_size):
         # We use these buckets as we minmax clamp in preprocessing
         if self.cfg.decode_tokenize_dims:
             if self.is_next_step:
-                self.out = nn.Linear(backbone_size, self.QUANTIZE_CLASSES)
+                self.out = nn.Linear(backbone_size, getattr(self.cfg, 'decode_quantize_classes', 128))
             else:
                 self.out = nn.Sequential(
-                    nn.Linear(backbone_size, self.QUANTIZE_CLASSES),
+                    nn.Linear(backbone_size, getattr(self.cfg, 'decode_quantize_classes', 128)),
                     Rearrange('b t c -> b c t')
                 )
         else:
             assert not self.is_next_step, "next step not implemented for non-tokenized"
             self.out = nn.Sequential(
-                nn.Linear(backbone_size, self.QUANTIZE_CLASSES * self.cov_dims),
-                Rearrange('b t (c d) -> b c (t d)', c=self.QUANTIZE_CLASSES)
+                nn.Linear(backbone_size, getattr(self.cfg, 'decode_quantize_classes', 128) * self.cov_dims),
+                Rearrange('b t (c d) -> b c (t d)', c=getattr(self.cfg, 'decode_quantize_classes', 128))
             )
 
     def encode_cov(self, covariate: torch.Tensor):
@@ -1695,7 +1700,7 @@ class BehaviorClassification(CovariateReadout, ClassificationMixin):
     ) -> torch.Tensor:
         bhvr = super().get_cov_pred(*args, **kwargs)
         if not self.cfg.decode_tokenize_dims:
-            bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=self.QUANTIZE_CLASSES)
+            bhvr = rearrange(bhvr, 'b t (c d) -> b c t d', c=getattr(self.cfg, 'decode_quantize_classes', 128))
         elif self.served_tokenized_covariates:
             bhvr = rearrange(bhvr, 'b c t -> b c t 1')
         else:

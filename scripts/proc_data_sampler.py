@@ -26,6 +26,7 @@ sample_query = '10s_loco_regression'
 sample_query = 'sparse'
 sample_query = 'h512_l6_return'
 sample_query = 'base'
+sample_query = 'bhvr_12l_512'
 wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
@@ -94,16 +95,9 @@ def process_session(meta_session):
     return session_stats, trial_stats
 global_session = {}
 global_trial = []
-from concurrent.futures import ProcessPoolExecutor
-from multiprocessing import Pool
 unique_sessions = dataset.meta_df[MetaKey.session].unique()
 total_sessions = len(unique_sessions)
 
-# with Pool(processes=32) as pool:
-    # results = list(tqdm(pool.imap(process_session, unique_sessions), total=len(unique_sessions)))
-# with ProcessPoolExecutor(max_workers=8) as executor:
-    # results = list(tqdm(executor.map(process_session, unique_sessions), total=total_sessions))
-# no multiprocessing
 results = []
 for meta_session in tqdm(unique_sessions):
     results.append(process_session(meta_session))
@@ -130,3 +124,107 @@ payload = torch.load('scripts/proc_data_sampler.pt')
 session_stats = payload['session']
 trial_stats = payload['trial']
 print(len(trial_stats))
+
+#%%
+sessions = pd.DataFrame.from_dict(session_stats, orient='index')
+print(sessions.columns)
+
+# * Count overview
+plt.figure(figsize=(8, 5))
+sns.countplot(x='has_brain_control', hue='subject', data=sessions)
+plt.title('Sessions with Brain Control to No Brain Control')
+plt.xlabel('Has Brain Control')
+plt.ylabel('Count')
+plt.show()
+# * Heavy skew to CRS02bLab.
+#%%
+# * Session lengths, roughly
+fig, axs = plt.subplots(2, 1, figsize=(16, 10))
+
+# Plot the histogram for 'length'
+sns.histplot(sessions, x='length', bins=100, label='pseudotrials', color='blue', kde=True, alpha=0.5, ax=axs[0])
+axs[0].set_title('Histogram of Pseudotrials Length')
+axs[0].set_xlabel('Length (Pseudotrials)')
+axs[0].set_ylabel('Frequency')
+axs[0].legend()
+
+# Plot the histogram for 'session_length'
+sns.histplot(sessions, x='session_length', bins=100, label='timesteps (20ms)', color='red', kde=True, alpha=0.5, ax=axs[1])
+axs[1].set_title('Histogram of Session Lengths')
+axs[1].set_xlabel('Length (Timebins 20ms)')
+axs[1].set_ylabel('Frequency')
+axs[1].legend()
+
+plt.tight_layout()
+plt.show()
+
+
+#%%
+plt.figure(figsize=(12, 5))
+ax = plt.gca()
+ax = prep_plt(ax)
+sns.ecdfplot(sessions, x='session_length', label='timesteps (20ms)', color='blue')
+plt.title('CDF of Session Lengths')
+plt.xlabel('Length')
+plt.ylabel('Cumulative Probability')
+plt.legend()
+plt.show()
+
+#%%
+melted_sessions = pd.melt(sessions, value_vars=['session_length', 'length'], var_name='Type', value_name='Length')
+
+# Plot the histogram
+plt.figure(figsize=(12, 5))
+sns.histplot(melted_sessions, x='Length', hue='Type', bins=1000, kde=True, alpha=0.5)
+plt.title('Histogram of Session and Trial Lengths')
+plt.xlabel('Length')
+plt.ylabel('Frequency')
+
+#%%
+# * Dimensions
+print(sessions.columns)
+print(sessions['dimensions'])
+# Net occurrences
+# Flatten the list of dimensions
+flattened_dimensions = [dim for sublist in sessions['dimensions'].dropna() for dim in sublist]
+
+# Create a DataFrame from the flattened list
+dimensions_df = pd.DataFrame(flattened_dimensions, columns=['Dimension'])
+
+# Plot the barplot for dimension occurrences
+plt.figure(figsize=(10, 5))
+sns.countplot(data=dimensions_df, x='Dimension', order=dimensions_df['Dimension'].value_counts().index)
+plt.title('Occurrences of Each Dimension')
+plt.xlabel('Dimension')
+plt.ylabel('Frequency')
+plt.show()
+
+#%%
+# Dimensionality of tasks
+# Compute the number of dimensions for each row
+sessions['num_dimensions'] = sessions['dimensions'].apply(lambda x: len(x) if x is not None else 0)
+
+# Plot the histogram
+plt.figure(figsize=(10, 5))
+sns.histplot(sessions, x='num_dimensions', bins=np.arange(sessions['num_dimensions'].min(), sessions['num_dimensions'].max() + 1) - 0.5, kde=False)
+plt.title('Histogram of Number of Dimensions per Row')
+plt.xlabel('Number of Dimensions')
+plt.ylabel('Frequency')
+plt.show()
+
+#%%
+trials = pd.DataFrame.from_dict(trial_stats)
+print(trials.columns)
+# all lengths are tensors, cast to item
+trials['length'] = trials['length'].apply(lambda x: x.item())
+ax = sns.histplot(trials, x='length', bins=100, label='pseudotrials', color='blue', kde=True, alpha=0.5)
+ax.set_yscale("log")
+ax.set_ylim(1, 5e6)
+# print(trials['length'])
+
+#%%
+# Plot max return
+print(trials.max_return)
+print(trials.max_return.max()) # Max return set to 13. So it's not a max return issue - something about min reward or something like that... then.
+# A reward of 13 in 15s - totally plausible, in observation. I literally achieve it in my pursuit tasks.
+ax = sns.histplot(trials, x='max_return', bins=100, label='pseudotrials', color='blue', kde=True, alpha=0.5)
