@@ -108,29 +108,29 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)
         # Ok, some are hdf5, some are mat (all masquerade with .mat endings)
-        def get_global_args(hand_vels):
+        def get_global_args(hand_vels: List[np.ndarray]): # each T x 3
             global_args = {}
             if cfg.tokenize_covariates:
                 global_args[DataKey.covariate_labels] = ['x', 'y', 'z']
             if cfg.churchland_misc.minmax:
                 # Aggregate velocities and get min/max. No... vel needs to be per trial
-                global_vel = np.concatenate(hand_vels, 1)
+                global_vel = np.concatenate(hand_vels, 0)
                 # warn about nans
                 if np.isnan(global_vel).any():
                     logging.warning(f'{global_vel.isnan().sum()} nan values found in velocity, masking out for global calculation')
                     global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
                 global_vel = torch.as_tensor(global_vel, dtype=torch.float)
-                global_args['cov_mean'] = global_vel.mean(1)
-                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=1)
-                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=1)
+                global_args['cov_mean'] = global_vel.mean(0)
+                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0)
+                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
             return global_args
 
         def preproc_vel(trial_vel, global_args):
-            # trial_vel: (3, time)
+            # trial_vel: (time, 3)
             # Mirror spike downsample logic - if uneven, crop beginning
-            trial_vel = trial_vel[:, trial_vel.shape[1] % cfg.bin_size_ms:]
-            trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=1)
-            trial_vel = torch.from_numpy(trial_vel.T).float()
+            trial_vel = trial_vel[trial_vel.shape[0] % cfg.bin_size_ms:, ]
+            trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=0)
+            trial_vel = torch.from_numpy(trial_vel).float()
             if cfg.churchland_misc.minmax:
                 trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
                 trial_vel = torch.clamp(trial_vel, -1, 1)
@@ -140,11 +140,10 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                 data = f['R']
                 num_trials = data['spikeRaster'].shape[0]
                 assert data['spikeRaster2'].shape[0] == num_trials, 'mismatched array recordings'
-                breakpoint()
                 # Run through all trials to collect global normalization stats (annoyingly...)
                 hand_vel = []
                 for i in range(num_trials):
-                    hand_vel.append(np.gradient(data[data['handPos'][i, 0]], axis=1))
+                    hand_vel.append(np.gradient(data[data['handPos'][i, 0]], axis=0)) # comes out T x 3 raw
                 global_args = get_global_args(hand_vel)
                 for i in range(num_trials):
                     def make_arr(ref):
@@ -173,7 +172,8 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                     }
                     save_raster(spike_raster, i, other_args)
                 return pd.DataFrame(meta_payload)
-        except:
+        except Exception as e:
+            print(e)
             # import pdb;pdb.set_trace()
             data = loadmat(datapath, simplify_cells=True)
             data = pd.DataFrame(data['R'])
@@ -186,14 +186,14 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             time_start = time_start.fillna(0).astype(int)
 
 
-            hand_vel = data.apply(lambda x: np.gradient(x['handPos'], axis=1), axis=1)
+            hand_vel = data.apply(lambda x: np.gradient(x['handPos'], axis=1).T, axis=1)
             global_args = get_global_args(hand_vel.values)
 
             for i, trial in data.iterrows():
                 start = time_start[i]
                 spike_raster = np.concatenate([array_0[i].toarray(), array_1[i].toarray()], axis=0).T # (time, c)
                 spike_raster = torch.from_numpy(spike_raster)[start:]
-                trial_vel = preproc_vel(hand_vel[i][:, start:], global_args)
+                trial_vel = preproc_vel(hand_vel[i][start:], global_args)
                 other_args = {
                     DataKey.bhvr_vel: trial_vel,
                     **global_args
