@@ -165,7 +165,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                     if spike_raster.size(1) > 192:
                         print(spike_raster.size(), 'something wrong with raw data')
                         import pdb;pdb.set_trace()
-                    trial_vel = preproc_vel(hand_vel[i][:, time_start:], global_args)
+                    trial_vel = preproc_vel(hand_vel[i][time_start:], global_args)
                     other_args = {
                         DataKey.bhvr_vel: trial_vel,
                         **global_args
@@ -173,7 +173,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                     save_raster(spike_raster, i, other_args)
                 return pd.DataFrame(meta_payload)
         except Exception as e:
-            print(e)
+            # print(e)
             # import pdb;pdb.set_trace()
             data = loadmat(datapath, simplify_cells=True)
             data = pd.DataFrame(data['R'])
@@ -203,8 +203,15 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             data = data[data.hasSpikes == 1]
             # Mark provided a filtering script, but we won't filter as thoroughly as they do for analysis, just needing data validity
             START_KEY = 'commandFlyAppears' # presumably the cue
-            END_KEY = 'trialEndsTime'
-            breakpoint()
+            END_KEY = 'trialEndsTime' # in units of ms, I think - and the bhvr has exactly this many timesteps
+            # breakpoint()
+            # do one iteration to find the global args
+            hand_vel = []
+            for idx, trial in data.iterrows():
+                hand_vel.append(np.stack([
+                    np.gradient(trial['HAND'][dim], axis=0) for dim in ['X', 'Y', 'Z']
+                ], 1))
+            global_args = get_global_args(hand_vel)
             for idx, trial in data.iterrows():
                 start, end = trial[START_KEY], trial[END_KEY]
                 trial_spikes = torch.zeros(end - start, 192, dtype=torch.uint8)
@@ -217,5 +224,12 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                     unit_times = unit_times[(unit_times > start) & (unit_times < end - 1)] - start # end - 1 for buffer
                     ms_spike_times, ms_spike_cnt = np.unique(np.floor(unit_times), return_counts=True)
                     trial_spikes[ms_spike_times, c] = torch.tensor(ms_spike_cnt, dtype=torch.uint8)
-                save_raster(trial_spikes, trial['trialID'])
+                # * apparently iter order is not preserved; so we reextract the hand_vel instead of pulling from previous array
+                trial_vel = preproc_vel(np.stack([
+                    np.gradient(trial['HAND'][dim], axis=0) for dim in ['X', 'Y', 'Z']
+                ], 1)[start:end], global_args)
+                save_raster(trial_spikes, trial['trialID'], {
+                    DataKey.bhvr_vel: trial_vel,
+                    **global_args
+                })
         return pd.DataFrame(meta_payload)
