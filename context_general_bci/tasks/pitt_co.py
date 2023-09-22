@@ -22,6 +22,10 @@ from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, 
 
 
 CLAMP_MAX = 15
+NORMATIVE_MAX_FORCE = 25 # Our prior on the full Pitt dataset. Some FBC data reports exponentially large force
+NORMATIVE_MIN_FORCE = 0 # according to mujoco system; some decoders report negative force, which is nonsensical
+# which is not useful to rescale by.
+# https://www.notion.so/joelye/Broad-statistic-check-facb9b6b68a0408090921e4f84f70a6e
 
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.
@@ -292,7 +296,11 @@ class PittCOLoader(ExperimentalTaskLoader):
             if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
                 if not (payload['force'][~payload['force'].isnan()] != 0).sum() > 10: # Some small number of non-zero, not interesting enough.
                     print('dud force')
-                covariate_force = PittCOLoader.smooth(payload['force']) # Gary doesn't compute velocity, just absolute. We follow suit.
+                covariate_force = payload['force']
+                # clamp
+                covariate_force[covariate_force > NORMATIVE_MAX_FORCE] = NORMATIVE_MAX_FORCE
+                covariate_force[covariate_force < NORMATIVE_MIN_FORCE] = NORMATIVE_MIN_FORCE
+                covariate_force = PittCOLoader.smooth(covariate_force) # Gary doesn't compute velocity, just absolute. We follow suit.
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
                 # These are mostly Gary's data - skip the initial 1s, which has the hand adjust but the participant isn't really paying attn

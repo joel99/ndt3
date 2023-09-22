@@ -216,7 +216,6 @@ plt.show()
 # Pull session with 7 dimensions
 print(sessions[sessions['num_dimensions'] == 7][['subject', 'session', 'set', 'has_brain_control']])
 
-#%%
 # View cov min and max
 # flattened_cov_min = [torch.cat(sublist) for sublist in sessions['cov_min'].dropna()]
 #%%
@@ -225,14 +224,6 @@ print(sessions['cov_min'][3].shape)
 print(sessions['dimensions'][0])
 #%%
 sessions['dim_subset_mask'] = sessions['dimensions'].apply(lambda x: np.array([DEFAULT_KIN_LABELS.index(i) for i in x]))
-# print([len(i) for i in dim_subset_mask.tolist()])
-# print([len(i) for i in sessions['cov_min'].tolist()])
-# assert all([len(i) <= len(j) for i, j in zip(dim_subset_mask.tolist(), sessions['cov_min'].tolist())])
-# for i, j in zip(dim_subset_mask.tolist(), cov_min_ext.tolist()):
-#     print(j.shape)
-#     print(i)
-#     print(j[i])
-#%%
 flattened_cov_min = torch.cat(sessions.apply(lambda x: torch.cat([x.cov_min, torch.zeros(1)])[x.dim_subset_mask], axis=1).tolist())
 flattened_cov_max = torch.cat(sessions.apply(lambda x: torch.cat([x.cov_max, torch.zeros(1)])[x.dim_subset_mask], axis=1).tolist())
 flattened_cov_mean = torch.cat(sessions.apply(lambda x: torch.cat([x.cov_mean, torch.zeros(1)])[x.dim_subset_mask], axis=1).tolist())
@@ -260,6 +251,16 @@ g.map(sns.scatterplot, "min", "max", s=10, alpha=0.5)
 g.set_axis_labels("Min", "Max")
 g.set_titles(col_template="{col_name}")
 g.fig.suptitle('Min Max of Covariates across sets')
+
+#%%
+# Sessions with max force
+sessions['max_force'] = sessions['cov_max'].apply(lambda x: x[-1].item())
+sessions['min_force'] = sessions['cov_min'].apply(lambda x: x[-1].item())
+# print(sessions['max_force'].describe())
+# show top 5 sessions with max force
+print(sessions.sort_values(by='max_force', ascending=False).head(5)[['subject', 'session', 'set', 'max_force', 'has_brain_control']])
+print(sessions.sort_values(by='min_force', ascending=True).head(5)[['subject', 'session', 'set', 'min_force']])
+
 
 #%%
 trials = pd.DataFrame.from_dict(trial_stats)
