@@ -169,7 +169,6 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
                 DataKey.bhvr_vel: preproc_vel(trial_vel, global_args),
                 **global_args,
             }
-            # breakpoint() # TODO are there any covariates to mine?
             single_path = cache_root / f'{t}.pth'
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)

@@ -23,35 +23,35 @@ sample_query = 'base' # just pull the latest run to ensure we're keeping its pre
 sample_query = '10s_loco_regression'
 
 # Return run
-sample_query = 'sparse'
+# sample_query = 'sparse'
 sample_query = 'bhvr_12l_512_t_2048-qu2ssi6d'
+sample_query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
 
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
 
 # print(wandb_run)
-_, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
+_, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
 run_cfg = cfg.dataset
-# run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1776_13.*']
-# run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1965.*']
-# run_cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1789_2.*']
-run_cfg.datasets = [
-    'pitt_return_pitt_co_CRS07Lab_97_13',
-    'pitt_return_pitt_co_CRS07Lab_97_15',
-    # 'pitt_return_pitt_co_CRS07Lab_97_17',
-] # 13, 15, 17 are all FBC
 
-# Helicopter spot check
-# run_cfg.datasets = [
+run_cfg.datasets = [
+    # FBC Helicopter
+    # 'pitt_return_pitt_co_CRS07Lab_97_13',
+    # 'pitt_return_pitt_co_CRS07Lab_97_15',
+    # 'pitt_return_pitt_co_CRS07Lab_97_17',
+
+    # Helicopter session
     # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
-# ]
 
-run_cfg.datasets = [
+    # Force
+    'pitt_broad_pitt_co_CRS07Home_108_1',
+    # 'pitt_return_pitt_co_CRS07Home_108_1',
+
     # Force
     # 'pitt_broad_pitt_co_CRS07Home_108_1',
     # 'pitt_broad_pitt_co_CRS07Home_108_3',
@@ -79,7 +79,7 @@ run_cfg.datasets = [
 #     'pitt_broad_pitt_co_CRS07Home_108',
 
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
-    'pitt_broad_pitt_co_CRS02bLab_245_12.*'
+    # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
 ]
 
 dataset = SpikingDataset(run_cfg)
