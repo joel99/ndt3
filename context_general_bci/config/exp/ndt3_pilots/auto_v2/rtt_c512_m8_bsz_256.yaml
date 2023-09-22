@@ -1,0 +1,23 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  next_step_prediction: True
+  task:
+    tasks: [ModelTask.spike_infill, ModelTask.kinematic_infill, ModelTask.constraints, ModelTask.return_infill]
+    task_weights: [1., 1., 0., 1.]
+    decode_quantize_classes: 512
+  hidden_size: 512
+  token_maskout: 0.8
+dataset:
+  datasets:
+  - odoherty_rtt-Indy.*
+  - odoherty_rtt-Loco.*
+  max_tokens: 8192 # from 8192, significantly crops time, just for debugging (bring in flash to aid)
+  sparse_rewards: True
+train:
+  # batch_size: 8 # 40G single GPU, but distributed overhead, so reduce to 6...
+  batch_size: 32
+  autoscale_batch_size: False
+  effective_batch_size: 256
+  patience: 50

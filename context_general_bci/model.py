@@ -62,7 +62,10 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
 }
 MAX_KINEMATIC_DIMS = 10
 DEBUG_LIMIT_EVAL = 0
-DEBUG_LIMIT_EVAL = 500 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
+DEBUG_LIMIT_EVAL = 1000 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
+# DEBUG_LIMIT_EVAL = (3 + 9) * 50 * 2 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
+DEBUG_LIMIT_EVAL = (3 + 2) * 50 * 10 # RTT 10s
+# DEBUG_LIMIT_EVAL = 3750 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
 
 class BrainBertInterface(pl.LightningModule):
     r"""
@@ -607,9 +610,15 @@ class BrainBertInterface(pl.LightningModule):
             # As _input_, we provide the previous step (teacher-forcing).
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
-            if self.training and getattr(self.cfg, 'token_maskout', 0.0) > 0:
-                mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
-                pipeline_context[:, mask] = 0
+            if self.training:
+                if getattr(self.cfg, 'token_maskout', 0.0) > 0:
+                    mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
+                    pipeline_context[:, mask] = 0
+                if getattr(self.cfg, 'kinematic_token_maskout', 0.0):
+                    is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
+                    is_kinematic_input[:, 0] = False
+                    mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.kinematic_token_maskout
+                    pipeline_context[is_kinematic_input & mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
         return (
@@ -995,8 +1004,8 @@ class BrainBertInterface(pl.LightningModule):
                 self.log(f'{prefix}_{m.value}', metrics[m], **kwargs)
 
     def training_step(self, batch, batch_idx):
-        # if batch_idx > 200:
-            # return None # Override, debug
+        # if batch_idx > 2:
+        #     return None # Override, debug
         if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
             self.token_proc_approx += batch[DataKey.spikes].size(0) * batch[DataKey.spikes].size(1)
             self.token_seen_approx += (batch[LENGTH_KEY].sum() * (1 - self.cfg.task.mask_ratio)).item()

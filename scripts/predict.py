@@ -1,7 +1,7 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -27,8 +27,16 @@ query = "rtt-ic4ly53t"
 # query = 'bhvr_12l_512_t_2048-qu2ssi6d'
 query = '12l_512-v1cisvey'
 query = 'rtt-gvgaiv76'
-query = 'bhvr_12l_512-ijdvhprq'
-query = 'rtt_c512-fr4nb2hw'
+# query = 'bhvr_12l_512-ijdvhprq'
+# query = 'base-2dvz5mgm'
+# query = 'rtt_c512-fr4nb2hw'
+# query = 'rtt_c512_m5-83uzsg6w'
+# query = 'base-1hw7fz9e' # Miller
+query = 'rtt_c512_bsz_256-ji1wdvmg'
+# query = 'rtt_c512_m8_bsz_256-c7ldp7xm'
+# query = 'rtt_c512_km8_bsz_256-2vx7pj8e'
+query = 'monkey_c512_km8_bsz_256-x5y1sfpa'
+query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -44,17 +52,20 @@ target = [
     # 'odoherty_rtt-Indy-20161005_06',
     # 'odoherty_rtt-Indy-20161026_03',
     # 'odoherty_rtt-Indy-20170131_02',
+    # 'odoherty_rtt-Indy-20160627_01',
+    'odoherty_rtt-Loco-20170210_03',
+    'odoherty_rtt-Loco-20170213_02',
+    # 'odoherty_rtt-Loco-20170214_02',
+    # 'odoherty_rtt-Loco-20170215_02',
+    # 'odoherty_rtt-Loco-20170216_02',
+    # 'odoherty_rtt-Loco-20170217_02'
     # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
     # 'pitt_broad_pitt_co_CRS02bLab_1761',
     # 'pitt_broad_pitt_co_CRS07Home_32',
     # 'pitt_broad_pitt_co_CRS07Home_88',
+    # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+    # 'miller_Jango-Jango_20150730_001',
 ]
-target = [
-    'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
-]
-
-target = ['odoherty_rtt-Loco-20170213_02']
-
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 cfg.dataset.datasets = target
@@ -73,11 +84,17 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
-model.cfg.eval_teacher_timesteps = 25 # 4s. We take remaining 11s.
-model.cfg.eval_teacher_timesteps = 50 # 4s. We take remaining 11s.
+model.cfg.eval_teacher_timesteps = 25
+# model.cfg.eval_teacher_timesteps = 100
+model.cfg.eval_teacher_timesteps = 8 * 50 # 8s RTT
+# model.cfg.eval_teacher_timesteps = 400
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
-def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
+def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=64, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -98,7 +115,9 @@ is_student = heldin_outputs[Output.behavior_query_mask]
 # Compute R2
 from sklearn.metrics import r2_score
 r2 = r2_score(target, prediction)
+r2_student = r2_score(target[is_student], prediction[is_student])
 print(f'R2: {r2:.4f}')
+print(f'R2 Student: {r2_student:.4f}')
 
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
@@ -107,11 +126,10 @@ colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_stud
 ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
-ax.set_title(f'{query} {str(target)[:20]} Velocity R2: {r2:.2f}')
+ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
 #%%
-fig, axs = plt.subplots(2, 1, figsize=(10, 10), sharex=True)
-print(target.shape)
-
+from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, EMG_CANON_LABELS
+MILLER_LABELS = [*REACH_DEFAULT_KIN_LABELS, *EMG_CANON_LABELS]
 def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None):
     # Prepare the plot
     ax = prep_plt(ax)
@@ -136,17 +154,21 @@ def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None)
         color='red'
     )
 
-    ax.set_xlim(0, 1000)
+    # ax.set_xlim(0, 1000)
+    ax.set_xlim(0, 5000)
     ax.legend()
-    ax.set_title(f'{label} values')
+    ax.set_title(f'Dim {MILLER_LABELS[label]}')
 
-# For X values
-plot_target_pred_overlay(target[::2], prediction[::2], is_student[::2], label='x', ax=axs[0])
+NUM_DIMS = 2
+# NUM_DIMS = 9
+fig, axs = plt.subplots(NUM_DIMS, 1, figsize=(20, 5 * NUM_DIMS), sharex=True)
+print(target.shape)
 
-# For Y values
-plot_target_pred_overlay(target[1::2], prediction[1::2], is_student[1::2], label='y', ax=axs[1])
+for i in range(NUM_DIMS):
+    plot_target_pred_overlay(target[i::NUM_DIMS], prediction[i::NUM_DIMS], is_student[i::NUM_DIMS], label=i, ax=axs[i])
 
 plt.tight_layout()
+fig.suptitle(f'{query}: {str(target)[:20]} Velocity R2 Stud: {r2_student:.2f}')
 
 #%%
 # ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims

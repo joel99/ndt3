@@ -266,6 +266,7 @@ class ModelConfig:
     # Behavioral data is nearly Markovian, nearly constant; we want to learn longer order dependencies, so upweight that learning
     # By occassionally blanking timesteps
     token_maskout: float = 0. # If true, blank the previous timestep in the backbone stream
+    kinematic_token_maskout: float = 0. # Blank kinematic inputs specifically.
 
     max_spatial_position: int = 32 # For next step prediction
 
@@ -670,6 +671,7 @@ class RootConfig:
     exp: Any = MISSING # delta config, provide via yaml and on CLI as `+exp=<test>.yaml`
     slurm_id: int = 0 # for experiment tracking...
     nodes: int = 1
+    debug: bool = False # for debugging, don't log to wandb, don't save ckpts, etc
 
 BatchKey = str | DataKey | MetaKey
 

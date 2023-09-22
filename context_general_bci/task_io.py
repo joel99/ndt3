@@ -1463,7 +1463,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                         loss_mask[..., self.covariate_blacklist_dims] = False
                 if not loss_mask.any():
                     logger.warning('No dims survive loss mask, kinematic loss is zero')
-                    breakpoint()
+                    # breakpoint()
                     loss = torch.zeros_like(loss).mean()
                 else:
                     loss = loss[loss_mask].mean()
@@ -1612,7 +1612,7 @@ class BehaviorContext(ContextPipeline, QuantizeBehavior):
             batch[self.cfg.behavior_target], batch,
             length_key=f'{self.handle}_{LENGTH_KEY}',
         )
-        breakpoint() # TODO check dims, we may not need the mean call
+        # breakpoint() # TODO check dims, we may not need the mean call
         return (
             self.quantize(batch[self.cfg.behavior_target]).mean(-2), # B T 1 out
             batch[DataKey.covariate_time],

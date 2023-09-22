@@ -68,7 +68,9 @@ r"""
 reset_early_stop = True # todo move into config
 
 @rank_zero_only
-def init_wandb(cfg, wandb_logger):
+def init_wandb(cfg: RootConfig, wandb_logger):
+    if cfg.debug:
+        return
     # if wandb.run == None:
     #     wandb.init(project=cfg.wandb_project) # for some reason wandb changed and now I need a declaration
     _ = wandb_logger.experiment # force experiment recognition so that id is initialized
@@ -324,7 +326,7 @@ def run_exp(cfg : RootConfig) -> None:
         max_steps = -1
         epochs = cfg.train.epochs
 
-    wandb_logger = WandbLogger(
+    wandb_logger = None if cfg.debug else WandbLogger(
         project=cfg.wandb_project,
         save_dir=cfg.default_root_dir,
     )
@@ -366,9 +368,10 @@ def run_exp(cfg : RootConfig) -> None:
 
     # === Train ===
     num_workers = min(len(os.sched_getaffinity(0)), 16) # If this is set too high, the dataloader may crash.
-    # num_workers = 0 # for testing
-    if num_workers == 0:
-        logger.warning("Num workers is 0, DEBUGGING.")
+    if cfg.debug:
+        logger.warning("\n \n \n Num workers is 0, DEBUGGING.")
+        num_workers = 0 # for testing
+        logger.warning("Num workers is 0, DEBUGGING. \n \n \n")
     logger.info("Preparing to fit...")
 
     val_datasets = [val]
