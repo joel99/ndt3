@@ -1,6 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-
-inherit_exp: arch/robust

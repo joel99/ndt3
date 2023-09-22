@@ -1,3 +1,0 @@
-This experiment was motivated by observations that even when test-sessions were restricted to ~300 trials, we still seemed to saturate. More specifically, we needed to contextualize the quantitative changes we were seeing -- so we set up a comparison with scaling in-session, which we very much know to exist.
-
-Hidden size is restricted in supervised learning bc in JY's experience supervised models are more sensitive to disastrous overfitting when hidden size is large (256 is large in this setting)

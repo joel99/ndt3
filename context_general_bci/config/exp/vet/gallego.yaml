@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  datasets:
+  - Chewie_CO.*
+  - Mihili_CO.*
+  max_channels: 224 # 211
+  max_arrays: 2
+train:
+  batch_size: 32

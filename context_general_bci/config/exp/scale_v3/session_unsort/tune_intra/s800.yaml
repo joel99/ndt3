@@ -1,9 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-
-dataset:
-  scale_limit_per_eval_session: 770
-inherit_exp: arch/robust_unsort
-inherit_tag: f32

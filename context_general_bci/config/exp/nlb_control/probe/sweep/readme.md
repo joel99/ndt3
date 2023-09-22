@@ -1,1 +1,0 @@
-throw head against wall, try several settings

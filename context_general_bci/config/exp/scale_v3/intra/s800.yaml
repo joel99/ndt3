@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-dataset:
-  # scale_limit_per_eval_session: 800
-  scale_limit_per_session: 770 # afford 20160407_02 and 20170131_02

@@ -1,7 +1,0 @@
-# @package _global_
-
-defaults:
-  - _default
-inherit_exp: arch/robust_unsort
-inherit_tag: f32
-notes: 'default strategy is mean pool 2 layer decoder'

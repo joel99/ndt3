@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  datasets:
+  - churchland_misc_.*
+  max_channels: 96
+  max_arrays: 2

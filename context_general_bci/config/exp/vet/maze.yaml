@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - _default
+dataset:
+  max_channels: 160
+  max_arrays: 2
+  datasets:
+  - churchland_maze_jenkins.*
+  # - 'churchland_maze_jenkins-0'
