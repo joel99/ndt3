@@ -14,7 +14,7 @@ defaults:
     - midscale
 model:
   next_step_prediction: True
-
+  token_maskout: 0.8
   task:
     tasks:
     - ModelTask.spike_context

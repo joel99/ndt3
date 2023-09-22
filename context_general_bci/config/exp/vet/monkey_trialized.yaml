@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - _default
+  - /train:
+    - largescale
+dataset:
+  datasets:
+  # All cropped trialized data, but ~100K trials.
+  - churchland.*
+  - gallego.*
+  - dyer_co.*
+  max_channels: 224 # 211
+  max_arrays: 2
+train:
+  batch_size: 128 # 40G

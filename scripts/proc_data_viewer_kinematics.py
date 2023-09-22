@@ -49,7 +49,8 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
     # Force
-    'pitt_broad_pitt_co_CRS07Home_108_1',
+    # 'pitt_test_pitt_co_CRS07Home_108_1',
+    'pitt_test_pitt_co_CRS07Lab_95_6',
     # 'pitt_return_pitt_co_CRS07Home_108_1',
 
     # Force
@@ -254,6 +255,7 @@ passive_assist = payload.get('passive_assist', None)
 
 print(brain_control.shape)
 print(covariates_smth.shape)
+print(payload['position'].shape)
 # constraints = payload[DataKey.constraint]
 # constraint_time = payload[DataKey.constraint_time]
 # print(constraints)
@@ -265,23 +267,29 @@ ax = prep_plt()
 raw_dims = [0]
 raw_dims = [1, 2]
 raw_dims = [1, 2, 6]
+# raw_dims = [1, 2, 6]
 # raw_dims = [6]
+raw_dims = [6]
 # xlim = [0, 1000]
-xlim = [500, 600]
+# xlim = [500, 600]
 # xlim = [0, 200]
+xlim = []
 palette = sns.color_palette(n_colors=len(raw_dims) + 2)
 for i, r in enumerate(raw_dims):
-    ax.plot(covariates_smth[:, r], label=f'{DEFAULT_KIN_LABELS[r]} smth', color=palette[i])
-    ax.plot(covariates_raw[:, r], label=f'{DEFAULT_KIN_LABELS[r]} raw', color=palette[i], linestyle='--')
+    # ax.plot(covariates_smth[:, r], label=f'{DEFAULT_KIN_LABELS[r]} smth', color=palette[i])
+    # ax.plot(covariates_raw[:, r], label=f'{DEFAULT_KIN_LABELS[r]} raw', color=palette[i], linestyle='--')
+    ax.plot(payload['position'][:, r], label=f'{DEFAULT_KIN_LABELS[r]} raw', color=palette[i], linestyle='--')
 
+# ax.plot(payload['force'], label='Force')
 # ax.plot(brain_control[:, 0] * 0.01, label='fbc-lock')
-ax.plot(active_assist[:, 0] * 0.01, label='active p', color=palette[-2])
+# ax.plot(active_assist[:, 0] * 0.01, label='active p', color=palette[-2])
 # ax.plot(active_assist[:, 1] * 0.02, label='active r')
 ax.plot(active_assist[:, 2] * 0.03, label='active g', color=palette[-1])
 # ax.plot(passive_assist[:, 0] * 0.01, label='passiv')
 
 ax.legend()
-ax.set_xlim(xlim)
+if xlim:
+    ax.set_xlim(xlim)
 # *20 to convert xticks to ms
 xticks = ax.get_xticks()
 ax.set_xticks(xticks)

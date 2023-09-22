@@ -12,7 +12,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 
 from context_general_bci.contexts import context_registry
-from context_general_bci.config import DatasetConfig, DataKey, MetaKey
+from context_general_bci.config import DatasetConfig, DataKey, MetaKey, DEFAULT_KIN_LABELS
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.tasks import ExperimentalTask
 
@@ -32,6 +32,7 @@ wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
 run_cfg = cfg.dataset
 run_cfg.datasets = ['pitt_broad.*']
+run_cfg.datasets = ['pitt_test_pitt_co_CRS07Home_108_1'] # dummy accelerate load
 
 # run_cfg.data_keys = [*run_cfg.data_keys, 'cov_min', 'cov_max', 'cov_mean'] # Load these directly, for some reason they're cast
 dataset = SpikingDataset(run_cfg)
@@ -125,7 +126,6 @@ session_stats = payload['session']
 trial_stats = payload['trial']
 print(len(trial_stats))
 
-#%%
 sessions = pd.DataFrame.from_dict(session_stats, orient='index')
 print(sessions.columns)
 
@@ -143,14 +143,14 @@ fig, axs = plt.subplots(2, 1, figsize=(16, 10))
 
 # Plot the histogram for 'length'
 sns.histplot(sessions, x='length', bins=100, label='pseudotrials', color='blue', kde=True, alpha=0.5, ax=axs[0])
-axs[0].set_title('Histogram of Pseudotrials Length')
+axs[0].set_title('Pseudotrials count per session/set')
 axs[0].set_xlabel('Length (Pseudotrials)')
 axs[0].set_ylabel('Frequency')
 axs[0].legend()
 
 # Plot the histogram for 'session_length'
 sns.histplot(sessions, x='session_length', bins=100, label='timesteps (20ms)', color='red', kde=True, alpha=0.5, ax=axs[1])
-axs[1].set_title('Histogram of Session Lengths')
+axs[1].set_title('Total bins per session/set')
 axs[1].set_xlabel('Length (Timebins 20ms)')
 axs[1].set_ylabel('Frequency')
 axs[1].legend()
@@ -196,7 +196,7 @@ plt.figure(figsize=(10, 5))
 sns.countplot(data=dimensions_df, x='Dimension', order=dimensions_df['Dimension'].value_counts().index)
 plt.title('Occurrences of Each Dimension')
 plt.xlabel('Dimension')
-plt.ylabel('Frequency')
+plt.ylabel('Set Count')
 plt.show()
 
 #%%
@@ -211,6 +211,55 @@ plt.title('Histogram of Number of Dimensions per Row')
 plt.xlabel('Number of Dimensions')
 plt.ylabel('Frequency')
 plt.show()
+
+#%%
+# Pull session with 7 dimensions
+print(sessions[sessions['num_dimensions'] == 7][['subject', 'session', 'set', 'has_brain_control']])
+
+#%%
+# View cov min and max
+# flattened_cov_min = [torch.cat(sublist) for sublist in sessions['cov_min'].dropna()]
+#%%
+print(sessions['cov_min'][0].shape)
+print(sessions['cov_min'][3].shape)
+print(sessions['dimensions'][0])
+#%%
+sessions['dim_subset_mask'] = sessions['dimensions'].apply(lambda x: np.array([DEFAULT_KIN_LABELS.index(i) for i in x]))
+# print([len(i) for i in dim_subset_mask.tolist()])
+# print([len(i) for i in sessions['cov_min'].tolist()])
+# assert all([len(i) <= len(j) for i, j in zip(dim_subset_mask.tolist(), sessions['cov_min'].tolist())])
+# for i, j in zip(dim_subset_mask.tolist(), cov_min_ext.tolist()):
+#     print(j.shape)
+#     print(i)
+#     print(j[i])
+#%%
+flattened_cov_min = torch.cat(sessions.apply(lambda x: torch.cat([x.cov_min, torch.zeros(1)])[x.dim_subset_mask], axis=1).tolist())
+flattened_cov_max = torch.cat(sessions.apply(lambda x: torch.cat([x.cov_max, torch.zeros(1)])[x.dim_subset_mask], axis=1).tolist())
+flattened_cov_mean = torch.cat(sessions.apply(lambda x: torch.cat([x.cov_mean, torch.zeros(1)])[x.dim_subset_mask], axis=1).tolist())
+
+cov_df = pd.DataFrame({
+    'min': flattened_cov_min,
+    'max': flattened_cov_max,
+    'mean': flattened_cov_mean,
+    'dim': flattened_dimensions,
+})
+
+# Make a square figure
+# f = plt.figure(figsize=(10, 10))
+# ax = plt.gca()
+# ax = prep_plt(ax)
+# sub_df = cov_df[cov_df['dim'] != 'f']
+# ax = sns.scatterplot(data=sub_df, x='min', y='max', hue='dim', ax=ax)
+
+# Exclude rows where 'dim' is 'f'
+sub_df = cov_df[cov_df['dim'] != 'null']
+
+# Create FacetGrid
+g = sns.FacetGrid(sub_df, col="dim", col_wrap=3, sharex=False, sharey=False)
+g.map(sns.scatterplot, "min", "max", s=10, alpha=0.5)
+g.set_axis_labels("Min", "Max")
+g.set_titles(col_template="{col_name}")
+g.fig.suptitle('Min Max of Covariates across sets')
 
 #%%
 trials = pd.DataFrame.from_dict(trial_stats)
