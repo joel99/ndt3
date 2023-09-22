@@ -421,16 +421,14 @@ class RTTConfig(ExperimentalConfig):
 
 @dataclass
 class MazeConfig(ExperimentalConfig):
-    chop_size_ms: int = 0 # no chop
+    chop_size_ms: int = 15000 # no chop
     load_covariates: bool = False
     pretrial_time_s: float = 0.25
     posttrial_time_s: float = 0.1
-    max_length_ms: int = 1000
 
     def reproc_dict(self):
         return {
             'chop_size_ms': self.chop_size_ms,
-            'max_length_ms': self.max_length_ms,
             'pretrial_time_s': self.pretrial_time_s,
             'posttrial_time_s': self.posttrial_time_s,
         }
@@ -438,7 +436,7 @@ class MazeConfig(ExperimentalConfig):
 @dataclass
 class DyerCOConfig(ExperimentalConfig):
     load_covariates: bool = True
-    velocity_threshold: float = 5.
+    velocity_threshold: float = 5. # Defunct
 
 @dataclass
 class NLBConfig(ExperimentalConfig):

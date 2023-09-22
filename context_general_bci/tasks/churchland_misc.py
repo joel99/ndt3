@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import pandas as pd
 from scipy.interpolate import interp1d
+from scipy.signal import resample_poly
 from scipy.io import loadmat
 from scipy.sparse import csc_matrix
 from einops import rearrange, reduce
@@ -98,19 +99,53 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
-        def save_raster(trial_spikes: torch.Tensor, trial_id: int):
+        def save_raster(trial_spikes: torch.Tensor, trial_id: int, other_args: dict = {}):
             single_payload = {
                 DataKey.spikes: create_spike_payload(trial_spikes, arrays_to_use, cfg=cfg),
+                **other_args
             }
             single_path = cache_root / f'{trial_id}.pth'
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)
         # Ok, some are hdf5, some are mat (all masquerade with .mat endings)
+        def get_global_args(hand_vels):
+            global_args = {}
+            if cfg.tokenize_covariates:
+                global_args[DataKey.covariate_labels] = ['x', 'y', 'z']
+            if cfg.churchland_misc.minmax:
+                # Aggregate velocities and get min/max. No... vel needs to be per trial
+                global_vel = np.concatenate(hand_vels, 1)
+                # warn about nans
+                if np.isnan(global_vel).any():
+                    logging.warning(f'{global_vel.isnan().sum()} nan values found in velocity, masking out for global calculation')
+                    global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
+                global_vel = torch.as_tensor(global_vel, dtype=torch.float)
+                global_args['cov_mean'] = global_vel.mean(1)
+                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=1)
+                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=1)
+            return global_args
+
+        def preproc_vel(trial_vel, global_args):
+            # trial_vel: (3, time)
+            # Mirror spike downsample logic - if uneven, crop beginning
+            trial_vel = trial_vel[:, trial_vel.shape[1] % cfg.bin_size_ms:]
+            trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=1)
+            trial_vel = torch.from_numpy(trial_vel.T).float()
+            if cfg.churchland_misc.minmax:
+                trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
+                trial_vel = torch.clamp(trial_vel, -1, 1)
+            return trial_vel
         try:
             with h5py.File(datapath, 'r') as f:
                 data = f['R']
                 num_trials = data['spikeRaster'].shape[0]
                 assert data['spikeRaster2'].shape[0] == num_trials, 'mismatched array recordings'
+                breakpoint()
+                # Run through all trials to collect global normalization stats (annoyingly...)
+                hand_vel = []
+                for i in range(num_trials):
+                    hand_vel.append(np.gradient(data[data['handPos'][i, 0]], axis=1))
+                global_args = get_global_args(hand_vel)
                 for i in range(num_trials):
                     def make_arr(ref):
                         return csc_matrix((
@@ -131,29 +166,45 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                     if spike_raster.size(1) > 192:
                         print(spike_raster.size(), 'something wrong with raw data')
                         import pdb;pdb.set_trace()
-                    save_raster(spike_raster, i)
+                    trial_vel = preproc_vel(hand_vel[i][:, time_start:], global_args)
+                    other_args = {
+                        DataKey.bhvr_vel: trial_vel,
+                        **global_args
+                    }
+                    save_raster(spike_raster, i, other_args)
                 return pd.DataFrame(meta_payload)
         except:
             # import pdb;pdb.set_trace()
             data = loadmat(datapath, simplify_cells=True)
-            # data = loadmat(datapath, simplify_cells=True)
             data = pd.DataFrame(data['R'])
+        # breakpoint()
         if 'spikeRaster' in data:
             # These are scipy sparse matrices
             array_0 = data['spikeRaster']
             array_1 = data['spikeRaster2']
             time_start = data['timeCueOn']
             time_start = time_start.fillna(0).astype(int)
-            for idx, trial in data.iterrows():
-                start = time_start[idx]
-                spike_raster = np.concatenate([array_0[idx].toarray(), array_1[idx].toarray()], axis=0).T # (time, c)
+
+
+            hand_vel = data.apply(lambda x: np.gradient(x['handPos'], axis=1), axis=1)
+            global_args = get_global_args(hand_vel.values)
+
+            for i, trial in data.iterrows():
+                start = time_start[i]
+                spike_raster = np.concatenate([array_0[i].toarray(), array_1[i].toarray()], axis=0).T # (time, c)
                 spike_raster = torch.from_numpy(spike_raster)[start:]
-                save_raster(spike_raster, idx)
-        else: # Nitschke format
+                trial_vel = preproc_vel(hand_vel[i][:, start:], global_args)
+                other_args = {
+                    DataKey.bhvr_vel: trial_vel,
+                    **global_args
+                }
+                save_raster(spike_raster, i, other_args)
+        else: # Nitschke format, sparse
             data = data[data.hasSpikes == 1]
             # Mark provided a filtering script, but we won't filter as thoroughly as they do for analysis, just needing data validity
             START_KEY = 'commandFlyAppears' # presumably the cue
             END_KEY = 'trialEndsTime'
+            breakpoint()
             for idx, trial in data.iterrows():
                 start, end = trial[START_KEY], trial[END_KEY]
                 trial_spikes = torch.zeros(end - start, 192, dtype=torch.uint8)

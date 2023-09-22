@@ -384,20 +384,19 @@ cs.store(group="dataset", name="rtt", node=RTTDataConfig)
 class ScaleHistoryDatasetConfig(FlatDataConfig):
     bin_size_ms: int = 20
     max_trial_length: int = 500 # 10s
-    max_length_ms: int = 10000 # 5s for now
+    max_length_ms: int = 15000 # 15s for now
     max_tokens: int = 8192
     pitt_co: PittConfig = field(default_factory=lambda: PittConfig(
         arrays=["CRS02b-lateral_m1", "CRS02b-medial_m1", "CRS07-lateral_m1", "CRS07-medial_m1", "CRS08-lateral_m1", "CRS08-medial_m1"],
-        chop_size_ms=10000,
+        chop_size_ms=15000,
     ))
     odoherty_rtt: RTTConfig = field(default_factory=lambda: RTTConfig(
         arrays=['Indy-M1', 'Loco-M1'],
         include_sorted=False,
-        chop_size_ms=10000,
+        chop_size_ms=15000,
     ))
     churchland_maze: MazeConfig = field(default_factory=lambda: MazeConfig(
-        chop_size_ms=10000,
-        max_length_ms=10000,
+        chop_size_ms=15000,
         load_covariates=False, # Just not worth implementing, probably
         pretrial_time_s=0.5,
     ))

@@ -4,8 +4,9 @@ defaults:
   - _default
 dataset:
   datasets:
-  - Chewie_CO.*
-  - Mihili_CO.*
+  # - Chewie_CO.*
+  # - Mihili_CO.*
+  - dyer_co_mihi.*
   max_channels: 224 # 211
   max_arrays: 2
 train:

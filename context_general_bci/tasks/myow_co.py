@@ -16,7 +16,7 @@ import torch
 
 from context_general_bci.utils import loadmat
 
-from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
@@ -48,7 +48,8 @@ class DyerCOLoader(ExperimentalTaskLoader):
         # pos = np.array(mat_dict['out_struct']['pos'])
         vel = np.array(mat_dict['out_struct']['vel'])
         # acc = np.array(mat_dict['out_struct']['acc'])
-        # force = np.array(mat_dict['out_struct']['force'])
+        force = np.array(mat_dict['out_struct']['force'])
+        covariates = np.concatenate([vel[:, 1:], force[:, 1:]], axis=1).astype(np.float32)
         time = vel[:, 0]
 
         num_neurons = len(neurons)
@@ -56,6 +57,16 @@ class DyerCOLoader(ExperimentalTaskLoader):
 
         meta_payload = {}
         meta_payload['path'] = []
+        global_args = {}
+        if cfg.tokenize_covariates:
+            global_args[DataKey.covariate_labels] = [*REACH_DEFAULT_KIN_LABELS, 'fx', 'fy']
+        if cfg.dyer_co.minmax:
+            global_args['cov_mean'] = torch.tensor([0.0, 0.0, 0.0, 0.0]) # We choose not to center force here, it's 0-baselined.
+            global_args['cov_min'] = torch.quantile(torch.tensor(covariates), 0.001, dim=0)
+            global_args['cov_max'] = torch.quantile(torch.tensor(covariates), 0.999, dim=0)
+            rescale = global_args['cov_max'] - global_args['cov_min']
+            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+        print(f"Global args: {global_args}")
 
         arrays_to_use = context_arrays
         # data_list = {'firing_rates': [], 'position': [], 'velocity': [], 'acceleration': [],
@@ -72,9 +83,8 @@ class DyerCOLoader(ExperimentalTaskLoader):
 
             neurons_binned = np.zeros((num_bins, num_neurons))
             # pos_binned = np.zeros((num_bins, 2))
-            vel_binned = np.zeros((num_bins, 2))
+            covariates_binned = np.zeros((num_bins, 4))
             # acc_binned = np.zeros((num_bins, 2))
-            # force_binned = np.zeros((num_bins, 2))
             # targets_binned = np.zeros((num_bins,))
             # id_binned = np.arange(num_bins)
 
@@ -83,12 +93,14 @@ class DyerCOLoader(ExperimentalTaskLoader):
                 bin_mask = (time >= grids[k]) & (time <= gride[k])
                 # if len(pos) > 0:
                     # pos_binned[k, :] = np.mean(pos[bin_mask, 1:], axis=0)
-                vel_binned[k, :] = np.mean(vel[bin_mask, 1:], axis=0)
+                covariates_binned[k, :] = np.mean(covariates[bin_mask], axis=0)
                 # if len(acc):
                 #     acc_binned[k, :] = np.mean(acc[bin_mask, 1:], axis=0)
-                # if len(force) > 0:
-                #     force_binned[k, :] = np.mean(force[bin_mask, 1:], axis=0)
                 # targets_binned[k] = trialtable[trial_id, 1]
+            covariates_binned = torch.as_tensor(covariates_binned)
+            if cfg.dyer_co.minmax:
+                covariates_binned = (covariates_binned - global_args['cov_mean']) / rescale
+                covariates_binned = torch.clamp(covariates_binned, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
             for i in range(num_neurons):
                 spike_times = neurons[i]['ts']
                 neurons_binned[:, i] = np.histogram(spike_times, grid)[0]
@@ -96,8 +108,9 @@ class DyerCOLoader(ExperimentalTaskLoader):
                 #     bin_mask = (spike_times >= grids[k]) & (spike_times <= gride[k])
                 #     neurons_binned[k, i] = np.sum(bin_mask) # / binning_period
 
+            # Kill the mask, we don't want it anymore.
             # filter velocity
-            mask = np.linalg.norm(vel_binned, 2, axis=1) > cfg.dyer_co.velocity_threshold
+            # mask = np.linalg.norm(covariates_binned, 2, axis=1) > cfg.dyer_co.velocity_threshold
             # data_list['firing_rates'].append(neurons_binned[mask])
             # data_list['position'].append(pos_binned[mask])
             # data_list['velocity'].append(vel_binned[mask])
@@ -106,8 +119,9 @@ class DyerCOLoader(ExperimentalTaskLoader):
             # data_list['labels'].append(targets_binned[mask])
             # data_list['sequence'].append(id_binned[mask])
             single_payload = {
-                DataKey.spikes: create_spike_payload(neurons_binned[mask], arrays_to_use),
-                DataKey.bhvr_vel: torch.tensor(vel_binned[mask]),
+                DataKey.spikes: create_spike_payload(neurons_binned, arrays_to_use),
+                DataKey.bhvr_vel: covariates_binned,
+                **global_args,
                 # DataKey.bhvr_acc: torch.tensor(acc_binned[mask]),
                 # DataKey.bhvr_force: torch.tensor(force_binned[mask]),
             }

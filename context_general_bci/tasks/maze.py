@@ -67,6 +67,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             move_ends = move_ends[is_valid]
             for t in range(len(spike_intervals)):
                 spike_intervals.iloc[t] = spike_intervals.iloc[t][is_valid]
+            breakpoint()
 
         meta_payload = {}
         meta_payload['path'] = []
@@ -104,6 +105,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
 
         arrays_to_use = context_arrays
         assert len(spike_times) == 192, "Expected 192 units"
+        breakpoint()
         for t in range(len(move_begins)):
             # if not is_valid[t]:
             #     continue # we subset now
@@ -134,9 +136,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
                 trial_spikes[ms_spike_times, c] = torch.tensor(ms_spike_cnt, dtype=torch.uint8)
 
             # trim to valid length and then reshape
-            if cfg.churchland_maze.chop_size_ms > 0:
-                trial_spikes = trial_spikes[:cfg.churchland_maze.chop_size_ms]
-            trial_spikes = trial_spikes[:cfg.churchland_maze.max_length_ms]
+            trial_spikes = trial_spikes[:cfg.churchland_maze.chop_size_ms]
             single_payload = {
                 DataKey.spikes: create_spike_payload(trial_spikes, arrays_to_use, cfg=cfg),
             }

@@ -1,7 +1,7 @@
 #%%
 # Autoregressive inference procedure, for generalist model
-import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '5'
+# import os
+# os.environ['CUDA_VISIBLE_DEVICES'] = '5'
 
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
