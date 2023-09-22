@@ -5,6 +5,7 @@ import math
 import numpy as np
 import torch
 import pandas as pd
+from scipy.signal import resample_poly
 from einops import rearrange, reduce
 
 import logging
@@ -48,11 +49,37 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
         if cfg.churchland_maze.chop_size_ms > 0:
             assert cfg.churchland_maze.chop_size_ms % cfg.bin_size_ms == 0, "Chop size must be a multiple of bin size"
             # if 0, no chop, just send in full lengths
-        assert cfg.churchland_maze.load_covariates == False, "Covariates not supported yet" # I have no idea where kinematics are stored based on columns
-
+        def preproc_vel(trial_vel, global_args):
+            # trial_vel: (time, 3)
+            # Mirror spike downsample logic - if uneven, crop beginning
+            trial_vel = trial_vel[trial_vel.shape[0] % cfg.bin_size_ms:, ]
+            trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=0)
+            trial_vel = torch.from_numpy(trial_vel).float()
+            if cfg.churchland_misc.minmax:
+                trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
+                trial_vel = torch.clamp(trial_vel, -1, 1)
+            return trial_vel
         with NWBHDF5IO(datapath, 'r') as io:
             nwbfile = io.read()
             trial_info = nwbfile.trials
+            hand_pos_global = nwbfile.processing['behavior'].data_interfaces['Position'].spatial_series['Hand'].data # T x 2
+            hand_vel_global = np.gradient(hand_pos_global, axis=0) # T x 2
+            timestamps_global = nwbfile.processing['behavior'].data_interfaces['Position'].spatial_series['Hand'].timestamps[:] # T
+            global_args = {}
+            if cfg.tokenize_covariates:
+                global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
+            if cfg.churchland_misc.minmax:
+                # Aggregate velocities and get min/max. No... vel needs to be per trial
+                global_vel = np.concatenate(hand_vel_global, 0)
+                # warn about nans
+                if np.isnan(global_vel).any():
+                    logging.warning(f'{global_vel.isnan().sum()} nan values found in velocity, masking out for global calculation')
+                    global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
+                global_vel = torch.as_tensor(global_vel, dtype=torch.float)
+                global_args['cov_mean'] = global_vel.mean(0)
+                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0)
+                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
+
             is_valid = ~(trial_info['discard_trial'][:].astype(bool))
             move_begins = trial_info['move_begins_time'][:]
             move_ends = trial_info['move_ends_time'][:]
@@ -67,7 +94,6 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             move_ends = move_ends[is_valid]
             for t in range(len(spike_intervals)):
                 spike_intervals.iloc[t] = spike_intervals.iloc[t][is_valid]
-            breakpoint()
 
         meta_payload = {}
         meta_payload['path'] = []
@@ -105,7 +131,6 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
 
         arrays_to_use = context_arrays
         assert len(spike_times) == 192, "Expected 192 units"
-        breakpoint()
         for t in range(len(move_begins)):
             # if not is_valid[t]:
             #     continue # we subset now
@@ -137,8 +162,12 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
 
             # trim to valid length and then reshape
             trial_spikes = trial_spikes[:cfg.churchland_maze.chop_size_ms]
+            trial_vel = hand_vel_global[(timestamps_global >= start) & (timestamps_global < end)][:cfg.churchland_maze.chop_size_ms] # Assumes no discontinuity.
+
             single_payload = {
                 DataKey.spikes: create_spike_payload(trial_spikes, arrays_to_use, cfg=cfg),
+                DataKey.bhvr_vel: preproc_vel(trial_vel, global_args),
+                **global_args,
             }
             # breakpoint() # TODO are there any covariates to mine?
             single_path = cache_root / f'{t}.pth'
