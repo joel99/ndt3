@@ -13,6 +13,8 @@ defaults:
   - /train:
     - midscale
 model:
+  next_step_prediction: True
+
   task:
     tasks:
     - ModelTask.spike_context
