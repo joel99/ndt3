@@ -51,7 +51,7 @@ run_cfg.datasets = [
     # Force
     # 'pitt_test_pitt_co_CRS07Home_108_1',
     # 'pitt_test_pitt_co_CRS07Lab_95_6',
-    'pitt_test_pitt_co_CRS07Lab_78_10',
+    # 'pitt_test_pitt_co_CRS07Lab_78_10',
     # 'pitt_return_pitt_co_CRS07Home_108_1',
 
     # Force
@@ -82,6 +82,9 @@ run_cfg.datasets = [
 
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
+
+    # 'dyer_co.*',
+    'Mihili_CO.*',
 ]
 
 dataset = SpikingDataset(run_cfg)
@@ -227,7 +230,7 @@ trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
 trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
 # trial_indices = range(40)
 trial_indices = np.arange(6)
-trial_indices = np.arange(2)
+# trial_indices = np.arange(2)
 # trial_indices = np.arange(12)+12
 # trial_indices = np.arange(12)+24
 # trial_indices = np.arange(12)+24+12

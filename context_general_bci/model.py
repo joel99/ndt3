@@ -61,10 +61,9 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
     'kinematic_context': 22,
 }
 MAX_KINEMATIC_DIMS = 10
+# Stop eval
 DEBUG_LIMIT_EVAL = 0
-DEBUG_LIMIT_EVAL = 1000 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
-# DEBUG_LIMIT_EVAL = (3 + 9) * 50 * 2 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
-DEBUG_LIMIT_EVAL = (3 + 2) * 50 * 10 # RTT 10s
+DEBUG_LIMIT_EVAL = 50 * 2
 # DEBUG_LIMIT_EVAL = 3750 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
 
 class BrainBertInterface(pl.LightningModule):
@@ -638,8 +637,8 @@ class BrainBertInterface(pl.LightningModule):
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
-            autoregressive=getattr(self.cfg, 'next_step_prediction', False),
-            padding_mask=None if getattr(self.cfg, 'next_step_prediction', False) else pipeline_padding, # suppress padding if flash attn-able
+            autoregressive=self.cfg.next_step_prediction,
+            padding_mask=None if self.cfg.next_step_prediction else pipeline_padding, # suppress padding if flash attn-able
             causal=self.cfg.causal,
             times=times,
             positions=space,
@@ -789,11 +788,14 @@ class BrainBertInterface(pl.LightningModule):
             # * I could take the flattened stream, without an offset. That seems reasonable, at a little overhead.
             if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache, we need to iterate faster
                 logger.warning('Assuming even batches for cropped prediction!!!')
-                to_infer_mask[:, DEBUG_LIMIT_EVAL:] = False
+                first_step_time = ((times >= DEBUG_LIMIT_EVAL) & (times != self.data_attrs.max_trial_length)).any(0)
+                if first_step_time.any():
+                    first_step_time = first_step_time.nonzero()[0][0].item()
+                    to_infer_mask[:, first_step_time:] = False
             proc_step = 0
             raw_stream = []
             stream_mask = []
-            cue_mask = []
+            cue_mask = [torch.zeros_like(to_infer_mask[:, 0])] # initially not student cue
             # breakpoint()
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
             predict_until = 0 # The goalpost hasn't been set yet.
@@ -858,7 +860,8 @@ class BrainBertInterface(pl.LightningModule):
             raw_stream = torch.cat(raw_stream, 1) # B T
             stream_mask = torch.cat(stream_mask, 1) # B T
             cue_mask = torch.stack(cue_mask, 1) # B T
-            # breakpoint()
+            if cue_mask.size(1) > stream_mask.size(1): # crop last step
+                cue_mask = cue_mask[:, :stream_mask.size(1)]
             batch_out = {
                 Output.behavior_pred: raw_stream[stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
                 Output.behavior: batch[DataKey.bhvr_vel][:,:stream_mask.size(1)].flatten(), # ! Assuming continuous

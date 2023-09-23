@@ -27,6 +27,11 @@ NORMATIVE_MIN_FORCE = 0 # according to mujoco system; some decoders report negat
 # which is not useful to rescale by.
 # https://www.notion.so/joelye/Broad-statistic-check-facb9b6b68a0408090921e4f84f70a6e
 
+NORMATIVE_EFFECTOR_DIMENSIONS = {
+
+}
+
+
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.
 """

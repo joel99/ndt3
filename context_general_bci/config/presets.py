@@ -383,7 +383,7 @@ cs.store(group="dataset", name="rtt", node=RTTDataConfig)
 @dataclass
 class ScaleHistoryDatasetConfig(FlatDataConfig):
     bin_size_ms: int = 20
-    max_trial_length: int = 500 # 10s
+    max_trial_length: int = 1500 # 30s
     max_length_ms: int = 15000 # 15s for now
     max_tokens: int = 8192
     pitt_co: PittConfig = field(default_factory=lambda: PittConfig(
@@ -410,14 +410,15 @@ cs.store(group="dataset", name="scale_history", node=ScaleHistoryDatasetConfig)
 @dataclass
 class ScaleHistoryModelConfig(FlatEncDecModelConfig):
     transformer: TransformerConfig = field(default_factory=lambda: FlatEncDecTransformerConfig(
-        max_trial_length=500,
+        max_trial_length=1500, # 30s
     ))
 
 cs.store(group="model", name="scale_history", node=ScaleHistoryModelConfig)
 
 @dataclass
 class LargescaleModelConfig(ScaleHistoryModelConfig):
-    lr_ramp_steps: int = 10 # Many more steps per epoch
+    lr_ramp_steps: int = 10 # Many more steps per epoch -> Ideally this would be 10x-ed
+    lr_decay_steps: int = 250 # Don't expect to exceed this number of epochs
     dropout: float = 0.1
     hidden_size: int = 512 # At a minimum
     session_embed_strategy: EmbedStrat = EmbedStrat.none

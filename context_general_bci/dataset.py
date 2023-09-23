@@ -88,6 +88,7 @@ class DataAttrs:
     # This pad token applies for both content and space in enc/dec flow
     # The "Time" associated with padding is determined on a per-modality basis (either min time or max time)
     # In decoder-only models, space has sorting priority, and "Space" for padding is also set to max position (hardcoded to 32)
+    max_trial_length: int = 0
 
     serve_tokens: bool = False # if true, serves flat data tokens with additional keys for annotations (e.g. array + timestep) instead of structured data (e.g. with array dimensions)
     serve_tokens_flat: bool = False
@@ -762,6 +763,7 @@ class SpikingDataset(Dataset):
             maze_heldout_channel_count=self.cfg.nlb_maze.heldout_neurons,
             behavior_dim=self.cfg.behavior_dim,
             pad_token=self.pad_value,
+            max_trial_length=self.cfg.max_trial_length,
             serve_tokens=self.cfg.serve_tokenized,
             serve_tokens_flat=self.cfg.serve_tokenized_flat,
             neurons_per_token=self.cfg.neurons_per_token,

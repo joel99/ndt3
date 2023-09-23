@@ -20,3 +20,4 @@ dataset:
   - odoherty_rtt-Loco.* # We'll eval with Indy
 train:
   batch_size: 16 # 80G
+load_from_id: bhvr_12l_1024_km8_c512-6p6h9m7l

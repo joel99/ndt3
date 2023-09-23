@@ -52,6 +52,7 @@ query = 'rtt_icl_class-wozi1pdn'
 # query = 'grasp_icl_class-2si8wtym'
 query = 'rtt_class-0rc5zpjv'
 # query = 'rtt_icl_class-hsbejvlz'
+query = 'monkey_trialized-5qp70fgs'
 
 # wandb_run = wandb_query_latest(query, exact=True, allow_running=False)[0]
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -78,14 +79,14 @@ target = [
     'odoherty_rtt-Indy-20170131_02',
 ]
 
-# target = [
+target = [
 #     'pitt_broad_pitt_co_CRS02bLab_1899',
 #     'pitt_broad_pitt_co_CRS02bLab_1900',
 #     'pitt_broad_pitt_co_CRS02bLab_1907',
 #     'pitt_broad_pitt_co_CRS07Home_69',
 #     'pitt_broad_pitt_co_CRS07Home_71',
 #     'pitt_broad_pitt_co_CRS07Home_83'
-# ]
+]
 
 
 # target = 'odoherty_rtt-Indy-20161026_03'

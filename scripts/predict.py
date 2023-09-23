@@ -1,7 +1,7 @@
 #%%
 # Autoregressive inference procedure, for generalist model
-# import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '5'
+import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
@@ -21,11 +21,6 @@ from context_general_bci.contexts import context_registry
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
-# query = "bhvr-7ca6ncr2"
-query = "rtt-ic4ly53t"
-# query = "bhvr_only_12l_512-ao0hkz0q"
-# query = 'bhvr_12l_512_t_2048-qu2ssi6d'
-query = '12l_512-v1cisvey'
 query = 'rtt-gvgaiv76'
 # query = 'bhvr_12l_512-ijdvhprq'
 # query = 'base-2dvz5mgm'
@@ -37,6 +32,8 @@ query = 'rtt_c512_bsz_256-ji1wdvmg'
 # query = 'rtt_c512_km8_bsz_256-2vx7pj8e'
 query = 'monkey_c512_km8_bsz_256-x5y1sfpa'
 query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
+query = 'monkey_trialized-5qp70fgs'
+# query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -53,8 +50,8 @@ target = [
     # 'odoherty_rtt-Indy-20161026_03',
     # 'odoherty_rtt-Indy-20170131_02',
     # 'odoherty_rtt-Indy-20160627_01',
-    'odoherty_rtt-Loco-20170210_03',
-    'odoherty_rtt-Loco-20170213_02',
+    # 'odoherty_rtt-Loco-20170210_03',
+    # 'odoherty_rtt-Loco-20170213_02',
     # 'odoherty_rtt-Loco-20170214_02',
     # 'odoherty_rtt-Loco-20170215_02',
     # 'odoherty_rtt-Loco-20170216_02',
@@ -65,6 +62,10 @@ target = [
     # 'pitt_broad_pitt_co_CRS07Home_88',
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'miller_Jango-Jango_20150730_001',
+
+    # 'dyer_co.*'
+    # 'Mihili_CO.*',
+    'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
 ]
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
@@ -72,10 +73,10 @@ cfg.dataset.datasets = target
 dataset = SpikingDataset(cfg.dataset)
 
 # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
+dataset.subset_scale(limit_per_session=48)
 # train, val = dataset.create_tv_datasets()
 # dataset = val
 print("Eval length: ", len(dataset))
-
 data_attrs = dataset.get_data_attrs()
 print(data_attrs)
 
@@ -86,7 +87,7 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 
 model.cfg.eval_teacher_timesteps = 25
 # model.cfg.eval_teacher_timesteps = 100
-model.cfg.eval_teacher_timesteps = 8 * 50 # 8s RTT
+# model.cfg.eval_teacher_timesteps = 9 * 50 # 9s RTT
 # model.cfg.eval_teacher_timesteps = 400
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
