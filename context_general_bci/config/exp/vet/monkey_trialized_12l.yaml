@@ -24,7 +24,7 @@ model:
     encode_constraints: True
     use_constraint_cls: False # No need
   transformer:
-    n_layers: 6
+    n_layers: 12
     max_trial_length: 1500 # Up to 30s
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
@@ -39,4 +39,4 @@ dataset:
   max_channels: 224 # 211
   max_arrays: 2
 train:
-  batch_size: 48 # 40G
+  batch_size: 48 # 80G

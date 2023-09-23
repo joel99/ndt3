@@ -1,6 +1,8 @@
 # @package _global_
 defaults:
   - _default
+  - /model/task:
+    - decode_flat_v2 # spcify individually
 dataset:
   max_channels: 160
   max_arrays: 2

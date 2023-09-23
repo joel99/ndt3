@@ -5,13 +5,13 @@ defaults:
     - flat_enc_dec
     - scale_history
     # - largescale
-  - /model/task:
-    - decode_flat_v2
+  # - /model/task:
+    # - decode_flat_v2 # spcify individually
   - /dataset:
     - flat
     - scale_history
   - /train:
-    - midscale
+    - largescale # for the main runs, not debuggin runs
 model:
   next_step_prediction: True
   token_maskout: 0.8

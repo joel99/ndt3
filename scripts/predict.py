@@ -63,9 +63,10 @@ target = [
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'miller_Jango-Jango_20150730_001',
 
-    # 'dyer_co.*'
-    # 'Mihili_CO.*',
-    'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
+    'dyer_co_mihi_1',
+    # 'gallego_co_Chewie_CO_20160510',
+    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
+    # 'churchland_maze_jenkins.*'
 ]
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
@@ -86,6 +87,7 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 
 model.cfg.eval_teacher_timesteps = 25
+model.cfg.eval_teacher_timesteps = 50
 # model.cfg.eval_teacher_timesteps = 100
 # model.cfg.eval_teacher_timesteps = 9 * 50 # 9s RTT
 # model.cfg.eval_teacher_timesteps = 400
@@ -108,7 +110,6 @@ heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 #%%
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
-print(heldin_outputs[Output.behavior_query_mask].shape)
 
 prediction = heldin_outputs[Output.behavior_pred]
 target = heldin_outputs[Output.behavior]
@@ -155,12 +156,13 @@ def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None)
         color='red'
     )
 
-    # ax.set_xlim(0, 1000)
-    ax.set_xlim(0, 5000)
+    ax.set_xlim(0, 1000)
+    # ax.set_xlim(0, 5000)
     ax.legend()
     ax.set_title(f'Dim {MILLER_LABELS[label]}')
 
 NUM_DIMS = 2
+NUM_DIMS = 4
 # NUM_DIMS = 9
 fig, axs = plt.subplots(NUM_DIMS, 1, figsize=(20, 5 * NUM_DIMS), sharex=True)
 print(target.shape)

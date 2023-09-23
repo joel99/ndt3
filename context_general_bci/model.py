@@ -35,7 +35,7 @@ from context_general_bci.components import (
     ContextualMLP,
 )
 from context_general_bci.task_io import task_modules
-from context_general_bci.utils import enum_backport, sort_A_by_B
+from context_general_bci.utils import enum_backport, sort_A_by_B, unflatten
 
 logger = logging.getLogger(__name__)
 
@@ -63,7 +63,7 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
 MAX_KINEMATIC_DIMS = 10
 # Stop eval
 DEBUG_LIMIT_EVAL = 0
-DEBUG_LIMIT_EVAL = 50 * 2
+DEBUG_LIMIT_EVAL = 50 * 4 # up to 4s
 # DEBUG_LIMIT_EVAL = 3750 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
 
 class BrainBertInterface(pl.LightningModule):
@@ -788,6 +788,7 @@ class BrainBertInterface(pl.LightningModule):
             # * I could take the flattened stream, without an offset. That seems reasonable, at a little overhead.
             if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache, we need to iterate faster
                 logger.warning('Assuming even batches for cropped prediction!!!')
+                # breakpoint()
                 first_step_time = ((times >= DEBUG_LIMIT_EVAL) & (times != self.data_attrs.max_trial_length)).any(0)
                 if first_step_time.any():
                     first_step_time = first_step_time.nonzero()[0][0].item()
@@ -796,6 +797,9 @@ class BrainBertInterface(pl.LightningModule):
             raw_stream = []
             stream_mask = []
             cue_mask = [torch.zeros_like(to_infer_mask[:, 0])] # initially not student cue
+            main_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel].dtype) # B T
+            main_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel].flatten()
+            target_stream = []
             # breakpoint()
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
             predict_until = 0 # The goalpost hasn't been set yet.
@@ -838,6 +842,7 @@ class BrainBertInterface(pl.LightningModule):
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
                 raw_pred = decode[Output.behavior_pred]
                 raw_stream.append(raw_pred)
+                target_stream.append(main_seq[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
                 stream_mask.append(to_infer_mask[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
 
                 # Need to decode and quantize again... (redundant work but IDRC)
@@ -859,14 +864,17 @@ class BrainBertInterface(pl.LightningModule):
                     print(f'Inferred {proc_step} of {times.size(1)} steps.')
             raw_stream = torch.cat(raw_stream, 1) # B T
             stream_mask = torch.cat(stream_mask, 1) # B T
+            target_stream = torch.cat(target_stream, 1) # B T
             cue_mask = torch.stack(cue_mask, 1) # B T
             if cue_mask.size(1) > stream_mask.size(1): # crop last step
                 cue_mask = cue_mask[:, :stream_mask.size(1)]
+
+            # In order to ID the right raws across batches, track behavior in flat datastream timeline
+            # breakpoint()
             batch_out = {
                 Output.behavior_pred: raw_stream[stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
-                Output.behavior: batch[DataKey.bhvr_vel][:,:stream_mask.size(1)].flatten(), # ! Assuming continuous
+                Output.behavior: target_stream[stream_mask],
                 Output.behavior_query_mask: cue_mask[stream_mask],
-                # Output.behavior: batch[DataKey.bhvr_vel].flatten(), # There's essentially no way to just grab a slice out.
             }
         else:
             features, times, space, padding, modalities = self(batch)
@@ -1308,36 +1316,3 @@ def recursive_diff_log(cfg1: Union[DictConfig, ListConfig], cfg2: Union[DictConf
         for attr in cfg2:
             if attr not in cfg1:
                 logger.info(f"cfg2 has {attr} but cfg1 does not")
-
-
-def unflatten(
-    flat_data: torch.Tensor,
-    time: torch.Tensor,
-    position: torch.Tensor,
-    default_value=-100,
-) -> torch.Tensor:
-    r"""
-        Unflatten data into (time, position) space
-        Args:
-            flat_data: (batch, flat ~= time*position, token_chan, ...)
-            time: (batch, flat_time (len time*position))
-            position: (batch, flat_position (len time * position))
-        Returns:
-            assembled: (batch, time, channel)
-    """
-    b, _, token_chan, *rest = flat_data.size()
-    time_min, time_max = time.min(), time.max()
-    position_min, position_max = position.min(), position.max()
-    assembled = torch.full(
-        (b, time_max - time_min + 1, position_max - position_min + 1, token_chan, *rest),
-        default_value,
-        device=flat_data.device,
-        dtype=flat_data.dtype,
-    )
-    assembled[ # no scatter needed, merely need to select the specified indices
-        torch.arange(b, device=flat_data.device)[:, None],
-        time - time_min,
-        position - position_min,
-    ] = flat_data
-    assembled = assembled.flatten(start_dim=2)
-    return assembled

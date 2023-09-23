@@ -24,3 +24,35 @@ def sort_A_by_B(A: torch.Tensor, B: torch.Tensor, indices: torch.Tensor | None =
         indices = indices.unsqueeze(-1).expand(-1, -1, A.shape[-1])
     A_sorted = torch.gather(A, 1, indices)
     return A_sorted, indices
+
+def unflatten(
+    flat_data: torch.Tensor,
+    time: torch.Tensor,
+    position: torch.Tensor,
+    default_value=-100,
+) -> torch.Tensor:
+    r"""
+        Unflatten data into (time, position) space
+        Args:
+            flat_data: (batch, flat ~= time*position, token_chan, ...)
+            time: (batch, flat_time (len time*position))
+            position: (batch, flat_position (len time * position))
+        Returns:
+            assembled: (batch, time, channel)
+    """
+    b, _, token_chan, *rest = flat_data.size()
+    time_min, time_max = time.min(), time.max()
+    position_min, position_max = position.min(), position.max()
+    assembled = torch.full(
+        (b, time_max - time_min + 1, position_max - position_min + 1, token_chan, *rest),
+        default_value,
+        device=flat_data.device,
+        dtype=flat_data.dtype,
+    )
+    assembled[ # no scatter needed, merely need to select the specified indices
+        torch.arange(b, device=flat_data.device)[:, None],
+        time - time_min,
+        position - position_min,
+    ] = flat_data
+    assembled = assembled.flatten(start_dim=2)
+    return assembled

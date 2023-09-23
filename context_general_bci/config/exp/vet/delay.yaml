@@ -2,6 +2,8 @@
 
 defaults:
   - _default
+  - /model/task:
+    - decode_flat_v2 # spcify individually
 dataset:
   datasets:
   - churchland_misc_.*
