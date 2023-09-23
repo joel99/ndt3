@@ -85,9 +85,9 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
 
     # 'dyer_co.*',
-    # 'gallego_.*', # Gallego
-    'churchland_maze_jenkins.*'
-    # 'churchland_misc_jenkins.*'
+    'gallego_.*', # Gallego
+    # 'churchland_maze_jenkins.*',
+    # 'churchland_misc_jenkins.*',
 ]
 
 dataset = SpikingDataset(run_cfg)
@@ -160,11 +160,11 @@ def plot_spikes(ax, spikes, spike_times, spike_positions):
     """
     ax = prep_plt(ax=ax)
     spike_population = unflatten(spikes.unsqueeze(0), spike_times.unsqueeze(0), spike_positions.unsqueeze(0)).squeeze(0)
-    # print(spike_population.shape)
-    spike_time, spike_space = spike_population.nonzero().T
-    # print(spike_time.min(), spike_time.max(), spike_space.min(), spike_space.max())
-    ax.scatter(spike_time, spike_space, s=5, marker='|', color='k')
-    # axes[1, col].set_ylim(0, spikes.shape[0])
+    # Do imshow instead
+    ax.imshow(spike_population.T, aspect='auto', cmap='gray_r')
+    # Raster plot
+    # spike_time, spike_space = spike_population.nonzero().T
+    # ax.scatter(spike_time, spike_space, s=5, marker='|', color='k')
 
 def plot_constraints(ax_row, dataset, col, trial):
     constraints = dataset[trial][DataKey.constraint]
