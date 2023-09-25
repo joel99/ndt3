@@ -202,7 +202,7 @@ class GDrivePathContextInfo(ContextInfo):
         return f"{self.datapath}"
 
     @classmethod
-    def build_from_dir(cls, datapath_folder_str: str):
+    def build_from_dir(cls, datapath_folder_str: str, blacklist: List[str]=[]):
         datapath_folder = Path(datapath_folder_str)
         if not datapath_folder.exists():
             logger.warning(f"Datapath folder not found, skipping ({datapath_folder})")
@@ -210,6 +210,8 @@ class GDrivePathContextInfo(ContextInfo):
         all_info = []
         for path in datapath_folder.glob("*.mat"):
             subject = path.stem.split('-')[0]
+            if subject in blacklist:
+                continue
             if subject == 'nitschke':
                 arrays = ['PMd', 'M1']
             elif subject == 'jenkins':

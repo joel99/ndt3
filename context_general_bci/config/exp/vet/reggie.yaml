@@ -1,0 +1,15 @@
+# @package _global_
+
+defaults:
+  - _default
+  - /model/task:
+    - decode_flat_v2 # spcify individually
+dataset:
+  datasets:
+  # - Chewie_CO.*
+  # - Mihili_CO.*
+  - even_chen_delay_reggie.*
+  max_channels: 224 # 211
+  max_arrays: 2
+train:
+  batch_size: 32

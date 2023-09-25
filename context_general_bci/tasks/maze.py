@@ -46,8 +46,9 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
         task: ExperimentalTask,
         sampling_rate: int = 1000 # Hz
     ):
-        if cfg.churchland_maze.chop_size_ms > 0:
-            assert cfg.churchland_maze.chop_size_ms % cfg.bin_size_ms == 0, "Chop size must be a multiple of bin size"
+        task_cfg = getattr(cfg, task.name)
+        if task_cfg.chop_size_ms > 0:
+            assert task_cfg.chop_size_ms % cfg.bin_size_ms == 0, "Chop size must be a multiple of bin size"
             # if 0, no chop, just send in full lengths
         def preproc_vel(trial_vel, global_args):
             # trial_vel: (time, 3)
@@ -55,7 +56,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             trial_vel = trial_vel[trial_vel.shape[0] % cfg.bin_size_ms:, ]
             trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
-            if cfg.churchland_misc.minmax:
+            if task_cfg.minmax:
                 trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
                 trial_vel = torch.clamp(trial_vel, -1, 1)
             return trial_vel
@@ -68,7 +69,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             global_args = {}
             if cfg.tokenize_covariates:
                 global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
-            if cfg.churchland_misc.minmax:
+            if task_cfg.minmax:
                 # Aggregate velocities and get min/max. No... vel needs to be per trial
                 global_vel = np.concatenate(hand_vel_global, 0)
                 # warn about nans

@@ -34,7 +34,7 @@ query = 'monkey_c512_km8_bsz_256-x5y1sfpa'
 query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
 query = 'monkey_trialized-5qp70fgs'
 # query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
-
+query = 'monkey_trialized_6l_1024-22lwlmk7'
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -63,9 +63,9 @@ target = [
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'miller_Jango-Jango_20150730_001',
 
-    'dyer_co_mihi_1',
+    # 'dyer_co_mihi_1',
     # 'gallego_co_Chewie_CO_20160510',
-    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
+    'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
     # 'churchland_maze_jenkins.*'
 ]
 
@@ -75,6 +75,7 @@ dataset = SpikingDataset(cfg.dataset)
 
 # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
 dataset.subset_scale(limit_per_session=48)
+# dataset.subset_scale(limit_per_session=4)
 # train, val = dataset.create_tv_datasets()
 # dataset = val
 print("Eval length: ", len(dataset))
@@ -87,7 +88,8 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 
 model.cfg.eval_teacher_timesteps = 25
-model.cfg.eval_teacher_timesteps = 50
+# model.cfg.eval_teacher_timesteps = 10
+# model.cfg.eval_teacher_timesteps = 50
 # model.cfg.eval_teacher_timesteps = 100
 # model.cfg.eval_teacher_timesteps = 9 * 50 # 9s RTT
 # model.cfg.eval_teacher_timesteps = 400

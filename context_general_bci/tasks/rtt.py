@@ -20,6 +20,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
 
 @ExperimentalTaskRegistry.register
 class ODohertyRTTLoader(ExperimentalTaskLoader):
@@ -130,26 +131,12 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
         task: ExperimentalTask,
     ):
         spike_arr, bhvr_vars, context_arrays = cls.load_raw(datapath, cfg, context_arrays)
-        def compress_vector(vec: torch.Tensor, compression='sum'):
-            # vec: at sampling resolution
-            full_vec = vec.unfold(0, cfg.odoherty_rtt.chop_size_ms, cfg.odoherty_rtt.chop_size_ms) # Trial x C x chop_size (time)
-            return reduce(
-                rearrange(full_vec, 'b c (time bin) -> b time c bin', bin=cfg.bin_size_ms),
-                'b time c bin -> b time c 1', compression
-            )
-        def chop_vector(vec: torch.Tensor):
-            # vec - already at target resolution, just needs chopping
-            chops = round(cfg.odoherty_rtt.chop_size_ms / cfg.bin_size_ms)
-            return rearrange(
-                vec.unfold(0, chops, chops),
-                'trial hidden time -> trial time hidden'
-             ) # Trial x C x chop_size (time)
 
-        full_spikes = compress_vector(spike_arr)
+        full_spikes = compress_vector(spike_arr, cfg.odoherty_rtt.chop_size_ms, cfg.bin_size_ms)
         global_args = {}
         if cfg.odoherty_rtt.load_covariates:
             for bhvr in [DataKey.bhvr_vel]:
-                bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr])
+                bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr], cfg.odoherty_rtt.chop_size_ms, cfg.bin_size_ms)
         if cfg.odoherty_rtt.minmax: # Note we apply after chop, which also includes binning
             global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
             # global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.0001, dim=0) # essentially guard for extreme outliers, but that's it.

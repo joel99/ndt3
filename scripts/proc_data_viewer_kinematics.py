@@ -85,9 +85,18 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
 
     # 'dyer_co.*',
-    'gallego_.*', # Gallego
+    # 'gallego_.*', # Gallego
     # 'churchland_maze_jenkins.*',
+    # 'churchland_maze_nitschke.*',
     # 'churchland_misc_jenkins.*',
+    # 'churchland_misc_nitschke.*',
+    # 'churchland_misc_reggie-1-qq.*', # reggie covs sus
+    # 'churchland_misc_reggie-1413.*',
+    # 'churchland_misc_reggie-151n.*',
+    # 'churchland_misc_reggie-19eu.*', # clear
+    # 'churchland_misc_reggie-1TFV.*', # sus
+    # 'churchland_misc_reggie-1eeP.*', # sus-ish. Magnitudes are so small!
+    'churchland_misc_reggie-1m8Y.*',
 ]
 
 dataset = SpikingDataset(run_cfg)
@@ -205,7 +214,7 @@ def plot_multiple_trials(trial_indices, dataset):
     use_return = any(DataKey.task_return in dataset[trial] for trial in trial_indices)
     n_rows = 1 + 1 + int(use_constraint) + int(use_return)
     height_ratios = [1] * n_rows
-    height_ratios[1] = 5  # 2nd row will be 3 times larger
+    height_ratios[1] = 3  # 2nd row will be 3 times larger
 
     f, axes = plt.subplots(
         n_rows, len(trial_indices),
@@ -231,6 +240,7 @@ def plot_multiple_trials(trial_indices, dataset):
 
         # Extract trial data
         trial_cov = dataset[trial][DataKey.bhvr_vel]
+        print(trial_cov.shape)
         cov_dims = dataset[trial][DataKey.covariate_labels]
         cov_space = dataset[trial].get(DataKey.covariate_space, None)
         # Plot covariates
@@ -266,8 +276,8 @@ trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to
 # trial_indices = np.arange(12)+24+12
 # trial_indices = np.arange(5)
 # trial_indices = np.arange(3)+24+26
-# trial_indices = range(4)
-trial_indices = range(2)
+trial_indices = range(4)
+# trial_indices = range(2)
 plot_multiple_trials(trial_indices, dataset)
 
 #%%
@@ -309,6 +319,7 @@ raw_dims = [6]
 raw_dims = []
 xlim = []
 xlim = [1000, 2000]
+# xlim = [1000, 4000]
 palette = sns.color_palette(n_colors=len(raw_dims) + 2)
 for i, r in enumerate(raw_dims):
     # ax.plot(covariates_smth[:, r], label=f'{DEFAULT_KIN_LABELS[r]} smth', color=palette[i])

@@ -95,6 +95,7 @@ class SubjectArrayRegistry:
 def create_spike_payload(spikes: Union[torch.Tensor, np.ndarray], arrays_to_use: List[str], cfg: Optional[DatasetConfig] = None, spike_bin_size_ms=1) -> Dict[str, torch.Tensor]:
     r"""
         spikes: full (dense) array from which to extract recording array structure; Time x Channels (x 1/features)
+        cfg, spike_bin_size_ms must be jointly specified to do binning
     """
     spikes = torch.as_tensor(spikes, dtype=torch.uint8)
     if cfg:

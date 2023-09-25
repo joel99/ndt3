@@ -20,7 +20,7 @@ except:
     logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
 from context_general_bci.config import DataKey, DatasetConfig
-from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
+from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload, SubjectName
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
 
@@ -96,6 +96,8 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
         task: ExperimentalTask,
         sampling_rate: int = 1000 # Hz
     ):
+        if subject.name == SubjectName.reggie:
+            raise DeprecationWarning("Reggie data should use DANDI release (DelayedReach) due to covariate concerns in this path")
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
