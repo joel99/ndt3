@@ -70,6 +70,7 @@ class DelayReachLoader(ExperimentalTaskLoader):
                 global_args['cov_mean'] = global_vel.mean(0)
                 global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0)
                 global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
+                hand_vel_global = (hand_vel_global - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
 
             spikes = nwbfile.units.to_dataframe()
             # We assume one continuous observation, which should be the case
@@ -92,54 +93,106 @@ class DelayReachLoader(ExperimentalTaskLoader):
             vel_dense.fill_(np.nan) # Just track - we'll reject segments that contain NaNs
             vel_dense.scatter_(0, repeat(torch.tensor(timestamps_global - start_time), 't -> t d', d=vel_dense.shape[-1]), torch.tensor(hand_vel_global, dtype=torch.float))
             vel_dense = vel_dense[start_time - min_obs:end_time - min_obs]
+            breakpoint()
         # OK, great, now just chop
-        breakpoint()
-        spike_dense = compress_vector(spike_dense, task_cfg.chop_size_ms, cfg.bin_size_ms)
+        # spike_dense = compress_vector(spike_dense, task_cfg.chop_size_ms, cfg.bin_size_ms)
         # downsample
-        vel_dense = torch.as_tensor(resample_poly(vel_dense, int(1000 /  cfg.bin_size_ms), 1000, padtype='line', axis=0))
-        # Doesn't seem like nan bleeds all over by nan element count heuristic
-        bhvr = chop_vector(vel_dense, task_cfg.chop_size_ms, cfg.bin_size_ms) # Effectively a downsample
+        # vel_dense = torch.as_tensor(resample_poly(vel_dense, int(1000 /  cfg.bin_size_ms), 1000, padtype='line', axis=0))
+        # Issue...  nan bleeds all over by nan element count heuristic
+        # bhvr = chop_vector(vel_dense, task_cfg.chop_size_ms, cfg.bin_size_ms) # Effectively a downsample
+        # We go trialized after all, for simplicity.
+        def preproc_vel(trial_vel, global_args):
+            trial_vel = trial_vel[trial_vel.shape[0] % cfg.bin_size_ms:]
+            trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=0)
+            trial_vel = torch.from_numpy(trial_vel).float() # Min max already occurred at global level
+            return trial_vel
+        for t in range(len(trial_info)):
+            breakpoint()
+            t_start, t_end = trial_info['start_time'][t], trial_info['stop_time'][t]
+            trial_spikes = spike_dense[(t_start * sampling_rate).astype(int) - min_obs:(t_end * sampling_rate).astype(int) - min_obs]
+            trial_vel = vel_dense[(t_start * sampling_rate).astype(int) - min_obs:(t_end * sampling_rate).astype(int) - min_obs]
 
-        for t in range(spike_dense.size(0)):
-            breakpoint() # TODO - looks like we get a lot of NaNs after all, not just a few big breaks
-            # Probably need to add in constraints now, to indicate the non-meaningful periods.
-            trial_spikes = spike_dense[t]
-            trial_vel = bhvr[t]
+            # Compress, downsample
+            trial_spikes = compress_vector(trial_spikes, task_cfg.chop_size_ms, cfg.bin_size_ms)
+        # for t in range(spike_dense.size(0)):
+            # trial_spikes = spike_dense[t]
+            # trial_vel = bhvr[t]
             # Check NaNs and crop if > 5%
-            nan_pct = (torch.isnan(trial_vel).sum() / trial_vel.numel()).item()
-            if nan_pct > 0.05:
-                # Skip
-                continue
-            else:
-                # Report
-                if nan_pct > 0:
-                    print(f'Warning: {nan_pct} of velocity data is nan, interpolating')
-                    # Convert PyTorch tensor to NumPy array
-                    trial_vel_np = trial_vel.numpy()
+            # nan_pct = (torch.isnan(trial_vel).sum() / trial_vel.numel()).item()
+            # if nan_pct > 0.05:
+            #     # Skip
+            #     continue
+            # else:
+            #     # Report
+            #     if nan_pct > 0:
+            #         print(f'Warning: {nan_pct} of velocity data is nan, interpolating')
+            #         # Convert PyTorch tensor to NumPy array
+            #         trial_vel_np = trial_vel.numpy()
 
-                    # Loop through each column (dimension)
-                    for i in range(trial_vel_np.shape[1]):
-                        column_data = trial_vel_np[:, i]
+            #         # Loop through each column (dimension)
+            #         for i in range(trial_vel_np.shape[1]):
+            #             column_data = trial_vel_np[:, i]
 
-                        # Find indices of NaNs and non-NaNs
-                        nan_idx = np.isnan(column_data)
-                        not_nan_idx = np.logical_not(nan_idx)
+            #             # Find indices of NaNs and non-NaNs
+            #             nan_idx = np.isnan(column_data)
+            #             not_nan_idx = np.logical_not(nan_idx)
 
-                        # Interpolate
-                        x = np.arange(len(column_data))
-                        column_data[nan_idx] = np.interp(x[nan_idx], x[not_nan_idx], column_data[not_nan_idx])
+            #             # Interpolate
+            #             x = np.arange(len(column_data))
+            #             column_data[nan_idx] = np.interp(x[nan_idx], x[not_nan_idx], column_data[not_nan_idx])
 
-                        # Update the column
-                        trial_vel_np[:, i] = column_data
+            #             # Update the column
+            #             trial_vel_np[:, i] = column_data
 
-                    # Convert back to PyTorch tensor
-                    trial_vel = torch.tensor(trial_vel_np)
+            #         # Convert back to PyTorch tensor
+            #         trial_vel = torch.tensor(trial_vel_np)
             single_payload = {
                 DataKey.spikes: create_spike_payload(trial_spikes, context_arrays),
-                DataKey.bhvr_vel: trial_vel.clone(),
+                DataKey.bhvr_vel: preproc_vel(trial_vel, global_args),
                 **global_args
             }
             single_path = cache_root / f'{t}.pth'
             meta_payload['path'].append(single_path)
             torch.save(single_payload, single_path)
         return pd.DataFrame(meta_payload)
+#%%
+import matplotlib.pyplot as plt
+import scipy.interpolate as spi
+sampling_rate = 1000
+datapath = 'data/delay_reach/000121/sub-Reggie/sub-Reggie_ses-20170116T102856_behavior+ecephys.nwb'
+with NWBHDF5IO(datapath, 'r') as io:
+    nwbfile = io.read()
+    hand_pos_global = nwbfile.processing['behavior'].data_interfaces['Position'].spatial_series['Hand'].data # T x 3
+    timestamps_global = np.round(nwbfile.processing['behavior'].data_interfaces['Position'].spatial_series['Hand'].timestamps[:] * sampling_rate).astype(int) # T
+    # On observation it looks like the hand data is not continuous, so we need to interpolate
+    true_samples = np.diff(hand_pos_global[:, 0]).nonzero()[0]
+    hand_pos_global = hand_pos_global[true_samples]
+    timestamps_global = timestamps_global[true_samples]
+    # hand_pos_resampled = np.interp(np.arange(timestamps_global[0], timestamps_global[-1]), timestamps_global, hand_pos_global)
+    # resample to appropriate resolution, and compute velocity
+
+    # Step 1: Interpolation to 50Hz
+    # target_time = np.arange(0, timestamps_global[-1], 1/50.0)
+    # interp_func = spi.interp1d(time, position, kind='linear', bounds_error=False, fill_value=np.nan)
+    # interpolated_position = interp_func(target_time)
+
+    # # Detect NaN spans in original data
+    # nan_spans = np.diff(np.isnan(position).astype(int))
+
+    # # Mark corresponding spans in interpolated data as NaN
+    # for t_start, t_end in zip(time[np.where(nan_spans == 1)[0]], time[np.where(nan_spans == -1)[0]]):
+    #     idx_start = np.searchsorted(target_time, t_start)
+    #     idx_end = np.searchsorted(target_time, t_end)
+    #     interpolated_position[idx_start:idx_end] = np.nan
+
+    # # Step 3: Differentiation to get velocity
+    # velocity = np.gradient(interpolated_position, target_time, edge_order=1)
+
+    # hand_pos_global = resample_poly(hand_pos_global, sampling_rate, len(true_samples) // 1000, padtype='line', axis=0)
+    # hand_vel_global = np.gradient(hand_pos_global, axis=0) # T x 2
+    # print(hand_vel_global.shape)
+    print(timestamps_global.shape)
+    # print(hand_vel_global[:100])
+    plt.plot(timestamps_global[:100], hand_pos_global[:100, 0])
+    print(np.diff(hand_pos_global[:100, 0]).nonzero())
+    # print(nwbfile.processing['behavior'].data_interfaces["Position"].spatial_series['Hand'].data[:][:10, 0])

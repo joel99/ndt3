@@ -42,3 +42,5 @@ dataset:
   max_arrays: 2
 train:
   batch_size: 24 # 80G
+  patience: 50
+load_from_id: monkey_trialized_6l_1024-22lwlmk7
