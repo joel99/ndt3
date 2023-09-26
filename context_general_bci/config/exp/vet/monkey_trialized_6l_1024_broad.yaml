@@ -48,3 +48,4 @@ dataset:
 train:
   batch_size: 32 # 40G
   patience: 50
+load_from_id: monkey_trialized_6l_1024_broad-3x3mrjdh
