@@ -38,7 +38,7 @@ dataset:
   - dyer_co.*
   - miller.*
   - odoherty_rtt.* # Not that suitable because dramatically different length atm
-  - delay.*
+  # - delay.*
   odoherty_rtt:
     chop_size_ms: 5000
   miller:
