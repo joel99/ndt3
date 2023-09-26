@@ -1283,7 +1283,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         backbone_space: torch.Tensor,
         backbone_padding: torch.Tensor,
         eval_mode=False,
-        batch_out={}
+        batch_out={},
     ) -> torch.Tensor:
         r"""
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
@@ -1367,7 +1367,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             tgt = tgt / self.bhvr_std
         return tgt
 
-    def simplify_logits_to_prediction(self, bhvr: torch.Tensor):
+    def simplify_logits_to_prediction(self, bhvr: torch.Tensor, *args, **kwargs):
         # no op for regression, argmax + dequantize for classification
         return bhvr
 
@@ -1383,7 +1383,8 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         backbone_space: torch.Tensor,
         backbone_padding: torch.Tensor,
         compute_metrics=True,
-        eval_mode=False
+        eval_mode=False,
+        temperature=0.,
     ) -> torch.Tensor:
         batch_out = {}
         # breakpoint()
@@ -1411,7 +1412,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             batch_out[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}_target']
             if DataKey.covariate_labels in batch:
                 batch_out[DataKey.covariate_labels] = batch[DataKey.covariate_labels]
-            batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr)
+            batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr, temperature=temperature)
             if self.bhvr_mean is not None:
                 batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
         if Output.behavior in self.cfg.outputs:
@@ -1651,8 +1652,18 @@ class ClassificationMixin(QuantizeBehavior):
         # covariate = self.inp_norm(covariate)
         return covariate
 
-    def simplify_logits_to_prediction(self, bhvr: torch.Tensor, logit_dim=1):
-        return self.dequantize(bhvr.argmax(logit_dim))
+    def simplify_logits_to_prediction(self, logits: torch.Tensor, logit_dim=1, temperature=0.): # 0. -> argmax
+        # breakpoint()
+        if temperature > 0:
+            b, d, c = logits.shape
+            logits = rearrange(logits, 'b d c -> (b d) c')
+            logits = logits / temperature
+            probabilities = torch.softmax(logits, dim=logit_dim) # TODO deprecate logit_dim
+            choice = torch.multinomial(probabilities, 1)
+            choice = rearrange(choice, '(b d) 1 -> b d', b=b, d=d)
+        else:
+            choice = logits.argmax(logit_dim)
+        return self.dequantize(choice)
 
     def compute_loss(self, bhvr: torch.Tensor, bhvr_tgt: torch.Tensor):
         # breakpoint()
@@ -1732,13 +1743,14 @@ class CovariateInfill(ClassificationMixin):
         backbone_padding: torch.Tensor,
         compute_metrics=True,
         eval_mode=False,
+        temperature=0.,
     ) -> Dict[BatchKey, torch.Tensor]:
         batch_out = {}
         bhvr: torch.Tensor = self.out(backbone_features)
         if Output.behavior_logits in self.cfg.outputs:
             batch_out[Output.behavior_logits] = bhvr
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
-            batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr, logit_dim=-1) # returns logits
+            batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr, logit_dim=-1, temperature=temperature) # returns logits
         bhvr_tgt = batch[self.cfg.behavior_target].flatten()
         if Output.behavior in self.cfg.outputs:
             batch_out[Output.behavior] = bhvr_tgt # Flat aspect is not ideal, watch the timestamps..

@@ -635,6 +635,8 @@ class BrainBertInterface(pl.LightningModule):
             modalities is flag indicating _target_ modality.
         """
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
+        # if times.max() > 1500 or space.max() > 32:
+            # breakpoint()
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             autoregressive=self.cfg.next_step_prediction,
@@ -837,10 +839,15 @@ class BrainBertInterface(pl.LightningModule):
                     space[:, proc_step: proc_step + 1],
                     pipeline_padding[:, proc_step: proc_step + 1],
                     compute_metrics=False,
+                    temperature=0.0,
+                    # temperature=0.01,
+                    # temperature=0.1,
+                    # temperature=0.25,
                 )
 
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
                 raw_pred = decode[Output.behavior_pred]
+                # breakpoint()
                 raw_stream.append(raw_pred)
                 target_stream.append(main_seq[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
                 stream_mask.append(to_infer_mask[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep

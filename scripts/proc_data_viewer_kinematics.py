@@ -27,6 +27,7 @@ sample_query = '10s_loco_regression'
 sample_query = 'bhvr_12l_512_t_2048-qu2ssi6d'
 sample_query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
 sample_query = 'monkey_trialized-0kksyosm' # Need this for jenkins
+sample_query = 'reggie-y7fjfib2'
 
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
@@ -96,7 +97,8 @@ run_cfg.datasets = [
     # 'churchland_misc_reggie-19eu.*', # clear
     # 'churchland_misc_reggie-1TFV.*', # sus
     # 'churchland_misc_reggie-1eeP.*', # sus-ish. Magnitudes are so small!
-    'churchland_misc_reggie-1m8Y.*',
+    # 'churchland_misc_reggie-1m8Y.*',
+    'delay.*'
 ]
 
 dataset = SpikingDataset(run_cfg)
@@ -318,7 +320,7 @@ raw_dims = [6]
 # xlim = [0, 200]
 raw_dims = []
 xlim = []
-xlim = [1000, 2000]
+# xlim = [1000, 2000]
 # xlim = [1000, 4000]
 palette = sns.color_palette(n_colors=len(raw_dims) + 2)
 for i, r in enumerate(raw_dims):

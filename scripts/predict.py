@@ -2,14 +2,13 @@
 # Autoregressive inference procedure, for generalist model
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 import warnings
-warnings.filterwarnings('ignore', category=UserWarning)
-# torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
+warnings.filterwarnings('ignore')
 
 from matplotlib import pyplot as plt
 import seaborn as sns
 import torch
+torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
@@ -35,6 +34,8 @@ query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
 query = 'monkey_trialized-5qp70fgs'
 # query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
 query = 'monkey_trialized_6l_1024-22lwlmk7'
+query = 'monkey_trialized_6l_1024-zgsjsog0'
+
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -63,16 +64,17 @@ target = [
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'miller_Jango-Jango_20150730_001',
 
+    'dyer_co_.*',
     # 'dyer_co_mihi_1',
     # 'gallego_co_Chewie_CO_20160510',
-    'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
+    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
     # 'churchland_maze_jenkins.*'
 ]
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 cfg.dataset.datasets = target
 dataset = SpikingDataset(cfg.dataset)
-
+pl.seed_everything(0)
 # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
 dataset.subset_scale(limit_per_session=48)
 # dataset.subset_scale(limit_per_session=4)
@@ -104,7 +106,7 @@ def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwarg
         batch_size=batch_size,
         num_workers=num_workers,
         persistent_workers=num_workers > 0,
-        collate_fn=dataset.tokenized_collater
+        collate_fn=dataset.tokenized_collater,
     )
 
 dataloader = get_dataloader(dataset)
