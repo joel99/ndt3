@@ -29,6 +29,7 @@ from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
+MILLER_LABELS = [*REACH_DEFAULT_KIN_LABELS, *EMG_CANON_LABELS]
 # No sanitation needed implemented at the moment, only using curated data
 # TODO add guards
 @ExperimentalTaskRegistry.register

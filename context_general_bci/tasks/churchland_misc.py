@@ -19,7 +19,7 @@ try:
 except:
     logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
-from context_general_bci.config import DataKey, DatasetConfig
+from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload, SubjectName
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 
@@ -113,7 +113,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
         def get_global_args(hand_vels: List[np.ndarray]): # each T x 3
             global_args = {}
             if cfg.tokenize_covariates:
-                global_args[DataKey.covariate_labels] = ['x', 'y', 'z']
+                global_args[DataKey.covariate_labels] = REACH_DEFAULT_3D_KIN_LABELS
             if cfg.churchland_misc.minmax:
                 # Aggregate velocities and get min/max. No... vel needs to be per trial
                 global_vel = np.concatenate(hand_vels, 0)

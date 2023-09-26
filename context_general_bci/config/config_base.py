@@ -6,6 +6,7 @@ from omegaconf import MISSING
 
 DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null'] # Null dimension only used for padding in tokenized case
 REACH_DEFAULT_KIN_LABELS = ['y', 'z']
+REACH_DEFAULT_3D_KIN_LABELS = ['x', 'y', 'z']
 EMG_CANON_LABELS = ['EMG_FCU', 'EMG_EDCr', 'EMG_ECU', 'EMG_ECRb', 'EMG_ECRl', 'EMG_FDP', 'EMG_FCR'] # Just an order pulled from xds tutorial: https://github.com/limblab/adversarial_BCI/blob/main/xds_tutorial.ipynb
 
 LENGTH = 'length'
@@ -275,6 +276,11 @@ class ModelConfig:
     # By occassionally blanking timesteps
     token_maskout: float = 0. # If true, blank the previous timestep in the backbone stream
     kinematic_token_maskout: float = 0. # Blank kinematic inputs specifically.
+
+    # Overrides above
+    kinematic_token_maskout_schedule: str = "cosine" # Schedule tracks lr schedule. Cosine as default inspired by MaskGIT.
+    kinematic_token_maskout_start: float = 0.9 # generalist still needs something so we don't start at 1.
+    kinematic_token_maskout_end: float = 0.
 
     max_spatial_position: int = 32 # For next step prediction
 

@@ -24,7 +24,7 @@ from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, 
 import logging
 
 logger = logging.getLogger(__name__)
-
+DYER_DEFAULT_KIN_LABELS = [*REACH_DEFAULT_KIN_LABELS, 'fx', 'fy']
 @ExperimentalTaskRegistry.register
 class DyerCOLoader(ExperimentalTaskLoader):
     name = ExperimentalTask.dyer_co
@@ -59,7 +59,7 @@ class DyerCOLoader(ExperimentalTaskLoader):
         meta_payload['path'] = []
         global_args = {}
         if cfg.tokenize_covariates:
-            global_args[DataKey.covariate_labels] = [*REACH_DEFAULT_KIN_LABELS, 'fx', 'fy']
+            global_args[DataKey.covariate_labels] = DYER_DEFAULT_KIN_LABELS
         if cfg.dyer_co.minmax:
             global_args['cov_mean'] = torch.tensor([0.0, 0.0, 0.0, 0.0]) # We choose not to center force here, it's 0-baselined.
             global_args['cov_min'] = torch.quantile(torch.tensor(covariates), 0.001, dim=0)

@@ -15,7 +15,7 @@ try:
 except:
     logger.info("pynwb not installed, please install with `conda install -c conda-forge pynwb`")
 
-from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
+from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
@@ -83,7 +83,7 @@ class DelayReachLoader(ExperimentalTaskLoader):
             target_vel = torch.from_numpy(target_vel).float()
             global_args = {}
             if cfg.tokenize_covariates:
-                global_args[DataKey.covariate_labels] = ['x', 'y', 'z']
+                global_args[DataKey.covariate_labels] = REACH_DEFAULT_3D_KIN_LABELS
             if task_cfg.minmax:
                 # warn about nans
                 global_vel = target_vel

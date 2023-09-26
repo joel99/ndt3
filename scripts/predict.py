@@ -1,6 +1,7 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import warnings
 warnings.filterwarnings('ignore')
@@ -34,9 +35,9 @@ query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
 query = 'monkey_trialized-5qp70fgs'
 # query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
 query = 'monkey_trialized-peu3ln1l'
-query = 'monkey_trialized_6l_1024-22lwlmk7'
+# query = 'monkey_trialized_6l_1024-22lwlmk7'
 query = 'monkey_trialized_6l_1024-zgsjsog0'
-query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
+# query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -47,7 +48,15 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 target = [
-    # 'odoherty_rtt-Indy-20160407_02',
+    # 'miller_Jango-Jango_20150730_001',
+
+    # 'dyer_co_.*',
+    # 'dyer_co_mihi_1',
+    # 'gallego_co_Chewie_CO_20160510',
+    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
+    # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
+    # 'churchland_maze_jenkins.*'
+    'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
     # 'odoherty_rtt-Indy-20161005_06',
     # 'odoherty_rtt-Indy-20161026_03',
@@ -64,13 +73,6 @@ target = [
     # 'pitt_broad_pitt_co_CRS07Home_32',
     # 'pitt_broad_pitt_co_CRS07Home_88',
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
-    # 'miller_Jango-Jango_20150730_001',
-
-    'dyer_co_.*',
-    # 'dyer_co_mihi_1',
-    # 'gallego_co_Chewie_CO_20160510',
-    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI'
-    # 'churchland_maze_jenkins.*'
 ]
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
@@ -92,6 +94,9 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 
 model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
+model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
 model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
@@ -117,6 +122,7 @@ def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwar
 dataloader = get_dataloader(dataset)
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 #%%
+from sklearn.metrics import r2_score
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
 
@@ -124,7 +130,6 @@ prediction = heldin_outputs[Output.behavior_pred]
 target = heldin_outputs[Output.behavior]
 is_student = heldin_outputs[Output.behavior_query_mask]
 # Compute R2
-from sklearn.metrics import r2_score
 r2 = r2_score(target, prediction)
 r2_student = r2_score(target[is_student], prediction[is_student])
 print(f'R2: {r2:.4f}')
@@ -139,8 +144,22 @@ ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
 #%%
-from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, EMG_CANON_LABELS
-MILLER_LABELS = [*REACH_DEFAULT_KIN_LABELS, *EMG_CANON_LABELS]
+target_student = target[is_student]
+prediction_student = prediction[is_student]
+target_student = target_student[prediction_student < 0.2]
+prediction_student = prediction_student[prediction_student < 0.2]
+print(r2_score(target_student, prediction_student))
+f = plt.figure(figsize=(10, 10))
+ax = prep_plt(f.gca(), big=True)
+ax.scatter(target_student, prediction_student, s=3, alpha=0.4, color='red')
+ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
+ax.set_xlabel('True')
+ax.set_ylabel('Pred')
+#%%
+from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
+from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS
+from context_general_bci.tasks.miller import MILLER_LABELS
+
 def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None):
     # Prepare the plot
     ax = prep_plt(ax)
@@ -166,18 +185,30 @@ def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None)
     )
 
     ax.set_xlim(0, 1000)
+    ax.set_xlim(0, 500)
     # ax.set_xlim(0, 5000)
     ax.legend()
-    ax.set_title(f'Dim {MILLER_LABELS[label]}')
+    ax.set_title(label, fontsize=20)
 
-NUM_DIMS = 2
-NUM_DIMS = 4
-# NUM_DIMS = 9
-fig, axs = plt.subplots(NUM_DIMS, 1, figsize=(20, 5 * NUM_DIMS), sharex=True)
+DIMS = {
+    'gallego': REACH_DEFAULT_KIN_LABELS,
+    'dyer': DYER_DEFAULT_KIN_LABELS,
+    'miller': MILLER_LABELS,
+    'churchland_misc': REACH_DEFAULT_3D_KIN_LABELS,
+    'churchland_maze': REACH_DEFAULT_KIN_LABELS,
+    'delay': REACH_DEFAULT_3D_KIN_LABELS,
+    'odoherty': REACH_DEFAULT_KIN_LABELS,
+}
+dim_query = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0] # TODO need to get misc, maze, not very robust
+print(f'Assuming: {dim_query}')
+
+labels = DIMS[dim_query]
+num_dims = len(labels)
+fig, axs = plt.subplots(num_dims, 1, figsize=(20, 5 * num_dims), sharex=True)
 print(target.shape)
 
-for i in range(NUM_DIMS):
-    plot_target_pred_overlay(target[i::NUM_DIMS], prediction[i::NUM_DIMS], is_student[i::NUM_DIMS], label=i, ax=axs[i])
+for i in range(num_dims):
+    plot_target_pred_overlay(target[i::num_dims], prediction[i::num_dims], is_student[i::num_dims], label=labels[i], ax=axs[i])
 
 plt.tight_layout()
 fig.suptitle(f'{query}: {str(target)[:20]} Velocity R2 Stud: {r2_student:.2f}')
