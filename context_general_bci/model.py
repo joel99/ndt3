@@ -779,7 +779,7 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
-        if getattr(self.cfg, 'next_step_prediction', False):
+        if self.cfg.next_step_prediction:
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
 
@@ -788,10 +788,10 @@ class BrainBertInterface(pl.LightningModule):
             to_infer_mask = torch.isin(modalities, to_infer_indices)
             # ! We can't support evaluating up to a slice - I don't know what index to slice the targets at; from the flat datastream...
             # * I could take the flattened stream, without an offset. That seems reasonable, at a little overhead.
-            if DEBUG_LIMIT_EVAL: # Evaluating full length is slow with KV cache, we need to iterate faster
+            if self.cfg.eval.limit_timesteps: # Evaluating full length is slow with KV cache, we need to iterate faster
                 logger.warning('Assuming even batches for cropped prediction!!!')
                 # breakpoint()
-                first_step_time = ((times >= DEBUG_LIMIT_EVAL) & (times != self.data_attrs.max_trial_length)).any(0)
+                first_step_time = ((times >= self.cfg.eval.limit_timesteps) & (times != self.data_attrs.max_trial_length)).any(0)
                 if first_step_time.any():
                     first_step_time = first_step_time.nonzero()[0][0].item()
                     to_infer_mask[:, first_step_time:] = False
@@ -807,7 +807,7 @@ class BrainBertInterface(pl.LightningModule):
             predict_until = 0 # The goalpost hasn't been set yet.
             # Want the first slice (batch wise) where anyone needs student force; predict up to that step (exclusvie)
             # breakpoint()
-            need_student_slice = (times >= getattr(self.cfg, 'eval_teacher_timesteps', 0)).any(0)
+            need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
             if not need_student_slice.any():
                 predict_until = times.size(1)
             else:
@@ -839,10 +839,7 @@ class BrainBertInterface(pl.LightningModule):
                     space[:, proc_step: proc_step + 1],
                     pipeline_padding[:, proc_step: proc_step + 1],
                     compute_metrics=False,
-                    temperature=0.0,
-                    # temperature=0.01,
-                    # temperature=0.1,
-                    # temperature=0.25,
+                    temperature=self.cfg.eval.temperature,
                 )
 
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
@@ -856,9 +853,11 @@ class BrainBertInterface(pl.LightningModule):
                 # Greedy decoding - subset to only the relevant pieces
                 # No student replacement - just debugging atm!
                 re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
+                if not self.cfg.eval.use_student:
+                    re_enc.zero_()
                 if proc_step < times.size(1) - 1:
                     # Will the next step need a student?
-                    should_student = times[:, proc_step+1] >= getattr(self.cfg, 'eval_teacher_timesteps', 0)
+                    should_student = times[:, proc_step+1] >= self.cfg.eval.teacher_timesteps
                     cue_mask.append(should_student)
                     # Only student force the tokens that we predicted - hence use `to_infer_mask` of current step
                     pipeline_context[:, proc_step+1][

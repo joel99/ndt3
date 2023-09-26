@@ -89,17 +89,14 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
-model.cfg.eval_teacher_timesteps = 25
-# model.cfg.eval_teacher_timesteps = 10
-# model.cfg.eval_teacher_timesteps = 50
-# model.cfg.eval_teacher_timesteps = 100
-# model.cfg.eval_teacher_timesteps = 9 * 50 # 9s RTT
-# model.cfg.eval_teacher_timesteps = 400
+model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
+model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
+model.cfg.eval.temperature = 0.
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
-def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=64, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,

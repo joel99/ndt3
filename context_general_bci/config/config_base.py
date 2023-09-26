@@ -249,6 +249,14 @@ class TransformerConfig:
     context_integration: str = "in_context" # in_context, cross_attn, or adaptive_norm (see https://arxiv.org/pdf/2212.09748.pdf)
 
 @dataclass
+class EvalConfig:
+    temperature: float = 0. # For sampling. 0. is argmax, higher is more uniform
+    teacher_timesteps: int = 0 # provide true labels up to N _timesteps_ in. In units of timebins
+    # Specifically re: off by 1 - do we use the predictions from >= this timestep as student labels?
+    use_student: bool = True # Use student predictions at next step, else drop. (For debugging constant predictions/train time parity)
+    limit_timesteps: int = 0 # limit eval to N timesteps. In units of timebins
+
+@dataclass
 class ModelConfig:
     hidden_size: int = 256 # For parts outside of backbones
     arch: Architecture = Architecture.ndt
@@ -370,8 +378,7 @@ class ModelConfig:
     extra_task_embed_ckpt: str = "" # for loading task embeddings from a different ckpt. Only implemented via `model_decode`.
     extra_subject_embed_ckpt: str = "" # for loading subject embeddings from a different ckpt. Only implemented via `model_decode`.
 
-    eval_teacher_timesteps: int = 0 # provide true labels up to N _timesteps_ in. In units of timebins
-    # Specifically re: off by 1 - do we use the predictions from >= this timestep as student labels?
+    eval: EvalConfig = field(default_factory=EvalConfig)
 
 @dataclass
 class ExperimentalConfig:
