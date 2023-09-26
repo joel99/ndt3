@@ -424,6 +424,10 @@ def run_exp(cfg : RootConfig) -> None:
         # ! note this post-hoc update... reliant on the Trainer api using this prop
         # https://lightning.ai/docs/pytorch/stable/_modules/lightning/pytorch/callbacks/gradient_accumulation_scheduler.html#GradientAccumulationScheduler
 
+    # Log parameters for reference
+    cfg.trainable_parameters = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    cfg.total_parameters = sum(p.numel() for p in model.parameters())
+
     # Note, wandb.run can also be accessed as logger.experiment but there's no benefit
     # torch.cuda.device_count() > 1 or cfg.nodes > 1
     if trainer.global_rank == 0 and not cfg.debug:

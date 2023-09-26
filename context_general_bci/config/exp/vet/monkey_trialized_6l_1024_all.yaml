@@ -47,7 +47,9 @@ dataset:
   max_channels: 224 # 211
   max_arrays: 2
 train:
-  batch_size: 64 # 40G
+  # batch_size: 64 # 80G - OOM
+  batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
+load_from_id: monkey_trialized_6l_1024_all-hboc0fcb
 notes: "Add reggie, add epochs"

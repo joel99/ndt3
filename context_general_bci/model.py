@@ -854,7 +854,7 @@ class BrainBertInterface(pl.LightningModule):
                 # No student replacement - just debugging atm!
                 re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
                 if not self.cfg.eval.use_student:
-                    re_enc.zero_()
+                    re_enc.zero_() # Mirrors Maskout
                 if proc_step < times.size(1) - 1:
                     # Will the next step need a student?
                     should_student = times[:, proc_step+1] >= self.cfg.eval.teacher_timesteps
@@ -1243,7 +1243,7 @@ def load_from_checkpoint(
         Specifically, model topology is determined by data_attrs.
         data_attrs thus must be saved and loaded with a model to make sense of it.
         However, if we're initializing from another checkpoint, we want to know its data_attrs, but not save it as the new attrs. To avoid doing this while still hooking into PTL `save_hyperparameters()`, we do a manual state_dict transfer of two model instances (one with old and one with new topology.)
-
+        Does not load optimizer state (TODO, get that)
         Args:
         - cfg: override, new cfg
         - data_attrs: override, new data_attrs

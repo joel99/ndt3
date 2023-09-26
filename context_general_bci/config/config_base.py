@@ -629,7 +629,10 @@ class RootConfig:
     seed: int = 0
     tag: str = "" # i.e. experiment variant, now an optional tag (since hydra consumes file, we can't use the filename for experiment name. Specify if you want.)
     experiment_set: str = ""
-    notes: str = "" # for wandb
+    # for wandb
+    notes: str = ""
+    trainable_parameters: int = 0
+    total_parameters: int = 0
 
     # Meta config - will initiate multiple derivative runs, all handled in `run.py`
     sweep_cfg: str = "" # See `hp_sweep_space.py`

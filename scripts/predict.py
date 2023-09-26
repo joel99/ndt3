@@ -33,8 +33,10 @@ query = 'monkey_c512_km8_bsz_256-x5y1sfpa'
 query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
 query = 'monkey_trialized-5qp70fgs'
 # query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
+query = 'monkey_trialized-peu3ln1l'
 query = 'monkey_trialized_6l_1024-22lwlmk7'
 query = 'monkey_trialized_6l_1024-zgsjsog0'
+query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -92,11 +94,17 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
 model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
 model.cfg.eval.temperature = 0.
+# model.cfg.eval.temperature = 0.1
+# model.cfg.eval.temperature = 0.25
+# model.cfg.eval.temperature = 0.01
+model.cfg.eval.use_student = False
+# model.cfg.eval.use_student = True
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
-def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=64, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
