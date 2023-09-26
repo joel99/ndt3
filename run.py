@@ -426,7 +426,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     # Note, wandb.run can also be accessed as logger.experiment but there's no benefit
     # torch.cuda.device_count() > 1 or cfg.nodes > 1
-    if trainer.global_rank == 0:
+    if trainer.global_rank == 0 and not cfg.debug:
         logger.info(f"Running NDT2, dumping config:")
         logger.info(OmegaConf.to_yaml(cfg))
         if cfg.tag:

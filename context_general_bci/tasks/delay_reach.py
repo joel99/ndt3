@@ -136,9 +136,17 @@ class DelayReachLoader(ExperimentalTaskLoader):
         for t in range(len(trial_info)):
             t_start, t_end = starts[t], ends[t]
             trial_spikes = spike_dense[t_start - min_obs:t_end - min_obs]
+            if trial_spikes.sum() == 0:
+                # Either empty or something anomalous, skip
+                continue
             vel_mask = (target_time >= t_start) & (target_time <= t_end)
             trial_vel = target_vel[vel_mask][-(trial_spikes.shape[0] // cfg.bin_size_ms):]
             trial_spikes = create_spike_payload(trial_spikes, context_arrays, cfg=cfg) # providing cfg will trigger compression
+
+            # Crop
+            for k, v in trial_spikes.items():
+                trial_spikes[k] = v[-task_cfg.chop_size_ms // cfg.bin_size_ms:]
+            trial_vel = trial_vel[-task_cfg.chop_size_ms // cfg.bin_size_ms:]
             # Crop start if necessary
             # trial_vel = vel_dense[(t_start * sampling_rate).astype(int) - min_obs:(t_end * sampling_rate).astype(int) - min_obs]
 

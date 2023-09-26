@@ -178,7 +178,7 @@ class ReachingContextInfo(ContextInfo, _ReachingContextInfoBase):
         session = int(datapath_folder.parent.name)
         all_info = []
         for i, path in enumerate(datapath_folder.glob("*.nwb")):
-            alias = f"{alias_prefix}-{i}" if alias_prefix else f"reaching-{subject.name}-{i}"
+            alias = f"{alias_prefix}-{path.stem}" if alias_prefix else f"reaching-{subject.name}-{path.stem}"
             all_info.append(ReachingContextInfo(
                 subject=subject,
                 task=task,

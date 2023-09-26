@@ -27,7 +27,7 @@ sample_query = '10s_loco_regression'
 sample_query = 'bhvr_12l_512_t_2048-qu2ssi6d'
 sample_query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
 sample_query = 'monkey_trialized-0kksyosm' # Need this for jenkins
-sample_query = 'reggie-y7fjfib2'
+sample_query = 'reggie-9mmfeh2p'
 
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
