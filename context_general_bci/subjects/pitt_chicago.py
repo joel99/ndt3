@@ -232,6 +232,30 @@ class CRS08(SubjectInfoPittChicago):
         PittChicagoArrayInfo(array=_sensory_layout, pedestal_index=1)
     ]
 
+@SubjectArrayRegistry.register
+class P1(SubjectInfoPittChicago):
+    # https://github.com/pitt-rnel/bci_analysis/blob/master/Old%20HST%20Code/ElectrodeLocation.m
+    # Man... not worth it to figure out what exactly is going on here - we know this person has 2 96 channel arrays; so just pull 192.
+    name = SubjectName.P1
+
+    _motor_layout = np.array([
+        0.
+    ])
+
+    motor_arrays = [
+        PittChicagoArrayInfo(array=np.arange(96)),
+        PittChicagoArrayInfo(array=np.arange(96), pedestal_index=1)
+    ]
+
+    sensory_arrays = []
+
+    @classmethod
+    @property
+    def arrays(cls):
+        return {
+            'lateral_m1': cls.motor_arrays[0],
+            'medial_m1': cls.motor_arrays[1],
+        }
 
 @SubjectArrayRegistry.register
 class CRSTest(CRS07):

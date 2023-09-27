@@ -215,6 +215,7 @@ plt.show()
 #%%
 # Pull session with 7 dimensions
 print(sessions[sessions['num_dimensions'] == 7][['subject', 'session', 'set', 'has_brain_control']])
+print(sessions[sessions['num_dimensions'] == 7][['subject', 'session', 'set', 'has_brain_control']].index)
 
 # View cov min and max
 # flattened_cov_min = [torch.cat(sublist) for sublist in sessions['cov_min'].dropna()]

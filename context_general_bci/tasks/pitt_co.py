@@ -101,7 +101,11 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             spikes = spikes[..., standard_channels]
         out['spikes'] = torch.from_numpy(spikes)
         out['trial_num'] = torch.from_numpy(payload['trial_num'])
-        out['effector'] = payload['effector'].lower().strip()
+        effector = payload['effector']
+        if len(effector) == 0:
+            out['effector'] = ''
+        else:
+            out['effector'] = effector.lower().strip()
         if 'Kinematics' in payload:
             # cursor x, y
             # breakpoint()
@@ -338,7 +342,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                 covariates = torch.clamp(covariates, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
                 # TODO we should really sanitize for severely abberant values in a more robust way... (we currently instead verify post-hoc in `sampler`)
             if 'effector' in payload and covariates is not None:
-                breakpoint()
                 for k in NORMATIVE_EFFECTOR_BLACKLIST:
                     if k in payload['effector']:
                         for dim in NORMATIVE_EFFECTOR_BLACKLIST[k]:

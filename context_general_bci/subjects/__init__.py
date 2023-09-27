@@ -16,6 +16,7 @@ class SubjectName(OrderedEnum):
     CRS07 = "CRS07"
     CRS08 = "CRS08"
     CRSTest = "CRSTest"
+    P1 = "P1"
     BCI02 = "BCI02"
     jenkins = "Jenkins"
     indy = "Indy"
