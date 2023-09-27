@@ -40,9 +40,10 @@ query = 'monkey_trialized_6l_1024-zgsjsog0'
 
 # query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
 # query = 'monkey_trialized_6l_1024_broad-yy3ve3gf'
-query = 'monkey_trialized_6l_1024_all-ufyxs032'
+# query = 'monkey_trialized_6l_1024_all-ufyxs032'
 
-query = 'monkey_schedule_6l_1024-zfwshzmr'
+# query = 'monkey_schedule_6l_1024-zfwshzmr'
+query = 'monkey_schedule_6l_1024-0swiit7z'
 # query = 'monkey_kin_6l_1024-vgdhzzxm'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -108,8 +109,8 @@ model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
 # model.cfg.eval.temperature = 0.25
 # model.cfg.eval.temperature = 0.01
-model.cfg.eval.use_student = False
-# model.cfg.eval.use_student = True
+# model.cfg.eval.use_student = False
+model.cfg.eval.use_student = True
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:

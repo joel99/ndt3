@@ -550,6 +550,15 @@ class BrainBertInterface(pl.LightningModule):
         )
 
     @property
+    def do_kin_maskout(self):
+        if self.cfg.kinematic_token_maskout_schedule == "cosine":
+            return True
+        elif self.cfg.kinematic_token_maskout_schedule == "random":
+            return True
+        else:
+            return self.cfg.kinematic_token_maskout > 0
+
+    @property
     def kin_maskout(self):
         if self.cfg.kinematic_token_maskout_schedule == "cosine":
             maskout = cosine_schedule(
@@ -558,6 +567,8 @@ class BrainBertInterface(pl.LightningModule):
                 start=self.cfg.kinematic_token_maskout_start,
                 end=self.cfg.kinematic_token_maskout
             )
+        elif self.cfg.kinematic_token_maskout_schedule == "random":
+            maskout = (torch.rand(1) * (self.cfg.kinematic_token_maskout_start - self.cfg.kinematic_token_maskout) + self.cfg.kinematic_token_maskout)[0]
         elif self.cfg.kinematic_token_maskout_schedule in ["", "constant"]:
             maskout = self.cfg.kinematic_token_maskout
         else:
@@ -607,7 +618,7 @@ class BrainBertInterface(pl.LightningModule):
         space, _ = pack(pipeline_space, 'b *')
         pipeline_padding, _ = pack(pipeline_padding, 'b *')
 
-        if getattr(self.cfg, 'next_step_prediction', False):
+        if self.cfg.next_step_prediction:
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
 
             # breakpoint()
@@ -630,10 +641,11 @@ class BrainBertInterface(pl.LightningModule):
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
             if self.training:
+                # breakpoint()
                 if self.cfg.token_maskout > 0:
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
-                elif self.cfg.kinematic_token_maskout:
+                elif self.do_kin_maskout:
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout

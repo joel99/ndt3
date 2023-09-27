@@ -11,7 +11,8 @@ model:
   lr_ramp_steps: 25
   lr_decay_steps: 600
   next_step_prediction: True
-  kinematic_token_maskout_schedule: "cosine"
+  kinematic_token_maskout_schedule: "constant"
+  kinematic_token_maskout: 0.9
   task:
     tasks:
     - ModelTask.spike_context
@@ -49,11 +50,11 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  batch_size: 24 # 40G
-  # batch_size: 48 # 80G
+  # batch_size: 24 # 40G
+  batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
 # load_from_id: monkey_schedule_6l_1024-zfwshzmr
-notes: "Reload to add mask schedule"
+notes: "Fully align with MaskGIT training protocol"
 # load_from_id: monkey_trialized_6l_1024_all-zqv2ln26
 # notes: "Add reggie, add epochs"

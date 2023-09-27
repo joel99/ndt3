@@ -278,7 +278,11 @@ class ModelConfig:
     kinematic_token_maskout: float = 0. # Blank kinematic inputs specifically. DOUBLES AS SCHEDULE END
 
     # Overrides above
-    kinematic_token_maskout_schedule: str = "constant" # Schedule tracks lr schedule. Cosine as default inspired by MaskGIT.
+    kinematic_token_maskout_schedule: str = "constant"
+    # Schedule tracks lr schedule.
+    # Constant is no schedule, constant maskout.
+    # Cosine as default inspired by MaskGIT (but I made up the curriculum part, MaskGIT actually uses random).
+    # Random - no schedule, sample a random value from start to end.
     kinematic_token_maskout_start: float = 0.9 # generalist still needs something, this should be less than 1
     # kinematic_token_maskout_end: float = 0.
 
