@@ -2,7 +2,7 @@
 # Autoregressive inference procedure, for generalist model
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -34,10 +34,16 @@ query = 'monkey_c512_km8_bsz_256-x5y1sfpa'
 query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
 query = 'monkey_trialized-5qp70fgs'
 # query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
-query = 'monkey_trialized-peu3ln1l'
+# query = 'monkey_trialized-peu3ln1l'
 # query = 'monkey_trialized_6l_1024-22lwlmk7'
 query = 'monkey_trialized_6l_1024-zgsjsog0'
+
 # query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
+# query = 'monkey_trialized_6l_1024_broad-yy3ve3gf'
+query = 'monkey_trialized_6l_1024_all-ufyxs032'
+
+query = 'monkey_schedule_6l_1024-zfwshzmr'
+# query = 'monkey_kin_6l_1024-vgdhzzxm'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -50,13 +56,13 @@ cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 target = [
     # 'miller_Jango-Jango_20150730_001',
 
-    # 'dyer_co_.*',
+    'dyer_co_.*',
     # 'dyer_co_mihi_1',
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
     # 'churchland_maze_jenkins.*'
-    'odoherty_rtt-Indy-20160407_02',
+    # 'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
     # 'odoherty_rtt-Indy-20161005_06',
     # 'odoherty_rtt-Indy-20161026_03',
@@ -96,7 +102,7 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
-model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
+# model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
 model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
@@ -143,18 +149,18 @@ ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
-#%%
-target_student = target[is_student]
-prediction_student = prediction[is_student]
-target_student = target_student[prediction_student < 0.2]
-prediction_student = prediction_student[prediction_student < 0.2]
-print(r2_score(target_student, prediction_student))
-f = plt.figure(figsize=(10, 10))
-ax = prep_plt(f.gca(), big=True)
-ax.scatter(target_student, prediction_student, s=3, alpha=0.4, color='red')
-ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
-ax.set_xlabel('True')
-ax.set_ylabel('Pred')
+# #%%
+# target_student = target[is_student]
+# prediction_student = prediction[is_student]
+# target_student = target_student[prediction_student < 0.2]
+# prediction_student = prediction_student[prediction_student < 0.2]
+# print(r2_score(target_student, prediction_student))
+# f = plt.figure(figsize=(10, 10))
+# ax = prep_plt(f.gca(), big=True)
+# ax.scatter(target_student, prediction_student, s=3, alpha=0.4, color='red')
+# ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
+# ax.set_xlabel('True')
+# ax.set_ylabel('Pred')
 #%%
 from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS

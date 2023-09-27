@@ -35,7 +35,12 @@ from context_general_bci.components import (
     ContextualMLP,
 )
 from context_general_bci.task_io import task_modules
-from context_general_bci.utils import enum_backport, sort_A_by_B, unflatten
+from context_general_bci.utils import (
+    enum_backport,
+    sort_A_by_B,
+    unflatten,
+    cosine_schedule,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -544,6 +549,21 @@ class BrainBertInterface(pl.LightningModule):
             torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
         )
 
+    @property
+    def kin_maskout(self):
+        if self.cfg.kinematic_token_maskout_schedule == "cosine":
+            maskout = cosine_schedule(
+                time=torch.as_tensor(self.current_epoch),
+                T=self.cfg.lr_decay_steps,
+                start=self.cfg.kinematic_token_maskout_start,
+                end=self.cfg.kinematic_token_maskout
+            )
+        elif self.cfg.kinematic_token_maskout_schedule in ["", "constant"]:
+            maskout = self.cfg.kinematic_token_maskout
+        else:
+            raise ValueError(f"Unknown kinematic token maskout schedule {self.cfg.kinematic_token_maskout_schedule}")
+        return maskout
+
     def assemble_pipeline(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[
         List[str], List[Any],
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None
@@ -610,13 +630,13 @@ class BrainBertInterface(pl.LightningModule):
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
             if self.training:
-                if getattr(self.cfg, 'token_maskout', 0.0) > 0:
+                if self.cfg.token_maskout > 0:
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
-                if getattr(self.cfg, 'kinematic_token_maskout', 0.0):
+                elif self.cfg.kinematic_token_maskout:
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
-                    mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.kinematic_token_maskout
+                    mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
                     pipeline_context[is_kinematic_input & mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
@@ -1019,6 +1039,7 @@ class BrainBertInterface(pl.LightningModule):
                 self.log(f'{prefix}_{m.value}', metrics[m].mean(), **kwargs)
             else:
                 self.log(f'{prefix}_{m.value}', metrics[m], **kwargs)
+        self.log('kin_maskout', self.kin_maskout, **kwargs)
 
     def training_step(self, batch, batch_idx):
         # if batch_idx > 2:

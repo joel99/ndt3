@@ -275,12 +275,12 @@ class ModelConfig:
     # Behavioral data is nearly Markovian, nearly constant; we want to learn longer order dependencies, so upweight that learning
     # By occassionally blanking timesteps
     token_maskout: float = 0. # If true, blank the previous timestep in the backbone stream
-    kinematic_token_maskout: float = 0. # Blank kinematic inputs specifically.
+    kinematic_token_maskout: float = 0. # Blank kinematic inputs specifically. DOUBLES AS SCHEDULE END
 
     # Overrides above
-    kinematic_token_maskout_schedule: str = "cosine" # Schedule tracks lr schedule. Cosine as default inspired by MaskGIT.
-    kinematic_token_maskout_start: float = 0.9 # generalist still needs something so we don't start at 1.
-    kinematic_token_maskout_end: float = 0.
+    kinematic_token_maskout_schedule: str = "constant" # Schedule tracks lr schedule. Cosine as default inspired by MaskGIT.
+    kinematic_token_maskout_start: float = 0.9 # generalist still needs something, this should be less than 1
+    # kinematic_token_maskout_end: float = 0.
 
     max_spatial_position: int = 32 # For next step prediction
 

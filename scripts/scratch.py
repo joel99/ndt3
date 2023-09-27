@@ -1,4 +1,5 @@
 #%%
+import math
 import logging
 import sys
 logging.basicConfig(stream=sys.stdout, level=logging.INFO) # needed to get `logger` to print
@@ -13,6 +14,22 @@ from context_general_bci.analyze_utils import prep_plt
 import pandas as pd
 import lightning.pytorch as pl
 
+#%%
+def cosine_schedule(time: torch.Tensor, T: int, start: float = 0.9, end: float = 0.0) -> torch.Tensor:
+    assert T > 0
+    assert 0.0 <= start <= 1.0
+    assert 0.0 <= end <= 1.0
+    assert start != end
+    assert time.max() <= T
+    assert time.min() >= 0
+    schedule = end + (start - end) * (1 + torch.cos(time * math.pi / T)) / 2
+    return schedule
+
+# Test and plot cosine
+time = torch.arange(0, 100)
+T = 100
+schedule = cosine_schedule(time, T)
+plt.plot(schedule)
 
 #%%
 test = pd.read_pickle('debug.df')

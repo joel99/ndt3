@@ -2,6 +2,7 @@ import os
 from .loader import loadmat
 from .halton import generate_search
 from .grid_search import grid_search
+import math
 import torch
 
 # Has dependencies on typedefs in Config but hopefully that's not a huge issue.
@@ -56,3 +57,23 @@ def unflatten(
     ] = flat_data
     assembled = assembled.flatten(start_dim=2)
     return assembled
+
+def cosine_schedule(time: torch.Tensor | int, T: int, start: float = 0.9, end: float = 0.0) -> torch.Tensor:
+    r"""
+        Cosine schedule
+        Args:
+            time: (batch, time)
+            T: int
+            start: float
+            end: float
+        Returns:
+            schedule: (batch, time)
+    """
+    assert T > 0
+    assert 0.0 <= start <= 1.0
+    assert 0.0 <= end <= 1.0
+    assert start != end
+    # assert time.max() <= T
+    # assert time.min() >= 0
+    schedule = end + (start - end) * (1 + torch.cos(time * math.pi / T)) / 2
+    return schedule
