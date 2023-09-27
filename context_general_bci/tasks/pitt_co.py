@@ -27,10 +27,9 @@ NORMATIVE_MIN_FORCE = 0 # according to mujoco system; some decoders report negat
 # which is not useful to rescale by.
 # https://www.notion.so/joelye/Broad-statistic-check-facb9b6b68a0408090921e4f84f70a6e
 
-NORMATIVE_EFFECTOR_DIMENSIONS = {
-
+NORMATIVE_EFFECTOR_BLACKLIST = {
+    'cursor': [3, 4, 5, 8], # Rotation and gz are never controlled in cursor tasks.
 }
-
 
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.
@@ -102,6 +101,7 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             spikes = spikes[..., standard_channels]
         out['spikes'] = torch.from_numpy(spikes)
         out['trial_num'] = torch.from_numpy(payload['trial_num'])
+        out['effector'] = payload['effector'].lower().strip()
         if 'Kinematics' in payload:
             # cursor x, y
             # breakpoint()
@@ -123,6 +123,8 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             out['active_assist'] = torch.from_numpy(payload['active_assist']).half()
             out['passive_assist'] = torch.from_numpy(payload['passive_assist']).half()
             assert out['brain_control'].size(-1) == 3, "Brain control should be 3D (3 domains)"
+        if 'override' in payload:
+            out['override_assist'] = torch.from_numpy(payload['override']).half()
         if 'passed' in payload:
             try:
                 if isinstance(payload['passed'], int):
@@ -334,13 +336,29 @@ class PittCOLoader(ExperimentalTaskLoader):
                 rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
                 covariates = covariates / rescale # Think this rescales to a bit less than 1
                 covariates = torch.clamp(covariates, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
-                # TODO we should really sanitize for severely abberant values in a more robust way... or checking for outlier effects
-
+                # TODO we should really sanitize for severely abberant values in a more robust way... (we currently instead verify post-hoc in `sampler`)
+            if 'effector' in payload and covariates is not None:
+                breakpoint()
+                for k in NORMATIVE_EFFECTOR_BLACKLIST:
+                    if k in payload['effector']:
+                        for dim in NORMATIVE_EFFECTOR_BLACKLIST[k]:
+                            if dim < covariates.size(-1):
+                                covariates[:, dim] = 0
+                        break
 
             # * Constraints
-            brain_control = payload.get('brain_control', None)
-            active_assist = payload.get('active_assist', None)
-            passive_assist = payload.get('passive_assist', None)
+            brain_control: torch.Tensor | None = payload.get('brain_control', None)
+            active_assist: torch.Tensor | None = payload.get('active_assist', None)
+            passive_assist: torch.Tensor | None = payload.get('passive_assist', None)
+            override_assist: torch.Tensor | None = payload.get('override_assist', None) # Override is sub-domain specific active assist, used for partial domain control e.g. in robot tasks
+            """
+            Quoting JW:
+            ActiveAssist expands the active_assist weight from
+            6 domains to 30 dimensions, and then takes the max of
+            the expanded active_assist_weight (can be float 0-1)
+            and override (0 or 1) to get an effective weight
+            for each dimension.
+            """
             # clamp each constraint to 0 and 1 - otherwise nonsensical
             if brain_control is not None:
                 brain_control = brain_control.int().clamp(0, 1).half()
@@ -348,6 +366,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                 active_assist = active_assist.int().clamp(0, 1).half()
             if passive_assist is not None:
                 passive_assist = passive_assist.int().clamp(0, 1).half()
+            if override_assist is not None:
+                override_assist = override_assist.int().clamp(0, 1).half()
 
             # * Reward and return!
             passed = payload.get('passed', None)
@@ -386,6 +406,11 @@ class PittCOLoader(ExperimentalTaskLoader):
                 ], 2)
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
                 # ! If we ever extend beyond 9 dims, the other force dimensions all belong to the grasp domain: src - Jeff Weiss
+                if override_assist is not None:
+                    breakpoint() # assuming override dimension is Trial T (domain 3) after chop
+                    chopped_override = chop_vector(override_assist)
+                    chopped_constraints[..., 0] = torch.maximum(chopped_constraints[..., 0], chopped_override) # if override is on, brain control is off, which means FBC constraint is 1
+                    chopped_constraints[..., 1] = torch.maximum(chopped_constraints[..., 1], chopped_override) # if override is on, active assist is on, which means active assist constraint is 1
 
             if reward_dense is not None:
                 reward_dense = chop_vector(reward_dense)
