@@ -1,7 +1,7 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '2'
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import warnings
 warnings.filterwarnings('ignore')
@@ -43,8 +43,10 @@ query = 'monkey_trialized_6l_1024-zgsjsog0'
 # query = 'monkey_trialized_6l_1024_all-ufyxs032'
 
 # query = 'monkey_schedule_6l_1024-zfwshzmr'
-query = 'monkey_schedule_6l_1024-0swiit7z'
+# query = 'monkey_schedule_6l_1024-0swiit7z'
 query = 'monkey_kin_6l_1024-vgdhzzxm'
+query = 'monkey_random_6l_1024-n3f68hj2'
+# query = 'monkey_schedule_6l_1024-7o3bb4z8'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -141,7 +143,7 @@ r2 = r2_score(target, prediction)
 r2_student = r2_score(target[is_student], prediction[is_student])
 print(f'R2: {r2:.4f}')
 print(f'R2 Student: {r2_student:.4f}')
-
+print(model.cfg.eval)
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
 palette = sns.color_palette(n_colors=2)
@@ -150,18 +152,18 @@ ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
-# #%%
-# target_student = target[is_student]
-# prediction_student = prediction[is_student]
-# target_student = target_student[prediction_student < 0.2]
-# prediction_student = prediction_student[prediction_student < 0.2]
-# print(r2_score(target_student, prediction_student))
-# f = plt.figure(figsize=(10, 10))
-# ax = prep_plt(f.gca(), big=True)
-# ax.scatter(target_student, prediction_student, s=3, alpha=0.4, color='red')
-# ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
-# ax.set_xlabel('True')
-# ax.set_ylabel('Pred')
+# %%
+target_student = target[is_student]
+prediction_student = prediction[is_student]
+target_student = target_student[prediction_student.abs() < 0.8]
+prediction_student = prediction_student[prediction_student.abs() < 0.8]
+robust_r2_student = r2_score(target_student, prediction_student)
+f = plt.figure(figsize=(10, 10))
+ax = prep_plt(f.gca(), big=True)
+ax.scatter(target_student, prediction_student, s=3, alpha=0.4, color='red')
+ax.set_title(f'{query} {str(target)[:20]} R2 Student: {robust_r2_student:.2f}')
+ax.set_xlabel('True')
+ax.set_ylabel('Pred')
 #%%
 from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS

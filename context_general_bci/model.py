@@ -645,7 +645,7 @@ class BrainBertInterface(pl.LightningModule):
                 if self.cfg.token_maskout > 0:
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
-                elif self.do_kin_maskout:
+                if self.do_kin_maskout:
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
