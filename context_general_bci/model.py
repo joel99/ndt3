@@ -30,9 +30,7 @@ from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
 # through most of data collection (certainly good if we aggregate sensor/sessions)
 from context_general_bci.components import (
-    SpaceTimeTransformer,
-    ReadinMatrix,
-    ContextualMLP,
+    SpaceTimeTransformer
 )
 from context_general_bci.task_io import task_modules
 from context_general_bci.utils import (
@@ -299,17 +297,9 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.transform_space:
             assert self.cfg.spike_embed_style in [EmbedStrat.project, EmbedStrat.token]
         if self.cfg.readout_strategy == EmbedStrat.unique_project:
-            self.readout = ReadinMatrix(
-                self.cfg.hidden_size,
-                self.cfg.readout_dim,
-                # self.cfg.readout_dim if getattr(self.cfg, 'readout_dim', 0) else channel_count,
-                self.data_attrs,
-                self.cfg
-            )
-            # like PC readout
+            assert False, "deprecated"
         elif self.cfg.readout_strategy == EmbedStrat.contextual_mlp:
-            self.readout = ContextualMLP(self.cfg.hidden_size, self.cfg.hidden_size, self.cfg)
-            # for simplicity, project out to hidden size - task IO will take care of the other items
+            assert False, "deprecated"
 
         def get_target_size(k: ModelTask):
             if k == ModelTask.heldout_decoding:

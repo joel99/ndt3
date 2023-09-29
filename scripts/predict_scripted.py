@@ -29,12 +29,14 @@ def main(
     temperature: float,
     id: int,
     gpu: int,
+    cue: float,
 ):
     print("Starting eval")
     print(f"Student: {student}")
     print(f"Temperature: {temperature}")
     print(f"ID: {id}")
     print(f"GPU: {gpu}")
+    print(f"Cue: {cue}")
 
     wandb_run = wandb_query_latest(id, allow_running=True, use_display=True)[0]
     print(wandb_run.id)
@@ -49,13 +51,12 @@ def main(
 
         # 'dyer_co_.*',
         # 'dyer_co_mihi_1',
-        'gallego_co_Chewie_CO_20160510',
+        # 'gallego_co_Chewie_CO_20160510',
         # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
         # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
         # 'churchland_maze_jenkins.*'
-        # 'odoherty_rtt-Indy-20160407_02',
-        # 'odoherty_rtt-Indy-20161005_06',
-        # 'odoherty_rtt-Indy-20161026_03',
+        'odoherty_rtt-Indy-20160407_02',
+        'odoherty_rtt-Indy-20161026_03',
         # 'odoherty_rtt-Loco-20170215_02',
         # 'odoherty_rtt-Loco-20170216_02',
         # 'odoherty_rtt-Loco-20170217_02'
@@ -80,11 +81,11 @@ def main(
 
     model = transfer_model(src_model, cfg.model, data_attrs)
 
-    model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
+    model.cfg.eval.teacher_timesteps = int(50 * cue) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
-    model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
+    model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
     model.cfg.eval.temperature = temperature
     model.cfg.eval.use_student = student
 
@@ -121,9 +122,10 @@ if __name__ == "__main__":
     parser.add_argument("-t", "--temperature", type=float, default=0., help="Temperature value.")
     parser.add_argument("-i", "--id", type=str, required=True, help="ID number.")
     parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
+    parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
 
     args = parser.parse_args()
-    main(args)
+    main(**vars(args))
 
 """
 query = 'monkey_trialized_6l_1024-zgsjsog0'
