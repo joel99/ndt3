@@ -12,7 +12,8 @@ model:
   lr_decay_steps: 600
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
-  kinematic_token_maskout_start: 1.0
+  kinematic_token_maskout_start: 0.9
+  # kinematic_token_maskout_start: 1.0
   kinematic_token_maskout: 0.
   task:
     tasks:
@@ -30,6 +31,7 @@ model:
     n_layers: 6
     max_trial_length: 1500 # Up to 30s
     n_heads: 8
+  dropout: 0.2
   hidden_size: 1024
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
@@ -38,11 +40,11 @@ dataset:
   # All cropped trialized data, but ~100K trials.
   - churchland.*
   - gallego.*
-  - dyer_co.*
+  # - dyer_co.*
   - miller.*
-  - odoherty_rtt-Loco* # Not that suitable because dramatically different length atm
-  # - odoherty_rtt.* # Not that suitable because dramatically different length atm
-  - delay.*
+  # - odoherty_rtt-Loco* # Not that suitable because dramatically different length atm
+  - odoherty_rtt.* # Not that suitable because dramatically different length atm
+  # - delay.*
   odoherty_rtt:
     chop_size_ms: 5000
   miller:
@@ -51,8 +53,8 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  # batch_size: 24 # 40G
-  batch_size: 48 # 80G
+  batch_size: 24 # 40G
+  # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
 # load_from_id: monkey_schedule_6l_1024-zfwshzmr

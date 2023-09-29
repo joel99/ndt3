@@ -49,14 +49,15 @@ def main(
     target = [
         # 'miller_Jango-Jango_20150730_001',
 
-        # 'dyer_co_.*',
+        'dyer_co_.*',
         # 'dyer_co_mihi_1',
         # 'gallego_co_Chewie_CO_20160510',
+        # 'gallego_co_.*',
         # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
         # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
         # 'churchland_maze_jenkins.*'
-        'odoherty_rtt-Indy-20160407_02',
-        'odoherty_rtt-Indy-20161026_03',
+        # 'odoherty_rtt-Indy-20160407_02',
+        # 'odoherty_rtt-Indy-20161026_03',
         # 'odoherty_rtt-Loco-20170215_02',
         # 'odoherty_rtt-Loco-20170216_02',
         # 'odoherty_rtt-Loco-20170217_02'

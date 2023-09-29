@@ -270,6 +270,8 @@ class ModelConfig:
     decoder_context_integration: str = "in_context" # only implemented for behavior atm
     spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
     use_full_encode: bool = False # ! Major change, return all tokens in decode stream
+    cm3leon_init: bool = False # Copy truncated normal params used in cm3leon https://scontent.fagc3-1.fna.fbcdn.net/v/t39.2365-6/358725877_789390529544546_1176484804732743296_n.pdf?_nc_cat=108&ccb=1-7&_nc_sid=3c67a6&_nc_ohc=uzIGsR3Sm-QAX9dir0m&_nc_ht=scontent.fagc3-1.fna&oh=00_AfDTfWg1ZiNMx_GtFdvmQNx8gRoLjlP3lgnp2PngsUC4nQ&oe=651C2FB2
+
 
     next_step_prediction: bool = False # Major change, autoregressive path, limited compatibility with most NDT2 settigs
     # Behavioral data is nearly Markovian, nearly constant; we want to learn longer order dependencies, so upweight that learning

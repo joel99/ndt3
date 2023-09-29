@@ -21,20 +21,6 @@ from context_general_bci.contexts import context_registry
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
-query = 'rtt-gvgaiv76'
-# query = 'bhvr_12l_512-ijdvhprq'
-# query = 'base-2dvz5mgm'
-# query = 'rtt_c512-fr4nb2hw'
-# query = 'rtt_c512_m5-83uzsg6w'
-# query = 'base-1hw7fz9e' # Miller
-query = 'rtt_c512_bsz_256-ji1wdvmg'
-# query = 'rtt_c512_m8_bsz_256-c7ldp7xm'
-# query = 'rtt_c512_km8_bsz_256-2vx7pj8e'
-query = 'monkey_c512_km8_bsz_256-x5y1sfpa'
-query = 'bhvr_12l_512_km8_c512-abij2xtx' # currently -0.36, lol.
-query = 'monkey_trialized-5qp70fgs'
-# query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
-# query = 'monkey_trialized-peu3ln1l'
 # query = 'monkey_trialized_6l_1024-22lwlmk7'
 query = 'monkey_trialized_6l_1024-zgsjsog0'
 
@@ -47,6 +33,7 @@ query = 'monkey_trialized_6l_1024-zgsjsog0'
 query = 'monkey_kin_6l_1024-vgdhzzxm'
 query = 'monkey_random_6l_1024-n3f68hj2'
 # query = 'monkey_schedule_6l_1024-7o3bb4z8'
+query = 'monkey_random_6l_1024_d2-s1wrxq2e'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -102,7 +89,8 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
-model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
+model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
@@ -112,7 +100,7 @@ model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.25
 # model.cfg.eval.temperature = 0.01
 model.cfg.eval.use_student = False
-# model.cfg.eval.use_student = True
+model.cfg.eval.use_student = True
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:

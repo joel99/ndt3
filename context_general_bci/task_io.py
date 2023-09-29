@@ -1630,17 +1630,17 @@ class ClassificationMixin(QuantizeBehavior):
         # We use these buckets as we minmax clamp in preprocessing
         if self.cfg.decode_tokenize_dims:
             if self.is_next_step:
-                self.out = nn.Linear(backbone_size, getattr(self.cfg, 'decode_quantize_classes', 128))
+                self.out = nn.Linear(backbone_size, self.cfg.decode_quantize_classes)
             else:
                 self.out = nn.Sequential(
-                    nn.Linear(backbone_size, getattr(self.cfg, 'decode_quantize_classes', 128)),
+                    nn.Linear(backbone_size, self.cfg.decode_quantize_classes),
                     Rearrange('b t c -> b c t')
                 )
         else:
             assert not self.is_next_step, "next step not implemented for non-tokenized"
             self.out = nn.Sequential(
-                nn.Linear(backbone_size, getattr(self.cfg, 'decode_quantize_classes', 128) * self.cov_dims),
-                Rearrange('b t (c d) -> b c (t d)', c=getattr(self.cfg, 'decode_quantize_classes', 128))
+                nn.Linear(backbone_size, self.cfg.decode_quantize_classes * self.cov_dims),
+                Rearrange('b t (c d) -> b c (t d)', c=self.cfg.decode_quantize_classes)
             )
 
     def encode_cov(self, covariate: torch.Tensor):

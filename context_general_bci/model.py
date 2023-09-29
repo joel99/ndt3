@@ -4,6 +4,7 @@ import math
 import numpy as np
 import torch
 from torch import nn, optim
+from torch.nn import init
 import torch.nn.functional as F
 import lightning.pytorch as pl
 from einops import rearrange, repeat, reduce, pack, unpack # baby steps...
@@ -64,10 +65,15 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
     'kinematic_context': 22,
 }
 MAX_KINEMATIC_DIMS = 10
-# Stop eval
-DEBUG_LIMIT_EVAL = 0
-DEBUG_LIMIT_EVAL = 50 * 4 # up to 4s
-# DEBUG_LIMIT_EVAL = 3750 # Limit eval tokens (for RTT we have about 250 tokens / s, 3 neural + 2 bhvr)
+
+def cm3leon_init(m):
+    if isinstance(m, nn.Linear):
+        init.trunc_normal_(m.weight, std=6e-3, a=-3, b=3)
+    elif isinstance(m, nn.MultiheadAttention):
+        init.trunc_normal_(m.in_proj_weight, std=6e-3, a=-3, b=3)
+        # Initialize bias terms if they exist
+        if m.in_proj_bias is not None:
+            nn.init.constant_(m.in_proj_bias, 0)
 
 class BrainBertInterface(pl.LightningModule):
     r"""
@@ -137,6 +143,9 @@ class BrainBertInterface(pl.LightningModule):
                 allow_embed_padding=True,
             )
         self.bind_io()
+
+        if self.cfg.cm3leon_init:
+            self.backbone.apply(cm3leon_init)
         self.novel_params: List[str] = [] # for fine-tuning
         modifies = []
         for tp in self.task_pipelines.values():
