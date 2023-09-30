@@ -30,6 +30,7 @@ def main(
     id: int,
     gpu: int,
     cue: float,
+    batch_size: int,
 ):
     print("Starting eval")
     print(f"Student: {student}")
@@ -49,18 +50,18 @@ def main(
     target = [
         # 'miller_Jango-Jango_20150730_001',
 
-        'dyer_co_.*',
+        # 'dyer_co_.*',
         # 'dyer_co_mihi_1',
         # 'gallego_co_Chewie_CO_20160510',
-        # 'gallego_co_.*',
+        'gallego_co_.*',
         # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
         # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
-        # 'churchland_maze_jenkins.*'
+        # 'churchland_maze_jenkins.*',
         # 'odoherty_rtt-Indy-20160407_02',
         # 'odoherty_rtt-Indy-20161026_03',
         # 'odoherty_rtt-Loco-20170215_02',
         # 'odoherty_rtt-Loco-20170216_02',
-        # 'odoherty_rtt-Loco-20170217_02'
+        # 'odoherty_rtt-Loco-20170217_02',
         # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
         # 'pitt_broad_pitt_co_CRS02bLab_1761',
         # 'pitt_broad_pitt_co_CRS07Home_32',
@@ -86,12 +87,13 @@ def main(
     # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
-    model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
+    model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
+    # model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
     model.cfg.eval.temperature = temperature
     model.cfg.eval.use_student = student
 
     trainer = pl.Trainer(accelerator='gpu', devices=[gpu], default_root_dir='./data/tmp')
-    def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwargs) -> DataLoader:
+    def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=1, **kwargs) -> DataLoader:
         return DataLoader(dataset,
             batch_size=batch_size,
             num_workers=num_workers,
@@ -124,6 +126,7 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--id", type=str, required=True, help="ID number.")
     parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
+    parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")
 
     args = parser.parse_args()
     main(**vars(args))

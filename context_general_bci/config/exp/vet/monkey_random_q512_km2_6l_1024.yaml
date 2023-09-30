@@ -12,7 +12,7 @@ model:
   lr_decay_steps: 600
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
-  kinematic_token_maskout_start: 0.9
+  kinematic_token_maskout_start: 0.2
   # kinematic_token_maskout_start: 1.0
   kinematic_token_maskout: 0.
   task:
@@ -53,12 +53,12 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  batch_size: 24 # 40G
-  # batch_size: 48 # 80G
+  # batch_size: 24 # 40G
+  batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
-# load_from_id: monkey_random_q512_6l_1024-ks62jp04
-load_from_id: monkey_random_q512_6l_1024-nyaug2cb
+load_from_id: monkey_random_q512_km2_6l_1024-a0sbjnut
 notes: "Reduce mask cap and dataset parity just for clarity"
 # load_from_id: monkey_trialized_6l_1024_all-zqv2ln26
-# notes: "Add reggie, add epochs"
+# notes: "WE INITIALIZE FROM KM9! IF THERE"S A THING ABOUT INITIAL STABILITY, THIS IS IT!"
+# We do it from scratch bc we're interested in initial stability.

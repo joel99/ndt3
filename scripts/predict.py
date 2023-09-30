@@ -21,19 +21,34 @@ from context_general_bci.contexts import context_registry
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
-# query = 'monkey_trialized_6l_1024-22lwlmk7'
-query = 'monkey_trialized_6l_1024-zgsjsog0'
+from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
+from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS
+from context_general_bci.tasks.miller import MILLER_LABELS
+DIMS = {
+    'gallego': REACH_DEFAULT_KIN_LABELS,
+    'dyer': DYER_DEFAULT_KIN_LABELS,
+    'miller': MILLER_LABELS,
+    'churchland_misc': REACH_DEFAULT_3D_KIN_LABELS,
+    'churchland_maze': REACH_DEFAULT_KIN_LABELS,
+    'delay': REACH_DEFAULT_3D_KIN_LABELS,
+    'odoherty': REACH_DEFAULT_KIN_LABELS,
+}
 
-# query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
-# query = 'monkey_trialized_6l_1024_broad-yy3ve3gf'
-# query = 'monkey_trialized_6l_1024_all-ufyxs032'
+# A whole bunch heldout
+# query = 'monkey_trialized_6l_1024-zgsjsog0' # converged
 
-# query = 'monkey_schedule_6l_1024-zfwshzmr'
-# query = 'monkey_schedule_6l_1024-0swiit7z'
-query = 'monkey_kin_6l_1024-vgdhzzxm'
+# Dyer held out
+query = 'monkey_trialized_6l_1024_broad-yy3ve3gf' # converged
+
+# Indy held out
 query = 'monkey_random_6l_1024-n3f68hj2'
-# query = 'monkey_schedule_6l_1024-7o3bb4z8'
-query = 'monkey_random_6l_1024_d2-s1wrxq2e'
+
+# Dyer heldout
+# query = 'monkey_random_6l_1024_d2-s1wrxq2e'
+
+# query = 'monkey_random_q512_6l_1024-nyaug2cb'
+# query = 'monkey_random_q512_km5_6l_1024-of2d38iz'
+# query = 'monkey_random_q512_km2_6l_1024-a0sbjnut'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -46,11 +61,10 @@ cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 target = [
     # 'miller_Jango-Jango_20150730_001',
 
-    'dyer_co_.*',
+    # 'dyer_co_.*',
     # 'dyer_co_mihi_1',
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
-    # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
     # 'churchland_maze_jenkins.*'
     # 'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
@@ -58,9 +72,9 @@ target = [
     # 'odoherty_rtt-Indy-20161026_03',
     # 'odoherty_rtt-Indy-20170131_02',
     # 'odoherty_rtt-Indy-20160627_01',
-    # 'odoherty_rtt-Loco-20170210_03',
-    # 'odoherty_rtt-Loco-20170213_02',
-    # 'odoherty_rtt-Loco-20170214_02',
+    'odoherty_rtt-Loco-20170210_03',
+    'odoherty_rtt-Loco-20170213_02',
+    'odoherty_rtt-Loco-20170214_02',
     # 'odoherty_rtt-Loco-20170215_02',
     # 'odoherty_rtt-Loco-20170216_02',
     # 'odoherty_rtt-Loco-20170217_02'
@@ -118,6 +132,10 @@ def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwar
 
 dataloader = get_dataloader(dataset)
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+
+data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
+print(f'Assuming: {data_label}')
+
 #%%
 from sklearn.metrics import r2_score
 print(heldin_outputs[Output.behavior_pred].shape)
@@ -137,26 +155,15 @@ ax = prep_plt(f.gca(), big=True)
 palette = sns.color_palette(n_colors=2)
 colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
 ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
-ax.set_xlabel('True')
-ax.set_ylabel('Pred')
-ax.set_title(f'{query} {str(target)[:20]} R2 Student: {r2_student:.2f}')
-# %%
 target_student = target[is_student]
 prediction_student = prediction[is_student]
 target_student = target_student[prediction_student.abs() < 0.8]
 prediction_student = prediction_student[prediction_student.abs() < 0.8]
 robust_r2_student = r2_score(target_student, prediction_student)
-f = plt.figure(figsize=(10, 10))
-ax = prep_plt(f.gca(), big=True)
-ax.scatter(target_student, prediction_student, s=3, alpha=0.4, color='red')
-ax.set_title(f'{query} {str(target)[:20]} R2 Student: {robust_r2_student:.2f}')
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
+ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}, Robust: {robust_r2_student:.2f} ')
 #%%
-from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
-from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS
-from context_general_bci.tasks.miller import MILLER_LABELS
-
 def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None):
     # Prepare the plot
     ax = prep_plt(ax)
@@ -187,19 +194,7 @@ def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None)
     ax.legend()
     ax.set_title(label, fontsize=20)
 
-DIMS = {
-    'gallego': REACH_DEFAULT_KIN_LABELS,
-    'dyer': DYER_DEFAULT_KIN_LABELS,
-    'miller': MILLER_LABELS,
-    'churchland_misc': REACH_DEFAULT_3D_KIN_LABELS,
-    'churchland_maze': REACH_DEFAULT_KIN_LABELS,
-    'delay': REACH_DEFAULT_3D_KIN_LABELS,
-    'odoherty': REACH_DEFAULT_KIN_LABELS,
-}
-dim_query = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0] # TODO need to get misc, maze, not very robust
-print(f'Assuming: {dim_query}')
-
-labels = DIMS[dim_query]
+labels = DIMS[data_label]
 num_dims = len(labels)
 fig, axs = plt.subplots(num_dims, 1, figsize=(20, 5 * num_dims), sharex=True)
 print(target.shape)
@@ -208,7 +203,7 @@ for i in range(num_dims):
     plot_target_pred_overlay(target[i::num_dims], prediction[i::num_dims], is_student[i::num_dims], label=labels[i], ax=axs[i])
 
 plt.tight_layout()
-fig.suptitle(f'{query}: {str(target)[:20]} Velocity R2 Stud: {r2_student:.2f}')
+fig.suptitle(f'{query}: {data_label} Velocity R2 Stud: {r2_student:.2f}')
 
 #%%
 # ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims

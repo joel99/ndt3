@@ -27,11 +27,11 @@ model:
     - Metric.kinematic_acc
     encode_constraints: True
     use_constraint_cls: False # No need
-    decode_quantize_classes: 512
   transformer:
     n_layers: 6
     max_trial_length: 1500 # Up to 30s
     n_heads: 8
+  dropout: 0.2
   hidden_size: 1024
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
@@ -57,8 +57,6 @@ train:
   # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
-# load_from_id: monkey_random_q512_6l_1024-ks62jp04
-load_from_id: monkey_random_q512_6l_1024-nyaug2cb
-notes: "Reduce mask cap and dataset parity just for clarity"
+# load_from_id: monkey_random_6l_1024-zv8bzxyt
+notes: "Diff from n3f: switch heldout indy to dyer, use 0.9 start over 1.0"
 # load_from_id: monkey_trialized_6l_1024_all-zqv2ln26
-# notes: "Add reggie, add epochs"

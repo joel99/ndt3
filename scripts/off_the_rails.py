@@ -50,6 +50,10 @@ query = 'monkey_kin_6l_1024-vgdhzzxm'
 query = 'monkey_random_6l_1024-n3f68hj2'
 
 query = 'monkey_random_6l_1024_d2-s1wrxq2e'
+query = 'monkey_random_12l_2048-ix5950vl'
+
+# Quantized 0.8
+query = 'monkey_random_q512_6l_1024-nyaug2cb'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -101,7 +105,8 @@ model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.01
 
-def get_eval(model, dataset, batch_size=48):
+def get_eval(model, dataset, batch_size=6):
+# def get_eval(model, dataset, batch_size=48):
     trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
     def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=1, **kwargs) -> DataLoader:
         return DataLoader(dataset,
