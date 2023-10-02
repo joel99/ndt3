@@ -1,0 +1,60 @@
+# @package _global_
+
+defaults:
+  - _default
+
+  - /model:
+    - largescale
+  - /model/task:
+    - decode_flat_v2
+model:
+  lr_ramp_steps: 25
+  lr_decay_steps: 600
+  next_step_prediction: True
+  kinematic_token_maskout_schedule: "random"
+  # kinematic_token_maskout_start: 0.9
+  kinematic_token_maskout_start: 1.0
+  kinematic_token_maskout: 0.5
+  task:
+    tasks:
+    - ModelTask.spike_context
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [0., 1.0, 0., 0.]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    encode_constraints: True
+    use_constraint_cls: False # No need
+    decode_quantize_classes: 512
+  transformer:
+    n_layers: 6
+    max_trial_length: 1500 # Up to 30s
+    n_heads: 8
+  hidden_size: 1024
+  use_full_encode: True
+  decoder_context_integration: 'cross_attn' # Literally not even used
+dataset:
+  datasets:
+  # All cropped trialized data, but ~100K trials.
+  - churchland.*
+  - gallego.*
+  # - dyer_co.*
+  - miller.*
+  # - odoherty_rtt-Loco* # Not that suitable because dramatically different length atm
+  - odoherty_rtt.* # Not that suitable because dramatically different length atm
+  - delay.*
+  odoherty_rtt:
+    chop_size_ms: 5000
+  miller:
+    chop_size_ms: 5000
+  max_channels: 224 # 211
+  max_arrays: 2
+train:
+  # batch_size: 64 # 80G - OOM
+  batch_size: 24 # 40G
+  # batch_size: 48 # 80G
+  patience: 50
+  effective_batch_size: 8192
+notes: "Increase mask floor - expecting this will reduce student perf but maybe increase neural map"

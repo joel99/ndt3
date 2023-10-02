@@ -601,7 +601,7 @@ class BrainBertInterface(pl.LightningModule):
 
 
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
-        if getattr(self.cfg, 'next_step_prediction', False):
+        if self.cfg.next_step_prediction:
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
                 pipeline_space[i] = s + MODALITY_SPACE_RANGE_START[tk]
@@ -648,6 +648,8 @@ class BrainBertInterface(pl.LightningModule):
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
+                    if self.cfg.task.context_prompt_time_thresh > 0:
+                        mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
                     pipeline_context[is_kinematic_input & mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 

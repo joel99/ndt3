@@ -28,6 +28,7 @@ def main(
     student: bool,
     temperature: float,
     id: int,
+    data_label: str,
     gpu: int,
     cue: float,
     batch_size: int,
@@ -36,6 +37,7 @@ def main(
     print(f"Student: {student}")
     print(f"Temperature: {temperature}")
     print(f"ID: {id}")
+    print(f"Data label: {data_label}")
     print(f"GPU: {gpu}")
     print(f"Cue: {cue}")
 
@@ -46,28 +48,25 @@ def main(
 
     # cfg.model.task.metrics = [Metric.kinematic_r2]
     cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
-
-    target = [
-        # 'miller_Jango-Jango_20150730_001',
-
-        # 'dyer_co_.*',
-        # 'dyer_co_mihi_1',
-        # 'gallego_co_Chewie_CO_20160510',
-        'gallego_co_.*',
-        # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
-        # 'churchland_maze_nitschke-sub-Nitschke_ses-20090812',
-        # 'churchland_maze_jenkins.*',
-        # 'odoherty_rtt-Indy-20160407_02',
-        # 'odoherty_rtt-Indy-20161026_03',
-        # 'odoherty_rtt-Loco-20170215_02',
-        # 'odoherty_rtt-Loco-20170216_02',
-        # 'odoherty_rtt-Loco-20170217_02',
-        # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
-        # 'pitt_broad_pitt_co_CRS02bLab_1761',
-        # 'pitt_broad_pitt_co_CRS07Home_32',
-        # 'pitt_broad_pitt_co_CRS07Home_88',
-        # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
-    ]
+    if data_label == 'dyer':
+        target = ['dyer_co_.*']
+    elif data_label == 'gallego':
+        target = ['gallego_co_.*']
+    elif data_label == 'churchland':
+        target = ['churchland_maze_jenkins.*']
+    elif data_label == 'loco':
+        target = [
+            'odoherty_rtt-Loco-20170215_02',
+            'odoherty_rtt-Loco-20170216_02',
+            'odoherty_rtt-Loco-20170217_02',
+        ]
+    elif data_label == 'indy':
+        target = [
+            'odoherty_rtt-Indy-20160407_02',
+            'odoherty_rtt-Indy-20161026_03',
+        ]
+    else:
+        raise ValueError(f"Unknown data label: {data_label}")
 
     # Note: This won't preserve train val split, try to make sure eval datasets were held out
     cfg.dataset.datasets = target
@@ -115,6 +114,7 @@ def main(
     print(f'R2: {r2:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
     pprint(model.cfg.eval)
+    print(f"Data label: {data_label}")
     # print(query)
 
 
@@ -124,6 +124,7 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--student", action="store_true", help="Flag indicating if the subject is a student.")
     parser.add_argument("-t", "--temperature", type=float, default=0., help="Temperature value.")
     parser.add_argument("-i", "--id", type=str, required=True, help="ID number.")
+    parser.add_argument("-d", "--data_label", type=str, required=True, help="Data label.")
     parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
     parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")

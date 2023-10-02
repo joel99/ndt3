@@ -157,7 +157,7 @@ class TaskConfig:
     # infill
     mask_ratio: float = 0.25 # we don't have any schedule right now - the smaller this is, the higher the ceiling (probably), the slower the training
     context_prompt_time_thresh: int = 0 # Supporting in-context learning by providing minimal start of sequence
-    # Based on timestep of tokens
+    # Based on timestep of tokens (in token bin units)
     # For autoregressive models, this just means we start evaluating loss after N tokens (and is probably honestly unnecessary)
     # TODO implement for autoregressive
     # For shuffle based non-autoregressive models, this means never shuffle out the first N tokens during decoding, we assume those are provided.
