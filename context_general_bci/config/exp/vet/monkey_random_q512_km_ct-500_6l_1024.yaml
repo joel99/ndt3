@@ -54,12 +54,7 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  batch_size: 24 # 40G
-  # batch_size: 48 # 80G
+  # batch_size: 24 # 40G
+  batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
-# load_from_id: monkey_random_q512_6l_1024-ks62jp04
-# load_from_id: monkey_random_q512_6l_1024-nyaug2cb
-notes: "Reduce mask cap and dataset parity just for clarity"
-# load_from_id: monkey_trialized_6l_1024_all-zqv2ln26
-# notes: "Add reggie, add epochs"
