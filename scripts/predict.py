@@ -49,6 +49,7 @@ query = 'monkey_random_6l_1024-n3f68hj2'
 # query = 'monkey_random_q512_6l_1024-nyaug2cb'
 # query = 'monkey_random_q512_km5_6l_1024-of2d38iz'
 # query = 'monkey_random_q512_km2_6l_1024-a0sbjnut'
+query = 'monkey_random_q512_km_6l_1024-e9x6b6j7'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -111,9 +112,9 @@ model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
-# model.cfg.eval.temperature = 0.25
+model.cfg.eval.temperature = 0.5
 # model.cfg.eval.temperature = 0.01
-model.cfg.eval.use_student = False
+# model.cfg.eval.use_student = False
 model.cfg.eval.use_student = True
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')

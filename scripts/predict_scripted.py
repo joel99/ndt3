@@ -28,18 +28,17 @@ def main(
     student: bool,
     temperature: float,
     id: int,
+    student_prob: float,
     data_label: str,
     gpu: int,
     cue: float,
+    limit: float,
     batch_size: int,
 ):
     print("Starting eval")
-    print(f"Student: {student}")
-    print(f"Temperature: {temperature}")
     print(f"ID: {id}")
     print(f"Data label: {data_label}")
     print(f"GPU: {gpu}")
-    print(f"Cue: {cue}")
 
     wandb_run = wandb_query_latest(id, allow_running=True, use_display=True)[0]
     print(wandb_run.id)
@@ -65,6 +64,14 @@ def main(
             'odoherty_rtt-Indy-20160407_02',
             'odoherty_rtt-Indy-20161026_03',
         ]
+    elif data_label == "rtt":
+        target = [
+            'odoherty_rtt-Indy-20160407_02',
+            'odoherty_rtt-Indy-20161026_03',
+            'odoherty_rtt-Loco-20170215_02',
+            'odoherty_rtt-Loco-20170216_02',
+            'odoherty_rtt-Loco-20170217_02',
+        ]
     else:
         raise ValueError(f"Unknown data label: {data_label}")
 
@@ -86,10 +93,12 @@ def main(
     # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
     # model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
-    model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
+    model.cfg.eval.limit_timesteps = int(50 * limit) # up to 4s
     # model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
     model.cfg.eval.temperature = temperature
     model.cfg.eval.use_student = student
+    model.cfg.eval.student_prob = student_prob
+    pprint(model.cfg.eval)
 
     trainer = pl.Trainer(accelerator='gpu', devices=[gpu], default_root_dir='./data/tmp')
     def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=1, **kwargs) -> DataLoader:
@@ -124,9 +133,11 @@ if __name__ == "__main__":
     parser.add_argument("-s", "--student", action="store_true", help="Flag indicating if the subject is a student.")
     parser.add_argument("-t", "--temperature", type=float, default=0., help="Temperature value.")
     parser.add_argument("-i", "--id", type=str, required=True, help="ID number.")
+    parser.add_argument("-p", "--student_prob", type=float, default=1., help="Probability of student.")
     parser.add_argument("-d", "--data_label", type=str, required=True, help="Data label.")
     parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
+    parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit context length (s)")
     parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")
 
     args = parser.parse_args()

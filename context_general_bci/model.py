@@ -649,7 +649,12 @@ class BrainBertInterface(pl.LightningModule):
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
                     if self.cfg.task.context_prompt_time_thresh > 0:
+                        # Essentially - maskout only begins at timestamps past prompt threshold.
                         mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
+                    elif self.cfg.task.context_prompt_time_thresh < 0:
+                        # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
+                        times_from_end = times - times.max(-1).values
+                        mask = mask & (times_from_end >= self.cfg.task.context_prompt_time_thresh)
                     pipeline_context[is_kinematic_input & mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
@@ -886,8 +891,16 @@ class BrainBertInterface(pl.LightningModule):
                 # Greedy decoding - subset to only the relevant pieces
                 # No student replacement - just debugging atm!
                 re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
-                if not self.cfg.eval.use_student:
+                if self.cfg.eval.use_student:
+                    if self.cfg.eval.student_prob < 1:
+                        re_enc = torch.where(
+                            torch.rand_like(re_enc) < self.cfg.eval.student_prob,
+                            re_enc,
+                            0
+                        )
+                else:
                     re_enc.zero_() # Mirrors Maskout
+
                 if proc_step < times.size(1) - 1:
                     # Will the next step need a student?
                     should_student = times[:, proc_step+1] >= self.cfg.eval.teacher_timesteps
