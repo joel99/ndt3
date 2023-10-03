@@ -654,7 +654,10 @@ class BrainBertInterface(pl.LightningModule):
                     elif self.cfg.task.context_prompt_time_thresh < 0:
                         # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
                         # print(times.shape)
-                        times_from_end = times - times.max(-1, keepdim=True).values
+                        breakpoint()
+                        non_pad_times = times.clone()
+                        non_pad_times[pipeline_padding] = float('-inf')
+                        times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         mask = mask & (times_from_end >= self.cfg.task.context_prompt_time_thresh)
                     pipeline_context[is_kinematic_input & mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
@@ -846,7 +849,11 @@ class BrainBertInterface(pl.LightningModule):
             predict_until = 0 # The goalpost hasn't been set yet.
             # Want the first slice (batch wise) where anyone needs student force; predict up to that step (exclusvie)
             # breakpoint()
+            if self.cfg.eval.maskout_last_n:
+                # We don't immediately load student, so we need to keep a copy on hand. For convenience, we copy full stream
+                student_stream = pipeline_context.clone()
             need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
+            # breakpoint()
             if not need_student_slice.any():
                 predict_until = times.size(1)
             else:
@@ -891,7 +898,7 @@ class BrainBertInterface(pl.LightningModule):
                 # Need to decode and quantize again... (redundant work but IDRC)
                 # Greedy decoding - subset to only the relevant pieces
                 # No student replacement - just debugging atm!
-                re_enc = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
+                re_enc: torch.Tensor = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
                 if self.cfg.eval.use_student:
                     if self.cfg.eval.student_prob < 1:
                         re_enc = torch.where(
@@ -907,11 +914,28 @@ class BrainBertInterface(pl.LightningModule):
                     should_student = times[:, proc_step+1] >= self.cfg.eval.teacher_timesteps
                     cue_mask.append(should_student)
                     # Only student force the tokens that we predicted - hence use `to_infer_mask` of current step
-                    pipeline_context[:, proc_step+1][
-                        to_infer_mask[:, proc_step] & should_student
-                    ] = re_enc[
-                        to_infer_mask[:, proc_step] & should_student
-                    ]
+                    if self.cfg.eval.maskout_last_n:
+                        # Essentially keep the student stream updated; but only copy up to the last N steps. Meanwhile, true stream should be zero-ed out
+                        student_stream[:, proc_step+1][
+                            to_infer_mask[:, proc_step] & should_student
+                        ] = re_enc[
+                            to_infer_mask[:, proc_step] & should_student
+                        ]
+                        re_enc.zero_()
+                        pipeline_context[:, proc_step+1][
+                            to_infer_mask[:, proc_step] & should_student
+                        ] = re_enc[
+                            to_infer_mask[:, proc_step] & should_student
+                        ]
+                        veil_time = times[:, proc_step:proc_step + 1] - self.cfg.eval.maskout_last_n
+                        time_mask = times[:, :proc_step+1] < veil_time
+                        pipeline_context[:, :proc_step + 1][time_mask] = student_stream[:, :proc_step + 1][time_mask]
+                    else:
+                        pipeline_context[:, proc_step+1][
+                            to_infer_mask[:, proc_step] & should_student
+                        ] = re_enc[
+                            to_infer_mask[:, proc_step] & should_student
+                        ]
                 proc_step += 1
                 if True or proc_step % 100 == 0:
                     print(f'Inferred {proc_step} of {times.size(1)} steps.')

@@ -1,7 +1,7 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '2'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 # os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import warnings
 warnings.filterwarnings('ignore')
@@ -50,6 +50,8 @@ query = 'monkey_random_6l_1024-n3f68hj2'
 # query = 'monkey_random_q512_km5_6l_1024-of2d38iz'
 # query = 'monkey_random_q512_km2_6l_1024-a0sbjnut'
 query = 'monkey_random_q512_km_6l_1024-e9x6b6j7'
+query = 'monkey_eval_q512_km_ct-500_6l_1024-gutjedh9'
+# query = 'monkey_random_q512_km_ct-500_6l_1024-uyhfv5cy'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -67,15 +69,18 @@ target = [
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_jenkins.*'
+    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
     # 'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
     # 'odoherty_rtt-Indy-20161005_06',
     # 'odoherty_rtt-Indy-20161026_03',
     # 'odoherty_rtt-Indy-20170131_02',
     # 'odoherty_rtt-Indy-20160627_01',
+
     'odoherty_rtt-Loco-20170210_03',
     'odoherty_rtt-Loco-20170213_02',
     'odoherty_rtt-Loco-20170214_02',
+
     # 'odoherty_rtt-Loco-20170215_02',
     # 'odoherty_rtt-Loco-20170216_02',
     # 'odoherty_rtt-Loco-20170217_02'
@@ -88,11 +93,11 @@ target = [
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 cfg.dataset.datasets = target
+cfg.dataset.exclude_datasets = []
 dataset = SpikingDataset(cfg.dataset)
 pl.seed_everything(0)
 # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
 dataset.subset_scale(limit_per_session=48)
-# dataset.subset_scale(limit_per_session=4)
 # train, val = dataset.create_tv_datasets()
 # dataset = val
 print("Eval length: ", len(dataset))
@@ -110,18 +115,20 @@ model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
 model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
+model.cfg.eval.teacher_timesteps = int(50 * 4.5) # up to 4s
+model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
-model.cfg.eval.temperature = 0.5
+# model.cfg.eval.temperature = 0.5
 # model.cfg.eval.temperature = 0.01
-# model.cfg.eval.use_student = False
-model.cfg.eval.use_student = True
+model.cfg.eval.use_student = False
+# model.cfg.eval.use_student = True
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
-def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwargs) -> DataLoader:
+def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+# def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=64, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,

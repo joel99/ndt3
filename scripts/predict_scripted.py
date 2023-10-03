@@ -33,6 +33,7 @@ def main(
     gpu: int,
     cue: float,
     limit: float,
+    maskout_last_n: int,
     batch_size: int,
 ):
     print("Starting eval")
@@ -98,6 +99,7 @@ def main(
     model.cfg.eval.temperature = temperature
     model.cfg.eval.use_student = student
     model.cfg.eval.student_prob = student_prob
+    model.cfg.eval.maskout_last_n = maskout_last_n
     pprint(model.cfg.eval)
 
     trainer = pl.Trainer(accelerator='gpu', devices=[gpu], default_root_dir='./data/tmp')
@@ -137,9 +139,9 @@ if __name__ == "__main__":
     parser.add_argument("-d", "--data_label", type=str, required=True, help="Data label.")
     parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
-    parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit context length (s)")
+    parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit eval length (s)")
     parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")
-
+    parser.add_argument("-m", "--maskout_last_n", type=int, default=0, help="Mask out last N timesteps.")
     args = parser.parse_args()
     main(**vars(args))
 
