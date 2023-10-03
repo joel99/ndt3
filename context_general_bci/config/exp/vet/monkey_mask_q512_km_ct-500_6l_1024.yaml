@@ -14,8 +14,9 @@ model:
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
   kinematic_token_maskout_start: 1.0
-  kinematic_token_maskout: 0.
+  kinematic_token_maskout: 1.0
   task:
+    context_prompt_time_thresh: -25
     tasks:
     - ModelTask.spike_context
     - ModelTask.kinematic_infill
@@ -27,7 +28,7 @@ model:
     - Metric.kinematic_acc
     encode_constraints: True
     use_constraint_cls: False # No need
-    decode_quantize_classes: 128
+    decode_quantize_classes: 512
   transformer:
     n_layers: 6
     max_trial_length: 1500 # Up to 30s
@@ -57,9 +58,3 @@ train:
   # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
-# load_from_id: monkey_random_q512_6l_1024-ks62jp04
-# load_from_id: monkey_random_q512_6l_1024-nyaug2cb
-notes: "cf effect of lowered quant classes"
-# load_from_id: monkey_trialized_6l_1024_all-zqv2ln26
-# notes: "Add reggie, add epochs"
-load_from_id: monkey_random_q128_km_6l_1024-t06dgffc # just crashed for data interrupt
