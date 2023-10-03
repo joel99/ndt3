@@ -14,7 +14,7 @@ model:
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
   kinematic_token_maskout_start: 1.0
-  kinematic_token_maskout: 0.
+  kinematic_token_maskout: 0.5
   task:
     context_prompt_time_thresh: -25
     tasks:

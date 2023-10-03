@@ -654,9 +654,8 @@ class BrainBertInterface(pl.LightningModule):
                     elif self.cfg.task.context_prompt_time_thresh < 0:
                         # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
                         # print(times.shape)
-                        breakpoint()
                         non_pad_times = times.clone()
-                        non_pad_times[pipeline_padding] = float('-inf')
+                        non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         mask = mask & (times_from_end >= self.cfg.task.context_prompt_time_thresh)
                     pipeline_context[is_kinematic_input & mask] = 0
