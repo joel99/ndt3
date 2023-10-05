@@ -574,10 +574,11 @@ class BrainBertInterface(pl.LightningModule):
             raise ValueError(f"Unknown kinematic token maskout schedule {self.cfg.kinematic_token_maskout_schedule}")
         return maskout
 
-    def assemble_pipeline(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[
+    def assemble_pipeline(self, batch: Dict[BatchKey, torch.Tensor], prefix=False) -> Tuple[
         List[str], List[Any],
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None
     ]:
+        # modalities is _target_ at timestep, roll forward to determine input modality
         # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
         trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
@@ -648,10 +649,10 @@ class BrainBertInterface(pl.LightningModule):
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
-                    if self.cfg.task.context_prompt_time_thresh > 0:
+                    if prefix and self.cfg.task.context_prompt_time_thresh > 0:
                         # Essentially - maskout only begins at timestamps past prompt threshold.
                         mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
-                    elif self.cfg.task.context_prompt_time_thresh < 0:
+                    elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
                         # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
                         # print(times.shape)
                         non_pad_times = times.clone()
@@ -670,12 +671,12 @@ class BrainBertInterface(pl.LightningModule):
             modalities
         )
 
-    def forward(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    def forward(self, batch: Dict[BatchKey, torch.Tensor], use_prefix=False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
         r"""
             returns backbone features B T H, and timesteps B T
             modalities is flag indicating _target_ modality.
         """
-        tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
+        tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch, prefix=use_prefix)
         # if times.max() > 1500 or space.max() > 32:
             # breakpoint()
         outputs: torch.Tensor = self.backbone(
@@ -720,7 +721,15 @@ class BrainBertInterface(pl.LightningModule):
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
-        features, times, space, padding, modalities = self(batch) # B T H
+
+        if self.cfg.task.prefix_ratio > 0:
+            use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
+            prefix_loss = True
+        else:
+            use_prefix = True # feel free to use if available
+            prefix_loss = False
+
+        features, times, space, padding, modalities = self(batch, use_prefix=use_prefix) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -731,7 +740,7 @@ class BrainBertInterface(pl.LightningModule):
         running_loss = 0
         for i, task in enumerate(self.cfg.task.tasks):
             should_detach = 'infill' not in task.value and self.detach_backbone_for_task
-            if getattr(self.cfg, 'next_step_prediction', False):
+            if self.cfg.next_step_prediction:
                 sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything. # B* H (flattened)
                 sub_times = times[modalities == i]
                 sub_space = space[modalities == i]
@@ -846,17 +855,25 @@ class BrainBertInterface(pl.LightningModule):
             # breakpoint()
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
             predict_until = 0 # The goalpost hasn't been set yet.
-            # Want the first slice (batch wise) where anyone needs student force; predict up to that step (exclusvie)
-            # breakpoint()
-            if self.cfg.eval.maskout_last_n:
-                # We don't immediately load student, so we need to keep a copy on hand. For convenience, we copy full stream
-                student_stream = pipeline_context.clone()
             need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
+            # Want the first slice (batch wise) where anyone needs student force; predict up to that step (exclusvie)
             # breakpoint()
             if not need_student_slice.any():
                 predict_until = times.size(1)
             else:
                 predict_until = need_student_slice.nonzero()[0][0].item() # Predict_until is exclusive.
+
+            if self.cfg.eval.maskout_last_n:
+                # We don't immediately load student, so we need to keep a copy on hand. For convenience, we copy full stream
+                student_stream = pipeline_context.clone()
+                # Identify the kinematics up to n steps before the first student slice, and zero it out
+                # breakpoint()
+                is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
+                is_kinematic_input[:, 0] = False
+                blacklist_kin_times = (times < self.cfg.eval.teacher_timesteps) \
+                    & (times >= self.cfg.eval.teacher_timesteps - self.cfg.eval.maskout_last_n) \
+                    & is_kinematic_input
+                pipeline_context[blacklist_kin_times] = 0
             while proc_step < times.size(1):
                 # Jump to the next inferrable step
                 if not to_infer_mask[:, proc_step].any():

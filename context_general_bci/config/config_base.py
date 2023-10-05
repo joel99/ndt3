@@ -159,7 +159,7 @@ class TaskConfig:
     context_prompt_time_thresh: int = 0 # Supporting in-context learning by providing minimal start of sequence
     # Based on timestep of tokens (in token bin units)
     # For autoregressive models, this just means we start evaluating loss after N tokens (and is probably honestly unnecessary)
-    # TODO implement for autoregressive
+    prefix_ratio: float = 0.0 # ratio of using prefix loss - i.e. only count loss on maskout suffix. Assumes negative context_prompt_time_thresh
     # For shuffle based non-autoregressive models, this means never shuffle out the first N tokens during decoding, we assume those are provided.
 
     # These ratios are only relevant for non-asymmetric path (i.e. defunct)
