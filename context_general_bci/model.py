@@ -133,7 +133,7 @@ class BrainBertInterface(pl.LightningModule):
             self.backbone.out_size = self.cfg.hidden_size
         else:
             # Max space can be manipulated in model in next_step path; thus model is responsible for determining max space to encode. If not, use raw max token expected
-            max_spatial_tokens = self.cfg.max_spatial_position if getattr(self.cfg, 'next_step_prediction', True) else data_attrs.max_spatial_tokens
+            max_spatial_tokens = self.cfg.max_spatial_position if self.cfg.next_step_prediction else data_attrs.max_spatial_tokens
             self.backbone = SpaceTimeTransformer(
                 self.cfg.transformer,
                 max_spatial_tokens=max_spatial_tokens,
@@ -234,7 +234,7 @@ class BrainBertInterface(pl.LightningModule):
                         self.session_flag = nn.Parameter(torch.zeros(self.cfg.session_embed_size))
 
         if self.cfg.subject_embed_strategy is not EmbedStrat.none:
-            if self.cfg.subject_embed_strategy == EmbedStrat.token and getattr(self.cfg, 'subject_embed_token_count', 1) > 1:
+            if self.cfg.subject_embed_strategy == EmbedStrat.token and self.cfg.subject_embed_token_count > 1:
                 self.subject_embed = nn.Parameter(torch.randn(len(self.data_attrs.context.subject), self.cfg.subject_embed_token_count, self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
                 self.subject_flag = nn.Parameter(torch.randn(self.cfg.subject_embed_token_count, self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
             else:
@@ -265,7 +265,7 @@ class BrainBertInterface(pl.LightningModule):
                     self.array_flag = nn.Parameter(torch.zeros(self.data_attrs.max_arrays, self.cfg.array_embed_size))
 
         if self.cfg.task_embed_strategy is not EmbedStrat.none:
-            if self.cfg.task_embed_strategy == EmbedStrat.token and getattr(self.cfg, 'task_embed_token_count', 1) > 1:
+            if self.cfg.task_embed_strategy == EmbedStrat.token and self.cfg.task_embed_token_count > 1:
                 self.task_embed = nn.Parameter(torch.randn(len(self.data_attrs.context.task), self.cfg.task_embed_token_count, self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
                 self.task_flag = nn.Parameter(torch.randn(self.cfg.task_embed_token_count, self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
             else:
@@ -327,7 +327,7 @@ class BrainBertInterface(pl.LightningModule):
             ) for k in self.cfg.task.tasks
         })
 
-        if getattr(self.cfg, 'next_step_prediction', False): # special tokens
+        if self.cfg.next_step_prediction: # special tokens
             self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
             # Checks on spatial tokens
             assert self.data_attrs.max_spatial_tokens_neural < MODALITY_SPACE_RANGE_START['return'] -  MODALITY_SPACE_RANGE_START['spike']
@@ -576,7 +576,7 @@ class BrainBertInterface(pl.LightningModule):
 
     def assemble_pipeline(self, batch: Dict[BatchKey, torch.Tensor], prefix=False) -> Tuple[
         List[str], List[Any],
-        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
     ]:
         # modalities is _target_ at timestep, roll forward to determine input modality
         # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
@@ -618,6 +618,8 @@ class BrainBertInterface(pl.LightningModule):
         space, _ = pack(pipeline_space, 'b *')
         pipeline_padding, _ = pack(pipeline_padding, 'b *')
 
+        mask = None
+
         if self.cfg.next_step_prediction:
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
 
@@ -645,7 +647,7 @@ class BrainBertInterface(pl.LightningModule):
                 if self.cfg.token_maskout > 0:
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
-                if self.do_kin_maskout:
+                elif self.do_kin_maskout:
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
@@ -659,7 +661,8 @@ class BrainBertInterface(pl.LightningModule):
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         mask = mask & (times_from_end >= self.cfg.task.context_prompt_time_thresh)
-                    pipeline_context[is_kinematic_input & mask] = 0
+                    mask = is_kinematic_input & mask
+                    pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
         return (
@@ -668,17 +671,21 @@ class BrainBertInterface(pl.LightningModule):
             times,
             space,
             pipeline_padding,
-            modalities
+            modalities,
+            mask # tokens with no cue input, used for optional loss block
         )
 
-    def forward(self, batch: Dict[BatchKey, torch.Tensor], use_prefix=False) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None]:
+    def forward(self, batch: Dict[BatchKey, torch.Tensor], use_prefix=False) -> Tuple[
+        torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
+    ]:
         r"""
             returns backbone features B T H, and timesteps B T
             modalities is flag indicating _target_ modality.
         """
-        tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch, prefix=use_prefix)
-        # if times.max() > 1500 or space.max() > 32:
-            # breakpoint()
+        tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(
+            batch,
+            prefix=use_prefix
+        )
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             autoregressive=self.cfg.next_step_prediction,
@@ -688,7 +695,7 @@ class BrainBertInterface(pl.LightningModule):
             positions=space,
         ) # B x Token x H (flat)
         if self.cfg.use_full_encode:
-            return outputs, times, space, pipeline_padding, modalities
+            return outputs, times, space, pipeline_padding, modalities, zero_mask
         else:
             outputs = unpack(outputs, ps, 'b * h')
             times = unpack(times, ps, 'b *')
@@ -698,7 +705,7 @@ class BrainBertInterface(pl.LightningModule):
                 enc_index = tks.index('shuffle_infill') # TODO replace with something that targets the spike context provider...
             else:
                 enc_index = tks.index('spike_context')
-            return outputs[enc_index], times[enc_index], space[enc_index], pipeline_padding[enc_index]
+            return outputs[enc_index], times[enc_index], space[enc_index], pipeline_padding[enc_index], None, None
 
     def _step(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False) -> Dict[BatchKey, torch.Tensor]:
         r"""
@@ -721,15 +728,14 @@ class BrainBertInterface(pl.LightningModule):
             batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
-
         if self.cfg.task.prefix_ratio > 0:
             use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
-            prefix_loss = True
+            prefix_loss = use_prefix
         else:
             use_prefix = True # feel free to use if available
             prefix_loss = False
 
-        features, times, space, padding, modalities = self(batch, use_prefix=use_prefix) # B T H
+        features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -745,18 +751,21 @@ class BrainBertInterface(pl.LightningModule):
                 sub_times = times[modalities == i]
                 sub_space = space[modalities == i]
                 sub_padding = padding[modalities == i]
+                sub_loss_mask = None if zero_mask is None else zero_mask[modalities == i]
                 # breakpoint() # Check the shape here. Also, check the modality mask, unclear we provide the right features if some task pipeline provides nothing
             else:
                 sub_features = features
                 sub_times = times
                 sub_space = space
                 sub_padding = padding
+                sub_loss_mask = zero_mask
             update = self.task_pipelines[task.value](
                 batch,
                 sub_features.detach() if should_detach else sub_features,
                 sub_times,
                 sub_space,
                 sub_padding,
+                loss_mask=sub_loss_mask if prefix_loss else None,
                 eval_mode=eval_mode
             )
             batch_out.update(update)
@@ -972,7 +981,7 @@ class BrainBertInterface(pl.LightningModule):
         else:
             features, times, space, padding, modalities = self(batch)
             for i, task in enumerate(self.cfg.task.tasks):
-                if getattr(self.cfg, 'next_step_prediction', False):
+                if self.cfg.next_step_prediction:
                     sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything. # B* H (flattened)
                     sub_times = times[modalities == i]
                     sub_space = space[modalities == i]

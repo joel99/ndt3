@@ -15,9 +15,9 @@ model:
   # kinematic_token_maskout_start: 0.9
   kinematic_token_maskout_start: 1.0
   kinematic_token_maskout: 0.5
-  prefix_ratio: 0.5
-  context_prompt_time_thresh: -25
   task:
+    context_prompt_time_thresh: -25
+    prefix_ratio: 0.25
     tasks:
     - ModelTask.spike_context
     - ModelTask.kinematic_infill
@@ -61,8 +61,7 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  # batch_size: 24 # 40G
-  batch_size: 48 # 80G
+  batch_size: 24 # 40G
+  # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
-notes: "Increase mask floor - expecting this will reduce student perf but maybe increase neural map"

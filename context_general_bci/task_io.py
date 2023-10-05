@@ -211,6 +211,7 @@ class TaskPipeline(nn.Module):
             backbone_times: torch.Tensor,
             backbone_space: torch.Tensor,
             backbone_padding: torch.Tensor,
+            loss_mask: torch.Tensor | None = None,
             compute_metrics=True,
             eval_mode=False
         ) -> torch.Tensor:
@@ -647,6 +648,7 @@ class SpikeBase(SpikeContext, RatePrediction):
             backbone_times: torch.Tensor,
             backbone_space: torch.Tensor,
             backbone_padding: torch.Tensor,
+            loss_mask: torch.Tensor | None = None,
             compute_metrics=True,
             eval_mode=False
     ) -> torch.Tensor:
@@ -660,7 +662,10 @@ class SpikeBase(SpikeContext, RatePrediction):
         loss = self.loss(rates, target.flatten(0, 1))
         comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
         # cf self.get_loss_mask
-        loss_mask = ~backbone_padding.unsqueeze(-1) # B -> B x 1
+        if loss_mask is not None:
+            loss_mask = loss_mask & ~backbone_padding.unsqueeze(-1) # B -> B x 1
+        else:
+            loss_mask = ~backbone_padding.unsqueeze(-1) # B -> B x 1
         channel_mask = (comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1))
         loss_mask = loss_mask & channel_mask
         loss = loss[loss_mask].mean()
@@ -1741,6 +1746,7 @@ class CovariateInfill(ClassificationMixin):
         backbone_times: torch.Tensor,
         backbone_space: torch.Tensor,
         backbone_padding: torch.Tensor,
+        loss_mask: torch.Tensor | None = None,
         compute_metrics=True,
         eval_mode=False,
         temperature=0.,
@@ -1759,7 +1765,11 @@ class CovariateInfill(ClassificationMixin):
 
         # Compute loss
         loss = self.compute_loss(bhvr, bhvr_tgt)
-        loss = loss[~backbone_padding].mean()
+        if loss_mask is not None:
+            loss_mask = loss_mask & ~backbone_padding
+        else:
+            loss_mask = ~backbone_padding
+        loss = loss[loss_mask].mean()
         batch_out['loss'] = loss
 
         r2_mask = ~backbone_padding
