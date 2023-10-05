@@ -61,7 +61,7 @@ def apply_shuffle_2d(item: torch.Tensor, shuffle: torch.Tensor):
     # Use gather to apply different permutations to each batch
     return item[batch_idx, shuffle]
 
-def temporal_pool(batch: Dict[str, torch.Tensor], backbone_features: torch.Tensor, temporal_padding_mask: torch.Tensor, pool='mean', override_time=0):
+def temporal_pool(batch: Dict[BatchKey, torch.Tensor], backbone_features: torch.Tensor, temporal_padding_mask: torch.Tensor, pool='mean', override_time=0):
     # Originally developed for behavior regression, extracted for heldoutprediction
     # Assumption is that bhvr is square!
     # This path assumes DataKey.time is not padded!
@@ -160,7 +160,7 @@ class TaskPipeline(nn.Module):
         """
         raise NotImplementedError
 
-    def get_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | List, torch.Tensor | List, torch.Tensor | List, torch.Tensor | List]:
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[torch.Tensor | List, torch.Tensor | List, torch.Tensor | List, torch.Tensor | List]:
         r"""
             Context for covariates that should be embedded.
             (e.g. behavior, stimuli, ICMS)
@@ -174,7 +174,7 @@ class TaskPipeline(nn.Module):
         """
         return [], [], [], []
 
-    def get_conditioning_context(self, batch: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor | List, torch.Tensor | List, torch.Tensor | List, torch.Tensor | List]:
+    def get_conditioning_context(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[torch.Tensor | List, torch.Tensor | List, torch.Tensor | List, torch.Tensor | List]:
         r"""
             For task specific trial _input_. (B T H)
             Same return as above.
@@ -182,7 +182,7 @@ class TaskPipeline(nn.Module):
         raise NotImplementedError # TODO still not consumed in main model
         return None, None, None, None
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
         r"""
             Currently redundant with get_context - need to refactor.
             It could be that this forces a one-time modification.
@@ -190,7 +190,7 @@ class TaskPipeline(nn.Module):
         """
         return batch
 
-    def get_trial_query(self, batch: Dict[str, torch.Tensor]):
+    def get_trial_query(self, batch: Dict[BatchKey, torch.Tensor]):
         r"""
             For task specific trial _query_. (B H)
         """
@@ -229,7 +229,7 @@ class ContextPipeline(TaskPipeline):
         return {}
 
     @abc.abstractmethod
-    def get_context(self, batch: Dict[str, torch.Tensor]):
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         raise NotImplementedError
 
 class ConstraintPipeline(ContextPipeline):
@@ -274,29 +274,16 @@ class ConstraintPipeline(ContextPipeline):
         return constraint_embed
 
 
-    def get_context(self, batch: Dict[str, torch.Tensor]):
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
         constraint = batch[DataKey.constraint]
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time]
-        if self.cfg.decode_tokenize_dims:
-            assert DataKey.constraint_space in batch, 'constraint space must be provided, inference deprecated on tokenized path'
-            space = batch[DataKey.constraint_space]
-        else:
-            logger.warning('Deprecated constraint path! JY does not remember what preconditions are for this path')
-            bhvr_attr_factor = constraint_embed.size(1) // time.size(1) if self.cfg.decode_tokenize_dims else constraint_embed.size(-1)
-            space = repeat(torch.arange(bhvr_attr_factor, device=constraint_embed.device), 'd -> b (t d)', b=constraint_embed.size(0), t=time.size(1))
-            time = repeat(time, 'b t -> b (t d)', d=bhvr_attr_factor)
-        padding = create_token_padding_mask(
-            constraint,
-            batch,
-            length_key=CONSTRAINT_LENGTH_KEY, # 9/15/23: length is compatible on tokenized path. No need for special length treatment
-            # multiplicity=bhvr_attr_factor if self.cfg.decode_tokenize_dims else 1,
-        ) # Make it before constraint is flattened
-        if not self.cfg.decode_tokenize_dims: # if not already flattened
-            padding = repeat(padding, 'b t -> b (t d)', d=bhvr_attr_factor)
-            constraint_embed = rearrange(constraint_embed, 'b t h d -> b (t d) h')
+        space = batch[DataKey.constraint_space]
+        padding = create_padding_simple(
+            constraint, batch.get(CONSTRAINT_LENGTH_KEY, None)
+        )
         return (
             constraint_embed,
             time,
@@ -308,7 +295,7 @@ class ConstraintPipeline(ContextPipeline):
 class DataPipeline(TaskPipeline):
     def get_masks(
         self,
-        batch: Dict[str, torch.Tensor],
+        batch: Dict[BatchKey, torch.Tensor],
         channel_key=CHANNEL_KEY,
         length_key=LENGTH_KEY,
         ref: torch.Tensor | None = None,
@@ -524,14 +511,12 @@ class SpikeContext(ContextPipeline):
         state_in = state_in.flatten(-2, -1)
         return state_in
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
-        batch[DataKey.padding] = create_token_padding_mask(
-            batch[DataKey.spikes], batch,
-            length_key=LENGTH_KEY, # Use the right key, if there's no shuffle # TODO fix dataloader to load LENGTH_KEY as SPIKE_LENGTH_KEY (make spikes less special)
-        )
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
+        batch[DataKey.padding] = create_padding_simple(batch[DataKey.spikes], batch.get(LENGTH_KEY, None))
+         # TODO fix dataloader to load LENGTH_KEY as SPIKE_LENGTH_KEY (make spikes less special)
         return batch
 
-    def get_context(self, batch: Dict[str, torch.Tensor]):
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         spikes = self.encode(batch)
         time = batch[DataKey.time]
         space = batch[DataKey.position]
@@ -541,7 +526,7 @@ class SpikeContext(ContextPipeline):
 
 class SelfSupervisedInfill(RatePrediction):
     modifies = [DataKey.spikes]
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
         spikes = batch[DataKey.spikes]
         target = spikes[..., 0]
         if eval_mode:
@@ -718,11 +703,11 @@ class ShuffleInfill(SpikeBase):
             reference='spike_target',
         )
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
         super().update_batch(batch, eval_mode=eval_mode)
         return self.crop_batch(self.cfg.mask_ratio, batch, eval_mode=eval_mode, shuffle=True)
 
-    def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False, shuffle=True):
+    def crop_batch(self, mask_ratio: float, batch: Dict[BatchKey, torch.Tensor], eval_mode=False, shuffle=True):
         r"""
             Shuffle inputs, keep only what we need for evaluation
         """
@@ -770,7 +755,7 @@ class ShuffleInfill(SpikeBase):
         batch[f'{self.handle}_query'] = self.injector.make_query(target)
         return batch
 
-    def get_loss_mask(self, batch: Dict[str, torch.Tensor], loss: torch.Tensor, padding_mask: torch.Tensor | None = None):
+    def get_loss_mask(self, batch: Dict[BatchKey, torch.Tensor], loss: torch.Tensor, padding_mask: torch.Tensor | None = None):
         # get_masks
         loss_mask = torch.ones(loss.size(), device=loss.device, dtype=torch.bool)
         # note LENGTH_KEY and CHANNEL_KEY are for padding tracking
@@ -879,7 +864,7 @@ class NextStepPrediction(RatePrediction):
         self.start_token = nn.Parameter(torch.randn(cfg.hidden_size))
         self.separator_token = nn.Parameter(torch.randn(cfg.hidden_size)) # Delimits action modality, per GATO. # TODO ablate
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode=False):
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
         assert False, 'deprecated. Use `next_step_prediction` modelConfig to directly specify'
         spikes = batch[DataKey.spikes]
         target = spikes[..., 0]
@@ -954,7 +939,7 @@ class TemporalTokenInjector(nn.Module):
         b, t, *_ = reference.size() # reference should already be tokenized to desired res
         return repeat(self.cls_token, 'h -> b t h', b=b, t=t)
 
-    def inject(self, batch: Dict[str, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None, injected_space: torch.Tensor | None = None):
+    def inject(self, batch: Dict[BatchKey, torch.Tensor], in_place=False, injected_time: torch.Tensor | None = None, injected_space: torch.Tensor | None = None):
         # create tokens for decoding with (inject them into seq or return them)
         # Assumption is that behavior time == spike time (i.e. if spike is packed, so is behavior), and there's no packing
         b, t, *_ = batch[self.reference].size() # reference should already be tokenized to desired res
@@ -1009,7 +994,7 @@ class ReturnContext(ContextPipeline):
         )
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
-    def get_context(self, batch: Dict[str, torch.Tensor]):
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         # TODO phase these out given re-generation of PittCO
         batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
         batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(min=0)
@@ -1017,9 +1002,7 @@ class ReturnContext(ContextPipeline):
         reward_embed = self.reward_enc(batch[DataKey.task_reward])
         times = batch[DataKey.task_return_time]
         space = torch.zeros_like(times)
-        padding = create_token_padding_mask(
-            return_embed, batch, length_key=RETURN_LENGTH_KEY
-        ) # Don't need a separate update step unless we need the retrieve padding at later time.
+        padding = create_padding_simple(return_embed, batch.get(RETURN_LENGTH_KEY, None))
         return (
             return_embed + reward_embed,
             # self.norm(return_embed + reward_embed),
@@ -1164,14 +1147,14 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
     def handle(self):
         return 'covariate'
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
-        batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
-            batch[self.cfg.behavior_target], batch,
-            length_key=f'{self.handle}_{LENGTH_KEY}',
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode = False):
+        batch[f'{self.handle}_{DataKey.padding}'] = create_padding_simple(
+            batch[self.cfg.behavior_target],
+            batch.get(f'{self.handle}_{LENGTH_KEY}', None)
         )
         return self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
 
-    def crop_batch(self, mask_ratio: float, batch: Dict[str, torch.Tensor], eval_mode=False, shuffle=True):
+    def crop_batch(self, mask_ratio: float, batch: Dict[BatchKey, torch.Tensor], eval_mode=False, shuffle=True):
         covariates = batch[self.cfg.behavior_target] # B (T Cov_Dims) 1 if tokenized, else  B x T x Cov_Dims,
         # breakpoint()
         if DataKey.covariate_time not in batch:
@@ -1258,7 +1241,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         batch[f'{self.handle}_query'] = self.injector.make_query(self.get_target(batch))
         return batch
 
-    def get_context(self, batch: Dict[str, torch.Tensor]):
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         if self.cfg.covariate_mask_ratio == 1.0:
             # return super().get_context(batch)
             return [], [], [], []
@@ -1282,7 +1265,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def get_cov_pred(
         self,
-        batch: Dict[str, torch.Tensor],
+        batch: Dict[BatchKey, torch.Tensor],
         backbone_features: torch.Tensor,
         backbone_times: torch.Tensor,
         backbone_space: torch.Tensor,
@@ -1362,7 +1345,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             backbone_features = batch[:, -decode_tokens.size(1):]
         return self.out(backbone_features)
 
-    def get_target(self, batch: Dict[str, torch.Tensor]) -> torch.Tensor:
+    def get_target(self, batch: Dict[BatchKey, torch.Tensor]) -> torch.Tensor:
         if self.cfg.covariate_mask_ratio == 1.0:
             tgt = batch[self.cfg.behavior_target]
         else:
@@ -1613,10 +1596,10 @@ class BehaviorContext(ContextPipeline, QuantizeBehavior):
     def handle(self):
         return 'covariate'
 
-    def get_context(self, batch: Dict[str, torch.Tensor]):
-        batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
-            batch[self.cfg.behavior_target], batch,
-            length_key=f'{self.handle}_{LENGTH_KEY}',
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
+        batch[f'{self.handle}_{DataKey.padding}'] = create_padding_simple(
+            batch[self.cfg.behavior_target],
+            batch.get(f'{self.handle}_{LENGTH_KEY}', None),
         )
         # breakpoint() # TODO check dims, we may not need the mean call
         return (
@@ -1723,14 +1706,14 @@ class CovariateInfill(ClassificationMixin):
     def handle(self):
         return 'covariate'
 
-    def update_batch(self, batch: Dict[str, torch.Tensor], eval_mode = False):
-        batch[f'{self.handle}_{DataKey.padding}'] = create_token_padding_mask(
-            batch[self.cfg.behavior_target], batch,
-            length_key=f'{self.handle}_{LENGTH_KEY}',
+    def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode = False):
+        batch[f'{self.handle}_{DataKey.padding}'] = create_padding_simple(
+            batch[self.cfg.behavior_target],
+            batch.get(f'{self.handle}_{LENGTH_KEY}', None),
         )
         return batch
 
-    def get_context(self, batch: Dict[str, torch.Tensor]):
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         enc = self.encode_cov(batch[self.cfg.behavior_target])
         return (
             enc,
@@ -1793,10 +1776,19 @@ class CovariateInfill(ClassificationMixin):
         return batch_out
 
 # === Utils ===
+def create_padding_simple(
+    reference: torch.Tensor,
+    lengths: torch.Tensor | None,
+): # Simplified for .compile
+    if lengths is None:
+        return torch.zeros(reference.size()[:2], device=reference.device, dtype=torch.bool)
+    token_position = torch.arange(reference.size(1), device=reference.device)
+    # token_position = rearrange(token_position, 't -> () t')
+    return token_position.unsqueeze(0) >= lengths.unsqueeze(-1)
 
 def create_token_padding_mask(
     reference: torch.Tensor | None,
-    batch: Dict[str, torch.Tensor],
+    batch: Dict[BatchKey, torch.Tensor],
     length_key: str = LENGTH_KEY,
     shuffle_key: str = '',
     multiplicity: int = 1, # if reference has extra time dimensions flattened
