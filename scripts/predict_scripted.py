@@ -4,13 +4,11 @@ import os
 import argparse
 from pprint import pprint
 
-import warnings
-warnings.filterwarnings('ignore')
+import torch
+torch.set_float32_matmul_precision('medium') # we don't care about precision really..
 
 from matplotlib import pyplot as plt
 import seaborn as sns
-import torch
-torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
 from sklearn.metrics import r2_score
 
 from torch.utils.data import DataLoader
@@ -33,6 +31,7 @@ def main(
     gpu: int,
     cue: float,
     limit: float,
+    trials: int,
     maskout_last_n: int,
     batch_size: int,
 ):
@@ -65,6 +64,10 @@ def main(
             'odoherty_rtt-Indy-20160407_02',
             'odoherty_rtt-Indy-20161026_03',
         ]
+    elif data_label == 'robust':
+        target = [
+            'odoherty_rtt-Indy-20160627_01'
+        ]
     elif data_label == "rtt":
         target = [
             'odoherty_rtt-Indy-20160407_02',
@@ -78,12 +81,12 @@ def main(
 
     # Note: This won't preserve train val split, try to make sure eval datasets were held out
     cfg.dataset.datasets = target
+    cfg.dataset.exclude_datasets = []
     dataset = SpikingDataset(cfg.dataset)
     pl.seed_everything(0)
     # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
-    dataset.subset_scale(limit_per_session=96)
-    # train, val = dataset.create_tv_datasets()
-    # dataset = val
+    if trials > 0:
+        dataset.subset_scale(limit_per_session=trials)
     print("Eval length: ", len(dataset))
     data_attrs = dataset.get_data_attrs()
     print(data_attrs)
@@ -91,11 +94,7 @@ def main(
     model = transfer_model(src_model, cfg.model, data_attrs)
 
     model.cfg.eval.teacher_timesteps = int(50 * cue) # 0.5s
-    # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
-    # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
-    # model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
     model.cfg.eval.limit_timesteps = int(50 * limit) # up to 4s
-    # model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
     model.cfg.eval.temperature = temperature
     model.cfg.eval.use_student = student
     model.cfg.eval.student_prob = student_prob
@@ -140,6 +139,7 @@ if __name__ == "__main__":
     parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
     parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit eval length (s)")
+    parser.add_argument("--trials", type=int, default=96, help="Number of trials per session to evaluate. 0 for no subset")
     parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")
     parser.add_argument("-m", "--maskout_last_n", type=int, default=0, help="Mask out last N timesteps.")
     args = parser.parse_args()

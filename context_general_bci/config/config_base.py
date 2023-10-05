@@ -648,6 +648,7 @@ class RootConfig:
     notes: str = ""
     trainable_parameters: int = 0
     total_parameters: int = 0
+    compile: bool = False # use torch.compile
 
     # Meta config - will initiate multiple derivative runs, all handled in `run.py`
     sweep_cfg: str = "" # See `hp_sweep_space.py`

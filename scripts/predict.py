@@ -3,13 +3,10 @@
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-import warnings
-warnings.filterwarnings('ignore')
 
 from matplotlib import pyplot as plt
 import seaborn as sns
 import torch
-torch.set_warn_always(False) # Turn off warnings, we get cast spam otherwise
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
@@ -53,6 +50,9 @@ query = 'monkey_random_q512_km_6l_1024-e9x6b6j7'
 # query = 'monkey_eval_q512_km_ct-500_6l_1024-gutjedh9'
 query = 'monkey_random_q512_km_ct-500_6l_1024-3uiuyifp'
 
+query = 'monkey_eval_q512_kmu0.5-1_6l_1024-jjnr4r0i'
+query = 'monkey_eval_q512_prefix0.5-1_6l_1024-zt2cvbrc'
+
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -69,7 +69,7 @@ target = [
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_jenkins.*'
-    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
+    'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
     # 'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
     # 'odoherty_rtt-Indy-20161005_06',
@@ -77,9 +77,9 @@ target = [
     # 'odoherty_rtt-Indy-20170131_02',
     # 'odoherty_rtt-Indy-20160627_01',
 
-    'odoherty_rtt-Loco-20170210_03',
-    'odoherty_rtt-Loco-20170213_02',
-    'odoherty_rtt-Loco-20170214_02',
+    # 'odoherty_rtt-Loco-20170210_03',
+    # 'odoherty_rtt-Loco-20170213_02',
+    # 'odoherty_rtt-Loco-20170214_02',
 
     # 'odoherty_rtt-Loco-20170215_02',
     # 'odoherty_rtt-Loco-20170216_02',
@@ -109,13 +109,13 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
-# model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
+model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
 model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
-model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
-model.cfg.eval.teacher_timesteps = int(50 * 4.5) # up to 4s
+model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
+# model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
+# model.cfg.eval.teacher_timesteps = int(50 * 4.5) # up to 4s
 model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
@@ -124,7 +124,7 @@ model.cfg.eval.temperature = 0.
 # model.cfg.eval.use_student = False
 model.cfg.eval.maskout_last_n = abs(cfg.model.task.context_prompt_time_thresh)
 model.cfg.eval.use_student = True
-# model.cfg.eval.use_student = True
+# model.cfg.eval.use_student = False
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:

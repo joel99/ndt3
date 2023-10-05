@@ -840,13 +840,11 @@ class BrainBertInterface(pl.LightningModule):
 
         if self.cfg.next_step_prediction:
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
-            tks, ps, pipeline_context, times, space, pipeline_padding, modalities = self.assemble_pipeline(batch)
+            tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
 
             # There are only certain tokens I want model predictions for - the tokens that have kinematic modality targets.
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
-            # ! We can't support evaluating up to a slice - I don't know what index to slice the targets at; from the flat datastream...
-            # * I could take the flattened stream, without an offset. That seems reasonable, at a little overhead.
             if self.cfg.eval.limit_timesteps: # Evaluating full length is slow with KV cache, we need to iterate faster
                 logger.warning('Assuming even batches for cropped prediction!!!')
                 # breakpoint()
