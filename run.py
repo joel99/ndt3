@@ -32,6 +32,8 @@ from lightning.pytorch.tuner import Tuner
 from lightning.pytorch.tuner import Tuner
 
 import wandb
+from einops._torch_specific import allow_ops_in_compiled_graph  # requires einops>=0.6.1
+allow_ops_in_compiled_graph() # For torch.compile, https://github.com/arogozhnikov/einops/wiki/Using-torch.compile-with-einops
 
 from context_general_bci.config import RootConfig, Metric, ModelTask, hp_sweep_space, propagate_config
 from context_general_bci.dataset import SpikingDataset, SpikingDataModule

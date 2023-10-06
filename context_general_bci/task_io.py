@@ -65,7 +65,7 @@ def temporal_pool(batch: Dict[BatchKey, torch.Tensor], backbone_features: torch.
     # Originally developed for behavior regression, extracted for heldoutprediction
     # Assumption is that bhvr is square!
     # This path assumes DataKey.time is not padded!
-    time_key = DataKey.time
+    time_key = DataKey.time.name
     if 'update_time' in batch:
         time_key = 'update_time'
     pooled_features = torch.zeros(
@@ -138,7 +138,8 @@ class TaskPipeline(nn.Module):
         Task IO - manages decoder layers, loss functions
         i.e. is responsible for returning loss, decoder outputs, and metrics
     """
-    modifies: List[DataKey] = [] # Which DataKeys are altered in use of this Pipeline? (We check to prevent multiple subscriptions)
+    modifies: List[str] = [] # Which DataKeys are altered in use of this Pipeline? (We check to prevent multiple subscriptions)
+    # modifies: List[DataKey] = [] # Which DataKeys are altered in use of this Pipeline? (We check to prevent multiple subscriptions)
 
     def __init__(
         self,
@@ -276,11 +277,11 @@ class ConstraintPipeline(ContextPipeline):
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
-        constraint = batch[DataKey.constraint]
+        constraint = batch[DataKey.constraint.name]
 
         constraint_embed = self.encode_constraint(constraint) # b t h d
-        time = batch[DataKey.constraint_time]
-        space = batch[DataKey.constraint_space]
+        time = batch[DataKey.constraint_time.name]
+        space = batch[DataKey.constraint_space.name]
         padding = create_padding_simple(
             constraint, batch.get(CONSTRAINT_LENGTH_KEY, None)
         )
@@ -311,7 +312,7 @@ class DataPipeline(TaskPipeline):
         """
         # loss_mask: b t *
         if ref is None:
-            ref: torch.Tensor = batch[DataKey.spikes][..., 0]
+            ref: torch.Tensor = batch[DataKey.spikes.name][..., 0]
         loss_mask = torch.ones(ref.size(), dtype=torch.bool, device=ref.device)
 
         if padding_mask is None:
@@ -500,7 +501,7 @@ class SpikeContext(ContextPipeline):
         return 'spike'
 
     def encode(self, batch):
-        state_in = torch.as_tensor(batch[DataKey.spikes], dtype=int)
+        state_in = torch.as_tensor(batch[DataKey.spikes.name], dtype=int)
         state_in = rearrange(state_in, 'b t c h -> b t (c h)')
         if self.spike_embed_style == EmbedStrat.token:
             state_in = self.readin(state_in)
@@ -512,22 +513,22 @@ class SpikeContext(ContextPipeline):
         return state_in
 
     def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
-        batch[DataKey.padding] = create_padding_simple(batch[DataKey.spikes], batch.get(LENGTH_KEY, None))
+        batch[DataKey.padding.name] = create_padding_simple(batch[DataKey.spikes.name], batch.get(LENGTH_KEY, None))
          # TODO fix dataloader to load LENGTH_KEY as SPIKE_LENGTH_KEY (make spikes less special)
         return batch
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         spikes = self.encode(batch)
-        time = batch[DataKey.time]
-        space = batch[DataKey.position]
-        padding = batch[DataKey.padding] # Padding should be made in the `update` step
+        time = batch[DataKey.time.name]
+        space = batch[DataKey.position.name]
+        padding = batch[DataKey.padding.name] # Padding should be made in the `update` step
         # print(f'Spike Space range: [{space.min()}, {space.max()}]')
         return spikes, time, space, padding
 
 class SelfSupervisedInfill(RatePrediction):
-    modifies = [DataKey.spikes]
+    modifies = [DataKey.spikes.name]
     def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False):
-        spikes = batch[DataKey.spikes]
+        spikes = batch[DataKey.spikes.name]
         target = spikes[..., 0]
         if eval_mode:
             batch.update({
@@ -576,7 +577,7 @@ class SelfSupervisedInfill(RatePrediction):
             spikes[mask_random] = torch.randint_like(spikes[mask_random], 0, spikes[spikes != self.pad_value].max().int().item() + 1)
         spikes[mask_token] = 0 # use zero mask per NDT (Ye 21) # TODO revisit for spatial mode; not important in causal mode
         batch.update({
-            DataKey.spikes: spikes,
+            DataKey.spikes.name: spikes,
             'is_masked': is_masked,
             'spike_target': target,
         })
@@ -624,7 +625,7 @@ class SelfSupervisedInfill(RatePrediction):
         return batch_out
 
 class SpikeBase(SpikeContext, RatePrediction):
-    modifies = [DataKey.spikes]
+    modifies = [DataKey.spikes.name]
 
     def forward(
             self,
@@ -642,7 +643,7 @@ class SpikeBase(SpikeContext, RatePrediction):
         # ! We assume that backbone features arrives in a batch-major, time-minor format, that has already been flattened
         # We need to similarly flatten
         # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
-        target = batch[DataKey.spikes][..., 0]
+        target = batch[DataKey.spikes.name][..., 0]
         rates = self.out(backbone_features) # B x H
         loss = self.loss(rates, target.flatten(0, 1))
         comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
@@ -711,7 +712,7 @@ class ShuffleInfill(SpikeBase):
         r"""
             Shuffle inputs, keep only what we need for evaluation
         """
-        spikes = batch[DataKey.spikes]
+        spikes = batch[DataKey.spikes.name]
         target = spikes[..., 0]
         if eval_mode:
             # manipulate keys so that we predict for all steps regardless of masking status (definitely hacky)
@@ -729,7 +730,7 @@ class ShuffleInfill(SpikeBase):
             shuffle = torch.arange(spikes.size(1), device=spikes.device)
         if self.cfg.context_prompt_time_thresh:
             shuffle_func = apply_shuffle_2d
-            nonprompt_time = (batch[DataKey.time] > self.cfg.context_prompt_time_thresh) # B x T mask
+            nonprompt_time = (batch[DataKey.time.name] > self.cfg.context_prompt_time_thresh) # B x T mask
             shuffle = shuffle.unsqueeze(0).repeat(spikes.size(0), 1)
             nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
             shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
@@ -738,7 +739,7 @@ class ShuffleInfill(SpikeBase):
         # Mask ratio becomes a comment on the remainder of the data
         encoder_frac = round((1 - mask_ratio) * spikes.size(1))
         # shuffle_spikes = spikes.gather(1, shuffle.unsqueeze(-1).unsqueeze(-1).expand(-1, -1, spikes.size(2), spikes.size(3)))
-        for key in [DataKey.time, DataKey.position, DataKey.padding, CHANNEL_KEY]:
+        for key in [DataKey.time.name, DataKey.position.name, DataKey.padding.name, CHANNEL_KEY]:
             if key in batch:
                 shuffled = shuffle_func(batch[key], shuffle)
                 batch.update({
@@ -748,7 +749,7 @@ class ShuffleInfill(SpikeBase):
         # import pdb;pdb.set_trace()
         target = shuffle_func(target, shuffle)[:,encoder_frac:]
         batch.update({
-            DataKey.spikes: shuffle_func(spikes, shuffle)[:,:encoder_frac],
+            DataKey.spikes.name: shuffle_func(spikes, shuffle)[:,:encoder_frac],
             f'{self.handle}_target': target,
             # f'{self.handle}_encoder_frac': encoder_frac, # ! Deprecating
         })
@@ -790,9 +791,9 @@ class ShuffleInfill(SpikeBase):
         target = batch[f'{self.handle}_target'] # B T H
         if not eval_mode:
             decode_tokens = batch[f'{self.handle}_query']
-            decode_time = batch[f'{DataKey.time}_target']
-            decode_space = batch[f'{DataKey.position}_target']
-            decode_padding = batch[f'{DataKey.padding}_target']
+            decode_time = batch[f'{DataKey.time.name}_target']
+            decode_space = batch[f'{DataKey.position.name}_target']
+            decode_padding = batch[f'{DataKey.padding.name}_target']
         else:
             breakpoint() # JY is not sure of the flow here, TODO
             assert False, "Need to account for unified stream (use_full_encode)"
@@ -928,7 +929,7 @@ class TemporalTokenInjector(nn.Module):
 
         if self.cfg.decode_tokenize_dims:
             # this logic is for covariate decode, not heldout neurons
-            assert reference != DataKey.spikes, "Decode tokenization should not run for spikes, this is for covariate exps"
+            assert reference != DataKey.spikes.name, "Decode tokenization should not run for spikes, this is for covariate exps"
         self.pad_value = data_attrs.pad_token
         self.max_space = data_attrs.max_spatial_tokens
 
@@ -961,9 +962,9 @@ class TemporalTokenInjector(nn.Module):
                 )
         # I want to inject padding tokens for space so nothing actually gets added on that dimension
         if in_place:
-            batch[DataKey.extra] = injected_tokens # B T H
-            batch[DataKey.extra_time] = injected_time
-            batch[DataKey.extra_position] = injected_space
+            batch[DataKey.extra.name] = injected_tokens # B T H
+            batch[DataKey.extra_time.name] = injected_time
+            batch[DataKey.extra_position.name] = injected_space
         return injected_tokens, injected_time, injected_space
 
 class ReturnContext(ContextPipeline):
@@ -996,11 +997,11 @@ class ReturnContext(ContextPipeline):
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         # TODO phase these out given re-generation of PittCO
-        batch[DataKey.task_return] = batch[DataKey.task_return].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
-        batch[DataKey.task_reward] = batch[DataKey.task_reward].clamp(min=0)
-        return_embed = self.return_enc(batch[DataKey.task_return])
-        reward_embed = self.reward_enc(batch[DataKey.task_reward])
-        times = batch[DataKey.task_return_time]
+        batch[DataKey.task_return.name] = batch[DataKey.task_return.name].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
+        batch[DataKey.task_reward.name] = batch[DataKey.task_reward.name].clamp(min=0)
+        return_embed = self.return_enc(batch[DataKey.task_return.name])
+        reward_embed = self.reward_enc(batch[DataKey.task_reward.name])
+        times = batch[DataKey.task_return_time.name]
         space = torch.zeros_like(times)
         padding = create_padding_simple(return_embed, batch.get(RETURN_LENGTH_KEY, None))
         return (
@@ -1040,7 +1041,7 @@ class ReturnInfill(ReturnContext):
     ) -> torch.Tensor:
         if not compute_metrics:
             return {}
-        target = batch[DataKey.task_return].flatten()
+        target = batch[DataKey.task_return.name].flatten()
         pred = self.out(backbone_features)
         return {
             'loss': F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.decode_label_smooth)[~backbone_padding].mean()
@@ -1052,7 +1053,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         Base class for decoding (regression/classification) of covariates.
         Constraints may be packed in here because the encoding is fused with behavior in the non-sparse case, but we may want to refactor that out.
     """
-    modifies = [DataKey.bhvr_vel, DataKey.constraint, DataKey.constraint_time]
+    modifies = [DataKey.bhvr_vel.name, DataKey.constraint.name, DataKey.constraint_time.name]
 
     def __init__(
         self,
@@ -1076,11 +1077,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 del self.constraint_dims
         assert self.cfg.decode_strategy == EmbedStrat.token, 'Non-token decoding deprecated'
         self.decode_cross_attn = cfg.decoder_context_integration == 'cross_attn'
-        self.reference_cov = self.cfg.behavior_target
+        self.reference_cov = self.cfg.behavior_target.name
         self.injector = TemporalTokenInjector(
             cfg,
             data_attrs,
-            None, # deprecating reference while trying ot clean up terminology # self.cfg.behavior_target if not self.encodes else f'{self.handle}_target',
+            None, # deprecating reference while trying ot clean up terminology # self.cfg.behavior_target.name if not self.encodes else f'{self.handle}_target',
             force_zero_mask=self.decode_cross_attn and not self.cfg.decode_tokenize_dims
         )
         self.cov_dims = data_attrs.behavior_dim
@@ -1148,23 +1149,23 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         return 'covariate'
 
     def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode = False):
-        batch[f'{self.handle}_{DataKey.padding}'] = create_padding_simple(
-            batch[self.cfg.behavior_target],
+        batch[f'{self.handle}_{DataKey.padding.name}'] = create_padding_simple(
+            batch[self.cfg.behavior_target.name],
             batch.get(f'{self.handle}_{LENGTH_KEY}', None)
         )
         return self.crop_batch(self.cfg.covariate_mask_ratio, batch, eval_mode=eval_mode) # Remove encode
 
     def crop_batch(self, mask_ratio: float, batch: Dict[BatchKey, torch.Tensor], eval_mode=False, shuffle=True):
-        covariates = batch[self.cfg.behavior_target] # B (T Cov_Dims) 1 if tokenized, else  B x T x Cov_Dims,
+        covariates = batch[self.cfg.behavior_target.name] # B (T Cov_Dims) 1 if tokenized, else  B x T x Cov_Dims,
         # breakpoint()
-        if DataKey.covariate_time not in batch:
+        if DataKey.covariate_time.name not in batch:
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
                 cov_time = repeat(cov_time, 't -> b (t d)', b=covariates.size(0), d=self.cov_dims)
             else:
                 cov_time = repeat(cov_time, 't -> b t', b=covariates.size(0))
-            batch[DataKey.covariate_time] = cov_time
-        if DataKey.covariate_space not in batch:
+            batch[DataKey.covariate_time.name] = cov_time
+        if DataKey.covariate_space.name not in batch:
             if self.cfg.decode_tokenize_dims: # Here in is the implicit padding for space position, to fix.
                 cov_space = repeat(
                     torch.arange(covariates.size(2), device=covariates.device),
@@ -1172,18 +1173,18 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 )
             else:
                 # Technically if data arrives as b t* 1, we can still use above if-case circuit
-                cov_space = torch.zeros_like(batch[DataKey.covariate_time])
-            batch[DataKey.covariate_space] = cov_space
+                cov_space = torch.zeros_like(batch[DataKey.covariate_time.name])
+            batch[DataKey.covariate_space.name] = cov_space
 
         if not self.encodes: # Just make targets, exit
-            batch[f'{DataKey.covariate_time}_target'] = batch[DataKey.covariate_time]
-            batch[f'{DataKey.covariate_space}_target'] = batch[DataKey.covariate_space]
-            batch[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}']
+            batch[f'{DataKey.covariate_time.name}_target'] = batch[DataKey.covariate_time.name]
+            batch[f'{DataKey.covariate_space.name}_target'] = batch[DataKey.covariate_space.name]
+            batch[f'{self.handle}_{DataKey.padding.name}_target'] = batch[f'{self.handle}_{DataKey.padding.name}']
         else:
             if self.cfg.decode_tokenize_dims and not self.served_tokenized_covariates:
                 covariates = rearrange(covariates, 'b t bhvr_dim -> b (t bhvr_dim) 1')
                 if self.cfg.encode_constraints:
-                    batch[DataKey.constraint] = rearrange(batch[DataKey.constraint], 'b t constraint bhvr_dim -> b (t bhvr_dim) constraint')
+                    batch[DataKey.constraint.name] = rearrange(batch[DataKey.constraint.name], 'b t constraint bhvr_dim -> b (t bhvr_dim) constraint')
                 batch[f'{self.handle}_{LENGTH_KEY}'] = batch[f'{self.handle}_{LENGTH_KEY}'] * self.cov_dims
             if eval_mode: # TODO FIX eval mode implementation # First note we aren't even breaking out so these values are overwritten
                 breakpoint()
@@ -1197,7 +1198,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             # breakpoint()
             if self.cfg.context_prompt_time_thresh:
                 shuffle_func = apply_shuffle_2d
-                nonprompt_time = (batch[DataKey.covariate_time] >= self.cfg.context_prompt_time_thresh) # B x T mask
+                nonprompt_time = (batch[DataKey.covariate_time.name] >= self.cfg.context_prompt_time_thresh) # B x T mask
                 shuffle = repeat(shuffle, 't -> b t', b=covariates.size(0))
                 nonprompt_time_shuffled = shuffle_func(nonprompt_time, shuffle).int() # bool not implemented for CUDA
                 shuffle = sort_A_by_B(shuffle, nonprompt_time_shuffled) # B x T
@@ -1218,15 +1219,15 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                         f'{key}_target': shuffled[:, encoder_frac:],
                     })
             for key in [
-                DataKey.covariate_time,
-                DataKey.covariate_space,
-                f'{self.handle}_{DataKey.padding}',
+                DataKey.covariate_time.name,
+                DataKey.covariate_space.name,
+                f'{self.handle}_{DataKey.padding.name}',
             ]:
                 shuffle_key(key)
             if self.cfg.encode_constraints and not self.inject_constraint_tokens:
                 for key in [
-                    DataKey.constraint,
-                    DataKey.constraint_time
+                    DataKey.constraint.name,
+                    DataKey.constraint_time.name,
                 ]:
                     shuffle_key(key)
             splits = [encoder_frac, covariates.size(1) - encoder_frac]
@@ -1234,7 +1235,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             # if target.size(1) == 0:
                 # breakpoint() # Wat
             batch.update({
-                self.cfg.behavior_target: enc,
+                self.cfg.behavior_target.name: enc,
                 f'{self.handle}_target': target,
                 f'{self.handle}_encoder_frac': encoder_frac,
             })
@@ -1245,18 +1246,18 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         if self.cfg.covariate_mask_ratio == 1.0:
             # return super().get_context(batch)
             return [], [], [], []
-        enc = self.encode_cov(batch[self.cfg.behavior_target])
+        enc = self.encode_cov(batch[self.cfg.behavior_target.name])
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
-            constraint = self.encode_constraint(batch[DataKey.constraint]) # B T H Bhvr_Dim. Straight up not sure how to collapse non-losslessly - we just mean pool for now.
+            constraint = self.encode_constraint(batch[DataKey.constraint.name]) # B T H Bhvr_Dim. Straight up not sure how to collapse non-losslessly - we just mean pool for now.
             enc = enc + constraint
         # if batch[DataKey.covariate_space].max() > 7:
             # print(f'Space range: [{batch[DataKey.covariate_space].min()}, {batch[DataKey.covariate_space].max()}]')
             # breakpoint()
         return (
             enc,
-            batch[DataKey.covariate_time],
-            batch[DataKey.covariate_space],
-            batch[f'{self.handle}_{DataKey.padding}']
+            batch[DataKey.covariate_time.name],
+            batch[DataKey.covariate_space.name],
+            batch[f'{self.handle}_{DataKey.padding.name}']
         )
 
     @abc.abstractmethod
@@ -1285,12 +1286,12 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     batch_out[Output.pooled_features] = backbone_features.detach()
 
             decode_tokens = batch[f'{self.handle}_query']
-            decode_time = batch[f'{DataKey.covariate_time}_target']
-            decode_space = batch[f'{DataKey.covariate_space}_target']
-            decode_padding = batch[f'{self.handle}_{DataKey.padding}_target']
+            decode_time = batch[f'{DataKey.covariate_time.name}_target']
+            decode_space = batch[f'{DataKey.covariate_space.name}_target']
+            decode_padding = batch[f'{self.handle}_{DataKey.padding.name}_target']
             if not self.inject_constraint_tokens and self.cfg.encode_constraints:
                 decode_tokens = decode_tokens + self.encode_constraint(
-                    batch[f'{DataKey.constraint}_target'],
+                    batch[f'{DataKey.constraint.name}_target'],
                 )
 
             # Re-extract src time and space. Only time is always needed to dictate attention for causality, but current implementation will re-embed time. JY doesn't want to asymmetrically re-embed only time, so space is retrieved. Really, we need larger refactor to just pass in time/space embeddings externally.
@@ -1347,7 +1348,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def get_target(self, batch: Dict[BatchKey, torch.Tensor]) -> torch.Tensor:
         if self.cfg.covariate_mask_ratio == 1.0:
-            tgt = batch[self.cfg.behavior_target]
+            tgt = batch[self.cfg.behavior_target.name]
         else:
             tgt = batch[f'{self.handle}_target']
         if self.bhvr_mean is not None:
@@ -1395,11 +1396,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
         # * Doesn't unshuffle or do any formatting
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
-            batch_out[f'{DataKey.covariate_space}_target'] = batch[f'{DataKey.covariate_space}_target']
-            batch_out[f'{DataKey.covariate_time}_target'] = batch[f'{DataKey.covariate_time}_target']
-            batch_out[f'{self.handle}_{DataKey.padding}_target'] = batch[f'{self.handle}_{DataKey.padding}_target']
-            if DataKey.covariate_labels in batch:
-                batch_out[DataKey.covariate_labels] = batch[DataKey.covariate_labels]
+            batch_out[f'{DataKey.covariate_space.name}_target'] = batch[f'{DataKey.covariate_space.name}_target']
+            batch_out[f'{DataKey.covariate_time.name}_target'] = batch[f'{DataKey.covariate_time.name}_target']
+            batch_out[f'{self.handle}_{DataKey.padding.name}_target'] = batch[f'{self.handle}_{DataKey.padding.name}_target']
+            if DataKey.covariate_labels.name in batch:
+                batch_out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name]
             batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr, temperature=temperature)
             if self.bhvr_mean is not None:
                 batch_out[Output.behavior_pred] = batch_out[Output.behavior_pred] * self.bhvr_std + self.bhvr_mean
@@ -1417,7 +1418,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             length_key=f'{self.handle}_{LENGTH_KEY}',
             shuffle_key=None,
             compute_channel=False,
-            padding_mask=batch.get(f'{self.handle}_{DataKey.padding}_target', None),
+            padding_mask=batch.get(f'{self.handle}_{DataKey.padding.name}_target', None),
         )
         length_mask[:, :self.bhvr_lag_bins] = False # don't compute loss for lagged out timesteps
         loss = self.compute_loss(bhvr, bhvr_tgt)
@@ -1445,7 +1446,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 if len(self.covariate_blacklist_dims) > 0:
                     # breakpoint()
                     if self.cfg.decode_tokenize_dims:
-                        positions = batch[f'{DataKey.covariate_space}_target']
+                        positions = batch[f'{DataKey.covariate_space.name}_target']
                         loss_mask = loss_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
                     else:
                         loss_mask = loss_mask.unsqueeze(-1).repeat(1, 1, loss.size(-1))
@@ -1463,7 +1464,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             valid_bhvr = bhvr[..., :bhvr_tgt.shape[-1]]
             if len(self.covariate_blacklist_dims) > 0:
                 assert self.cfg.decode_tokenize_dims, "blacklist dims not implemented for non tokenized R2"
-                positions: torch.Tensor = batch[f'{DataKey.covariate_space}_target']
+                positions: torch.Tensor = batch[f'{DataKey.covariate_space.name}_target']
                 r2_mask = r2_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
             # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
@@ -1472,9 +1473,9 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 assert len(self.covariate_blacklist_dims) == 0, "blacklist dims not implemented for non semantic R2"
                 # Compute the unique covariate labels, and their repsective position indices.
                 # Then pull R2 accordingly. Lord knows this isn't the most efficient, but...
-                dims_per = torch.tensor([len(i) for i in batch[DataKey.covariate_labels]], device=batch[f'{DataKey.covariate_space}_target'].device).cumsum(0)
-                batch_shifted_positions = batch[f'{DataKey.covariate_space}_target'] + (dims_per - dims_per[0]).unsqueeze(-1)
-                flat_labels = np.array(list(itertools.chain.from_iterable(batch[DataKey.covariate_labels])))
+                dims_per = torch.tensor([len(i) for i in batch[DataKey.covariate_labels.name]], device=batch[f'{DataKey.covariate_space.name}_target'].device).cumsum(0)
+                batch_shifted_positions = batch[f'{DataKey.covariate_space.name}_target'] + (dims_per - dims_per[0]).unsqueeze(-1)
+                flat_labels = np.array(list(itertools.chain.from_iterable(batch[DataKey.covariate_labels.name])))
                 unique_labels, label_indices = np.unique(flat_labels, return_inverse=True)
                 range_reference = np.arange(len(flat_labels))
                 r2_scores = []
@@ -1488,11 +1489,11 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                         continue
                     r2_scores.append(r2_score(valid_tgt[submask], valid_bhvr[submask]))
                 batch_out[Metric.kinematic_r2.value] = np.array(r2_scores)
-                batch[DataKey.covariate_labels] = unique_labels
+                batch[DataKey.covariate_labels.name] = unique_labels
             elif self.cfg.decode_tokenize_dims:
                 # extract the proper subsets according to space (for loop it) - per-dimension R2 is only relevant while dataloading maintains consistent dims (i.e. not for long) but in the meanwhile
                 r2_scores = []
-                positions = batch[f'{DataKey.covariate_space}_target'][r2_mask].flatten().cpu() # flatten as square full batches won't autoflatten B x T but does flatten B x T x 1
+                positions = batch[f'{DataKey.covariate_space.name}_target'][r2_mask].flatten().cpu() # flatten as square full batches won't autoflatten B x T but does flatten B x T x 1
                 for i in positions.unique():
                     r2_scores.append(r2_score(valid_tgt[positions == i], valid_bhvr[positions == i]))
                 batch_out[Metric.kinematic_r2.value] = np.array(r2_scores)
@@ -1507,6 +1508,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             #     valid_bhvr = valid_bhvr[valid_tgt.abs() > self.cfg.behavior_metric_thresh]
             #     valid_tgt = valid_tgt[valid_tgt.abs() > self.cfg.behavior_metric_thresh]
             #     batch_out[Metric.kinematic_r2_thresh] = r2_score(valid_tgt, valid_bhvr, multioutput='raw_values')
+            batch_out[Metric.kinematic_r2.value] = torch.as_tensor(batch_out[Metric.kinematic_r2.value])
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
             batch_out[Metric.kinematic_acc.value] = acc[r2_mask].float().mean()
@@ -1597,16 +1599,16 @@ class BehaviorContext(ContextPipeline, QuantizeBehavior):
         return 'covariate'
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
-        batch[f'{self.handle}_{DataKey.padding}'] = create_padding_simple(
-            batch[self.cfg.behavior_target],
+        batch[f'{self.handle}_{DataKey.padding.name}'] = create_padding_simple(
+            batch[self.cfg.behavior_target.name],
             batch.get(f'{self.handle}_{LENGTH_KEY}', None),
         )
         # breakpoint() # TODO check dims, we may not need the mean call
         return (
-            self.quantize(batch[self.cfg.behavior_target]).mean(-2), # B T 1 out
+            self.quantize(batch[self.cfg.behavior_target.name]).mean(-2), # B T 1 out
             batch[DataKey.covariate_time],
             batch[DataKey.covariate_space],
-            batch[f'{self.handle}_{DataKey.padding}']
+            batch[f'{self.handle}_{DataKey.padding.name}']
         )
 
 class ClassificationMixin(QuantizeBehavior):
@@ -1697,7 +1699,7 @@ class CovariateInfill(ClassificationMixin):
         )
         self.served_tokenized_covariates = data_attrs.tokenize_covariates
         self.served_semantic_covariates = data_attrs.semantic_covariates
-        self.reference_cov = self.cfg.behavior_target
+        self.reference_cov = self.cfg.behavior_target.name
         self.cov_dims = data_attrs.behavior_dim
         self.initialize_readin(cfg.hidden_size)
         self.initialize_readout(cfg.hidden_size)
@@ -1707,19 +1709,19 @@ class CovariateInfill(ClassificationMixin):
         return 'covariate'
 
     def update_batch(self, batch: Dict[BatchKey, torch.Tensor], eval_mode = False):
-        batch[f'{self.handle}_{DataKey.padding}'] = create_padding_simple(
-            batch[self.cfg.behavior_target],
+        batch[f'{self.handle}_{DataKey.padding.name}'] = create_padding_simple(
+            batch[self.cfg.behavior_target.name],
             batch.get(f'{self.handle}_{LENGTH_KEY}', None),
         )
         return batch
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
-        enc = self.encode_cov(batch[self.cfg.behavior_target])
+        enc = self.encode_cov(batch[self.cfg.behavior_target.name])
         return (
             enc,
-            batch[DataKey.covariate_time],
-            batch[DataKey.covariate_space],
-            batch[f'{self.handle}_{DataKey.padding}']
+            batch[DataKey.covariate_time.name],
+            batch[DataKey.covariate_space.name],
+            batch[f'{self.handle}_{DataKey.padding.name}']
         )
 
     def forward(
@@ -1740,7 +1742,7 @@ class CovariateInfill(ClassificationMixin):
             batch_out[Output.behavior_logits] = bhvr
         if Output.behavior_pred in self.cfg.outputs: # Note we need to eventually implement some kind of repack, just like we do for spikes
             batch_out[Output.behavior_pred] = self.simplify_logits_to_prediction(bhvr, logit_dim=-1, temperature=temperature) # returns logits
-        bhvr_tgt = batch[self.cfg.behavior_target].flatten()
+        bhvr_tgt = batch[self.cfg.behavior_target.name].flatten()
         if Output.behavior in self.cfg.outputs:
             batch_out[Output.behavior] = bhvr_tgt # Flat aspect is not ideal, watch the timestamps..
         if not compute_metrics:
@@ -1768,7 +1770,8 @@ class CovariateInfill(ClassificationMixin):
                 # zero it out - this is a bug that occurs when the target has minimal variance (i.e. a dull batch with tiny batch size)
                 # Occurs only because we can't easily full batch R2, i.e. uninteresting.
                 batch_out[Metric.kinematic_r2.value] = np.zeros_like(batch_out[Metric.kinematic_r2.value])
-            batch[DataKey.covariate_labels] = ['x'] # base default
+            batch[DataKey.covariate_labels.name] = ['x'] # base default
+            batch_out[Metric.kinematic_r2.value] = torch.as_tensor(batch_out[Metric.kinematic_r2.value])
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
             batch_out[Metric.kinematic_acc.value] = acc[r2_mask].float().mean()

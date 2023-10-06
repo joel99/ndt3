@@ -798,12 +798,9 @@ class BrainBertInterface(pl.LightningModule):
                 batch_out[k] = batch[k]
         if Output.spikes in self.cfg.task.outputs:
             assert self.data_attrs.serve_tokens_flat or not self.data_attrs.serve_tokens, "Not implemented, needs assembling"
-            if self.data_attrs.serve_tokens_flat:
-                batch_out[Output.spikes] = unflatten(batch[DataKey.spikes], batch[DataKey.time], batch[DataKey.position])
-                batch_out[DataKey.time] = batch[DataKey.time].clone() # pre mask
-                batch_out[DataKey.position] = batch[DataKey.position].clone() # pre mask
-            else:
-                batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
+            batch_out[Output.spikes] = unflatten(batch[DataKey.spikes.name], batch[DataKey.time.name], batch[DataKey.position.name])
+            batch_out[DataKey.time.name] = batch[DataKey.time.name].clone() # pre mask
+            batch_out[DataKey.position.name] = batch[DataKey.position.name].clone() # pre mask
 
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
@@ -826,8 +823,8 @@ class BrainBertInterface(pl.LightningModule):
             raw_stream = []
             stream_mask = []
             cue_mask = [torch.zeros_like(to_infer_mask[:, 0])] # initially not student cue
-            main_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel].dtype) # B T
-            main_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel].flatten()
+            main_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel.name].dtype) # B T
+            main_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel.name].flatten()
             target_stream = []
             # breakpoint()
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
@@ -1070,7 +1067,6 @@ class BrainBertInterface(pl.LightningModule):
         kinematic_labels=DEFAULT_KIN_LABELS,
         **kwargs
     ):
-        print(metrics.keys(), kwargs)
         for m in metrics:
             if 'loss' in m:
                 # print(f'{prefix}_{m}', metrics[m], kwargs)
