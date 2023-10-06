@@ -1101,18 +1101,17 @@ class BrainBertInterface(pl.LightningModule):
         **kwargs
     ):
         for m in metrics:
-            if 'loss' in str(m):
-            # if not isinstance(m, Metric) and not isinstance(m, Output) and 'update' not in m: # log misc, mostly task losses
+            if 'loss' in m:
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
             if m == Metric.kinematic_r2 or m == Metric.kinematic_r2_thresh:
                 if not self.data_attrs.tokenize_covariates: # Heterogeneous, just hangs the DDP procs. Either we maintain the global list and report 0s, or we drop.
                     # For now, let's just drop.
-                    for i, r2 in enumerate(metrics[m]):
+                    for i, r2 in enumerate(metrics[str(m)]):
                         self.log(f'{prefix}_{m.value}_{kinematic_labels[i]}', r2, **kwargs)
-                self.log(f'{prefix}_{m.value}', metrics[m].mean(), **kwargs)
+                self.log(f'{prefix}_{m.value}', metrics[str(m)].mean(), **kwargs)
             else:
-                self.log(f'{prefix}_{m.value}', metrics[m], **kwargs)
+                self.log(f'{prefix}_{m.value}', metrics[str(m)], **kwargs)
         self.log('kin_maskout', self.kin_maskout, **kwargs)
 
     def training_step(self, batch, batch_idx):
