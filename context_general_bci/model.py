@@ -116,6 +116,10 @@ class BrainBertInterface(pl.LightningModule):
 
         if self.cfg.cm3leon_init:
             self.backbone.apply(cm3leon_init)
+        if self.cfg.compile:
+            self.backbone = torch.compile(self.backbone, dynamic=True, fullgraph=True)
+            # No marginal value in optimizing the linear readouts, also we will have dynamic shapes due to mixed batch sizes.
+            # self.task_pipelines = torch.compile(self.task_pipelines)
         self.novel_params: List[str] = [] # for fine-tuning
         modifies = []
         for tp in self.task_pipelines.values():
@@ -635,6 +639,25 @@ class BrainBertInterface(pl.LightningModule):
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
+        if self.cfg.next_step_prediction and self.cfg.fit_to_max_length:
+            # Cropping feature is broken while we don't have a unified stream. This is because targets will be longer than expected.
+            if pipeline_context.size(1) >= self.cfg.fit_to_max_length:
+                pipeline_context = pipeline_context[:, :self.cfg.fit_to_max_length]
+                pipeline_padding = pipeline_padding[:, :self.cfg.fit_to_max_length]
+                times = times[:, :self.cfg.fit_to_max_length]
+                space = space[:, :self.cfg.fit_to_max_length]
+                modalities = modalities[:, :self.cfg.fit_to_max_length]
+                if mask is not None:
+                    mask = mask[:, :self.cfg.fit_to_max_length]
+            else:
+                pipeline_context = F.pad(pipeline_context, (0, 0, 0, self.cfg.fit_to_max_length - pipeline_context.size(1)))
+                pipeline_padding = F.pad(pipeline_padding, (0, self.cfg.fit_to_max_length - pipeline_padding.size(1)), value=True)
+                times = F.pad(times, (0, self.cfg.fit_to_max_length - times.size(1)), value=self.cfg.transformer.max_trial_length - 1)
+                space = F.pad(space, (0, self.cfg.fit_to_max_length - space.size(1)), value=self.cfg.max_spatial_position)
+                modalities = F.pad(modalities, (0, self.cfg.fit_to_max_length - modalities.size(1)), value=MODALITY_SPACE_RANGE_START['padding'])
+                if mask is not None:
+                    mask = F.pad(mask, (0, self.cfg.fit_to_max_length - mask.size(1)))
+
         return (
             tks, ps,
             pipeline_context,
@@ -656,6 +679,18 @@ class BrainBertInterface(pl.LightningModule):
             batch,
             prefix=use_prefix
         )
+        # explanation = \
+        #     torch._dynamo.explain(
+        #         self.backbone,
+        #         pipeline_context,
+        #         autoregressive=self.cfg.next_step_prediction,
+        #         padding_mask=None if self.cfg.next_step_prediction else pipeline_padding, # suppress padding if flash attn-able
+        #         causal=self.cfg.causal,
+        #         times=times,
+        #         positions=space,
+        #     )
+        # print(explanation)
+
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             autoregressive=self.cfg.next_step_prediction,

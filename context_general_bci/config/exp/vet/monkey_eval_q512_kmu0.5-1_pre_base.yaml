@@ -14,7 +14,7 @@ model:
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
   kinematic_token_maskout_start: 1.0
-  kinematic_token_maskout: 0.9
+  kinematic_token_maskout: 0.5
   task:
     tasks:
     - ModelTask.spike_context
@@ -32,6 +32,7 @@ model:
     n_layers: 6
     max_trial_length: 1500 # Up to 30s
     n_heads: 8
+    pre_norm: True
   hidden_size: 1024
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
@@ -59,8 +60,8 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  batch_size: 24 # 40G
-  # batch_size: 48 # 80G
+  # batch_size: 24 # 40G
+  batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
 notes: "Increase mask floor - expecting this will reduce student perf but maybe increase neural map"

@@ -453,8 +453,9 @@ def run_exp(cfg : RootConfig) -> None:
         wandb.define_metric(f"val_{Metric.kinematic_r2.value}", summary="max")
         wandb.define_metric(f"eval_{Metric.kinematic_r2.value}", summary="max")
 
-    if cfg.model.compile:
-        model = torch.compile(model)
+    # if cfg.model.compile:
+        # model = torch.compile(model)
+
     trainer.fit(
         model, datamodule=data_module,
         ckpt_path=get_best_ckpt_from_wandb_id(cfg.wandb_project, cfg.load_from_id) if cfg.load_from_id else None

@@ -113,8 +113,10 @@ class SpaceTimeTransformer(nn.Module):
             activation=self.cfg.activation,
             norm_first=self.cfg.pre_norm,
         )
-        if self.cfg.pre_norm and self.cfg.final_norm: # Note, this would be equally accomplished with `norm=True` on the encoder.
-            self.final_norm = nn.LayerNorm(self.cfg.n_state) # per Kaiming's MAE for vision
+        # Always on, for .compile
+        # if self.cfg.pre_norm and self.cfg.final_norm: # Note, this would be equally accomplished with `norm=True` on the encoder.
+            # self.final_norm = nn.LayerNorm(self.cfg.n_state) # per Kaiming's MAE for vision
+        self.final_norm = nn.LayerNorm(self.cfg.n_state) # per Kaiming's MAE for vision
         n_layers = n_layers or self.cfg.n_layers
         if self.cfg.factorized_space_time:
             assert enc_cls == nn.TransformerEncoder, "Factorized space time only supported with encoder"
@@ -261,6 +263,6 @@ class SpaceTimeTransformer(nn.Module):
                 is_causal=causal, # Flash Attn hint (token causality, not time causality)
             )
         output = self.dropout_out(output)
-        if self.cfg.pre_norm and self.cfg.final_norm:
-            output = self.final_norm(output)
+        # if self.cfg.pre_norm and self.cfg.final_norm:
+        output = self.final_norm(output) # Always on, for .compile
         return output

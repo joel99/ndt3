@@ -897,7 +897,7 @@ class SpikingDataset(Dataset):
                 message_prefix=f"Scale {ratio}"
             )
 
-import functools
+
 class SpikingDataModule(pl.LightningDataModule):
     r"""
         A PL module mainly for autoscaling batch size, for sweeping.

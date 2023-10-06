@@ -284,6 +284,9 @@ class ModelConfig:
     token_maskout: float = 0. # If true, blank the previous timestep in the backbone stream
     kinematic_token_maskout: float = 0. # Blank kinematic inputs specifically. DOUBLES AS SCHEDULE END
 
+    fit_to_max_length: int = 0 # set to some high value for static shape, for compilation
+    # e.g. max_spatial_position * max_trial_length = 16 * 250 = 4096 (amoritzing out many constraint dims)
+
     # Overrides above
     kinematic_token_maskout_schedule: str = "constant"
     # Schedule tracks lr schedule.
