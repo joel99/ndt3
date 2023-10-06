@@ -82,36 +82,6 @@ class BrainBertInterface(pl.LightningModule):
     def __init__(self, cfg: ModelConfig, data_attrs: DataAttrs):
         super().__init__() # store cfg
         self.save_hyperparameters(logger=False)
-        if not isinstance(cfg, ModelConfig):
-            # attempt forward port
-            conf_container = OmegaConf.to_container(cfg)
-            for item in [
-                'session_embed_strategy',
-                'subject_embed_strategy',
-                'task_embed_strategy',
-                'array_embed_strategy',
-                'readin_strategy',
-                'readout_strategy',
-                'stim_embed_strategy',
-                'heldout_neuron_embed_strategy',
-                'spike_embed_style',
-            ]:
-                conf_container[item] = enum_backport(conf_container[item], EmbedStrat)
-            conf_container['arch'] = enum_backport(conf_container['arch'], Architecture)
-            for item, class_remap in [
-                ('decode_strategy', EmbedStrat),
-                ('tasks', ModelTask),
-                ('metrics', Metric),
-                ('outputs', Output),
-                ('behavior_target', DataKey),
-            ]:
-                if isinstance(conf_container['task'][item], list):
-                    conf_container['task'][item] = [
-                        enum_backport(x, class_remap) for x in conf_container['task'][item]
-                    ]
-                else:
-                    conf_container['task'][item] = enum_backport(conf_container['task'][item], class_remap)
-            cfg = OmegaConf.merge(ModelConfig(), from_dict(data_class=ModelConfig, data=conf_container))
         self.cfg = cfg
         self.data_attrs = data_attrs
         assert data_attrs.serve_tokens_flat, 'NDT3 assumes flat serving of tokens'
@@ -724,8 +694,8 @@ class BrainBertInterface(pl.LightningModule):
         """
         # breakpoint()
         batch_out: Dict[BatchKey | Output, torch.Tensor] = {}
-        if Output.spikes in self.cfg.task.outputs:
-            batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
+        # if Output.spikes in self.cfg.task.outputs:
+        #     batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
         if self.cfg.task.prefix_ratio > 0:
@@ -1100,65 +1070,69 @@ class BrainBertInterface(pl.LightningModule):
         kinematic_labels=DEFAULT_KIN_LABELS,
         **kwargs
     ):
+        print(metrics.keys(), kwargs)
         for m in metrics:
             if 'loss' in m:
+                # print(f'{prefix}_{m}', metrics[m], kwargs)
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
             if m == Metric.kinematic_r2 or m == Metric.kinematic_r2_thresh:
                 if not self.data_attrs.tokenize_covariates: # Heterogeneous, just hangs the DDP procs. Either we maintain the global list and report 0s, or we drop.
                     # For now, let's just drop.
-                    for i, r2 in enumerate(metrics[str(m)]):
+                    for i, r2 in enumerate(metrics[m.value]):
                         self.log(f'{prefix}_{m.value}_{kinematic_labels[i]}', r2, **kwargs)
-                self.log(f'{prefix}_{m.value}', metrics[str(m)].mean(), **kwargs)
+                self.log(f'{prefix}_{m.value}', metrics[m.value].mean(), **kwargs)
             else:
-                self.log(f'{prefix}_{m.value}', metrics[str(m)], **kwargs)
+                self.log(f'{prefix}_{m.value}', metrics[m.value], **kwargs)
         self.log('kin_maskout', self.kin_maskout, **kwargs)
 
     def training_step(self, batch, batch_idx):
         # if batch_idx > 2:
         #     return None # Override, debug
-        if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
-            self.token_proc_approx += batch[DataKey.spikes].size(0) * batch[DataKey.spikes].size(1)
-            self.token_seen_approx += (batch[LENGTH_KEY].sum() * (1 - self.cfg.task.mask_ratio)).item()
+        # if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
+        #     self.token_proc_approx += batch[DataKey.spikes].size(0) * batch[DataKey.spikes].size(1)
+        #     self.token_seen_approx += (batch[LENGTH_KEY].sum() * (1 - self.cfg.task.mask_ratio)).item()
         metrics = self._step(batch)
-        if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
-            if self.trainer.is_global_zero:
-                if self.cfg.log_token_proc_throughput:
-                    token_proc_approx = self.all_gather(self.token_proc_approx).sum()
-                    self.log('token_proc', token_proc_approx, rank_zero_only=True)
-                if self.cfg.log_token_seen_throughput:
-                    token_count_approx = self.all_gather(self.token_seen_approx).sum()
-                    self.log('token_seen', token_count_approx, rank_zero_only=True)
-
+        # if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
+        #     if self.trainer.is_global_zero:
+        #         if self.cfg.log_token_proc_throughput:
+        #             token_proc_approx = self.all_gather(self.token_proc_approx).sum()
+        #             self.log('token_proc', token_proc_approx, rank_zero_only=True)
+        #         if self.cfg.log_token_seen_throughput:
+        #             token_count_approx = self.all_gather(self.token_seen_approx).sum()
+        #             self.log('token_seen', token_count_approx, rank_zero_only=True)
+        kin_labels = None # batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch and not self.cfg.compile else None
         self.common_log(
             metrics,
             prefix='train',
-            kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
+            kinematic_labels=kin_labels,
         )
         return metrics['loss']
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        all_metrics = []
-        if self.cfg.val_iters > 1:
-            assert not self.data_attrs.tokenize_covariates, "We don't know how to combine multiple different R2s at the moment"
-            clean = deepcopy(batch) # not intended to be efficient, quick and dirty
-        for i in range(self.cfg.val_iters):
-            if i > 0:
-                batch = deepcopy(clean)
-            all_metrics.append(self._step(batch))
-        metrics = {}
-        for k in all_metrics[0]:
-            if isinstance(all_metrics[0][k], torch.Tensor):
-                metrics[k] = torch.stack([m[k] for m in all_metrics]).mean(0)
-            else:
-                metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
-
+        # all_metrics = []
+        # if self.cfg.val_iters > 1:
+        #     assert not self.data_attrs.tokenize_covariates, "We don't know how to combine multiple different R2s at the moment"
+        #     clean = deepcopy(batch) # not intended to be efficient, quick and dirty
+        # for i in range(self.cfg.val_iters):
+        #     if i > 0:
+        #         batch = deepcopy(clean)
+        #     all_metrics.append(self._step(batch))
+        # metrics = {}
+        # for k in all_metrics[0]:
+        #     if isinstance(all_metrics[0][k], torch.Tensor):
+        #         metrics[k] = torch.stack([m[k] for m in all_metrics]).mean(0)
+        #     else:
+        #         metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
+        metrics = self._step(batch)
+        kin_labels = None #batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch and not self.cfg.compile else None
         self.common_log(
             metrics,
             prefix='val' if dataloader_idx == 0 else 'eval',
+            # sync_dist=False,
             sync_dist=True,
             add_dataloader_idx=False,
-            kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
+            kinematic_labels=kin_labels,
         )
         # return None metrics['loss']
         # if dataloader_idx == 0:

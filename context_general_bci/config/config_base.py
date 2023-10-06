@@ -262,6 +262,8 @@ class EvalConfig:
 
 @dataclass
 class ModelConfig:
+    compile: bool = False # use torch.compile
+
     hidden_size: int = 256 # For parts outside of backbones
     arch: Architecture = Architecture.ndt
     transformer: TransformerConfig = field(default_factory=lambda: TransformerConfig())
@@ -648,7 +650,6 @@ class RootConfig:
     notes: str = ""
     trainable_parameters: int = 0
     total_parameters: int = 0
-    compile: bool = False # use torch.compile
 
     # Meta config - will initiate multiple derivative runs, all handled in `run.py`
     sweep_cfg: str = "" # See `hp_sweep_space.py`

@@ -1487,7 +1487,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                         r2_scores.append(0)
                         continue
                     r2_scores.append(r2_score(valid_tgt[submask], valid_bhvr[submask]))
-                batch_out[Metric.kinematic_r2] = np.array(r2_scores)
+                batch_out[Metric.kinematic_r2.value] = np.array(r2_scores)
                 batch[DataKey.covariate_labels] = unique_labels
             elif self.cfg.decode_tokenize_dims:
                 # extract the proper subsets according to space (for loop it) - per-dimension R2 is only relevant while dataloading maintains consistent dims (i.e. not for long) but in the meanwhile
@@ -1495,12 +1495,12 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 positions = batch[f'{DataKey.covariate_space}_target'][r2_mask].flatten().cpu() # flatten as square full batches won't autoflatten B x T but does flatten B x T x 1
                 for i in positions.unique():
                     r2_scores.append(r2_score(valid_tgt[positions == i], valid_bhvr[positions == i]))
-                batch_out[Metric.kinematic_r2] = np.array(r2_scores)
+                batch_out[Metric.kinematic_r2.value] = np.array(r2_scores)
             else:
                 assert len(self.covariate_blacklist_dims) == 0, "blacklist dims not implemented for non tokenized R2"
-                batch_out[Metric.kinematic_r2] = r2_score(valid_tgt, valid_bhvr, multioutput='raw_values')
-            if batch_out[Metric.kinematic_r2].mean() < -100:
-                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])# .mean() # mute, some erratic result from near zero target skewing plots
+                batch_out[Metric.kinematic_r2.value] = r2_score(valid_tgt, valid_bhvr, multioutput='raw_values')
+            if batch_out[Metric.kinematic_r2.value].mean() < -100:
+                batch_out[Metric.kinematic_r2.value] = np.zeros_like(batch_out[Metric.kinematic_r2.value])# .mean() # mute, some erratic result from near zero target skewing plots
                 # print(valid_bhvr.mean().cpu().item(), valid_tgt.mean().cpu().item(), batch_out[Metric.kinematic_r2].mean())
                 # breakpoint()
             # if Metric.kinematic_r2_thresh in self.cfg.metrics: # Deprecated, note to do this we'll need to recrop `position_target` as well
@@ -1509,7 +1509,7 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
             #     batch_out[Metric.kinematic_r2_thresh] = r2_score(valid_tgt, valid_bhvr, multioutput='raw_values')
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
-            batch_out[Metric.kinematic_acc] = acc[r2_mask].float().mean()
+            batch_out[Metric.kinematic_acc.value] = acc[r2_mask].float().mean()
         return batch_out
 
 
@@ -1762,16 +1762,16 @@ class CovariateInfill(ClassificationMixin):
             # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
-            batch_out[Metric.kinematic_r2] = np.array([r2_score(valid_tgt, valid_bhvr)])
+            batch_out[Metric.kinematic_r2.value] = np.array([r2_score(valid_tgt, valid_bhvr)])
             # breakpoint() # Something is wildly wrong...
-            if batch_out[Metric.kinematic_r2].mean() < -10000:
+            if batch_out[Metric.kinematic_r2.value].mean() < -10000:
                 # zero it out - this is a bug that occurs when the target has minimal variance (i.e. a dull batch with tiny batch size)
                 # Occurs only because we can't easily full batch R2, i.e. uninteresting.
-                batch_out[Metric.kinematic_r2] = np.zeros_like(batch_out[Metric.kinematic_r2])
+                batch_out[Metric.kinematic_r2.value] = np.zeros_like(batch_out[Metric.kinematic_r2.value])
             batch[DataKey.covariate_labels] = ['x'] # base default
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
-            batch_out[Metric.kinematic_acc] = acc[r2_mask].float().mean()
+            batch_out[Metric.kinematic_acc.value] = acc[r2_mask].float().mean()
         # print(batch_out[Metric.kinematic_r2])
         return batch_out
 

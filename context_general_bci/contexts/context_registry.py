@@ -115,8 +115,8 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
     context_registry.register([
         *RTTContextInfo.build_several('./data/odoherty_rtt/', alias_prefix='odoherty_rtt'),
 
-        DyerCOContextInfo.build(('mihi', 1), ExperimentalTask.dyer_co, alias='dyer_co_mihi_1'),
-        DyerCOContextInfo.build(('mihi', 2), ExperimentalTask.dyer_co, alias='dyer_co_mihi_2'),
+        # DyerCOContextInfo.build(('mihi', 1), ExperimentalTask.dyer_co, alias='dyer_co_mihi_1'),
+        # DyerCOContextInfo.build(('mihi', 2), ExperimentalTask.dyer_co, alias='dyer_co_mihi_2'),
         DyerCOContextInfo.build(('chewie', 1), ExperimentalTask.dyer_co, alias='dyer_co_chewie_1'),
         DyerCOContextInfo.build(('chewie', 2), ExperimentalTask.dyer_co, alias='dyer_co_chewie_2'),
 
@@ -176,6 +176,15 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
         #     'default': ExperimentalTask.pitt_co,
         # }),
         *MillerContextInfo.build_from_dir('./data/miller/adversarial', task=ExperimentalTask.miller),
+
+        # *MillerContextInfo.build_from_dir('./data/miller/Jango_ISO_2015', task=ExperimentalTask.miller),
+        # *MillerContextInfo.build_from_dir('./data/miller/Spike_ISO_2012', task=ExperimentalTask.miller),
+        # *MillerContextInfo.build_from_dir('./data/miller/Chewie_CO_2016', task=ExperimentalTask.miller),
+        # *MillerContextInfo.build_from_dir('./data/miller/Mihili_CO_2014', task=ExperimentalTask.miller),
+        # *MillerContextInfo.build_from_dir('./data/miller/Mihili_RT_2013_2014', task=ExperimentalTask.miller),
+        # *MillerContextInfo.build_from_dir('./data/miller/Greyson_Key_2019', task=ExperimentalTask.miller),
+        # *MillerContextInfo.build_from_dir('./data/miller/Pop_PG_2021', task=ExperimentalTask.miller), # TODO fixup - it's at 50ms, maybe not worth in near future.
+
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_isometric_force', task=ExperimentalTask.marino_batista_mp_iso_force),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_bci', task=ExperimentalTask.marino_batista_mp_bci),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_dco_reaching', task=ExperimentalTask.marino_batista_mp_reaching),

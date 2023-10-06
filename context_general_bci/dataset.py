@@ -684,11 +684,16 @@ class SpikingDataset(Dataset):
             stack_batch[RETURN_LENGTH_KEY] = task_return_lengths
         if covariate_key is not None:
             stack_batch[COVARIATE_LENGTH_KEY] = covariate_lengths
-        # if DataKey.task_return in stack_batch and (stack_batch[DataKey.task_return] < 0).any():
-        #     breakpoint()
-        # if DataKey.task_return in stack_batch and (stack_batch[DataKey.task_reward] < 0).any():
-        #     breakpoint()
-        return dict(stack_batch) # cast back to dict as pytorch distributed can act up with defaultdicts
+
+        # return dict(stack_batch) # cast back to dict as pytorch distributed can act up with defaultdicts
+        # Cast out, for compile
+        new_batch = {}
+        for k in stack_batch:
+            if isinstance(k, DataKey) or isinstance(k, MetaKey):
+                new_batch[k.name] = stack_batch[k]
+            else:
+                new_batch[k] = stack_batch[k]
+        return new_batch
 
     def collater_factory(self):
         if not self.cfg.pad_batches:
