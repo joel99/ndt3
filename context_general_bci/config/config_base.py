@@ -259,6 +259,7 @@ class EvalConfig:
     maskout_last_n: int = 0 # Assumes student path. Will allow student to fill in only if n timesteps older than present step.
     student_prob: float = 1. # If < 1, use this as a probability of using student predictions at next step, else drop. (For debugging constant predictions/train time parity)
     limit_timesteps: int = 0 # limit eval to N timesteps. In units of timebins
+    student_gap: int = 0 # Timesteps since teacher to start counting predictions. Related but exclusive from maskout_last_n
 
 
 @dataclass

@@ -37,6 +37,20 @@ STYLEGUIDE = {
     }
 }
 
+def rolling_time_since_student(bool_tensor):
+    # bool_tensor: 1D, false is teacher, true if student. Used to identify "going off the rails"
+    # Identify change points
+    change_points = (bool_tensor[:-1] & ~bool_tensor[1:]).nonzero(as_tuple=True)[0] + 1
+
+    # Compute cumsum
+    result = torch.cumsum(bool_tensor.int(), dim=0)
+
+    # Adjust tail values based on change points
+    for idx in change_points:
+        result[idx:] -= result[idx-1]
+
+    return result, change_points
+
 def cast_paths_and_enums(cfg: Dict, template=RootConfig()):
     # recursively cast any cfg field that is a path in template to a path, since dacite doesn't support our particular case quite well
     # thinking about it more - the weak link is wandb; which casts enums and paths to __str__

@@ -19,7 +19,7 @@ from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, DataKey, MetaKey
 from context_general_bci.contexts import context_registry
 
-from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
+from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt, rolling_time_since_student
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
 def main(
@@ -28,7 +28,8 @@ def main(
     id: int,
     student_prob: float,
     data_label: str,
-    gpu: int,
+    gap: int,
+    # gpu: int,
     cue: float,
     limit: float,
     trials: int,
@@ -38,7 +39,6 @@ def main(
     print("Starting eval")
     print(f"ID: {id}")
     print(f"Data label: {data_label}")
-    print(f"GPU: {gpu}")
 
     wandb_run = wandb_query_latest(id, allow_running=True, use_display=True)[0]
     print(wandb_run.id)
@@ -109,9 +109,15 @@ def main(
     model.cfg.eval.use_student = student
     model.cfg.eval.student_prob = student_prob
     model.cfg.eval.maskout_last_n = maskout_last_n
+    model.cfg.eval.student_gap = gap
     pprint(model.cfg.eval)
 
-    trainer = pl.Trainer(accelerator='gpu', devices=[gpu], default_root_dir='./data/tmp')
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=1 if torch.cuda.is_available() else 0,
+        # devices=torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        default_root_dir='./data/tmp'
+    )
     def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=1, **kwargs) -> DataLoader:
         return DataLoader(dataset,
             batch_size=batch_size,
@@ -128,10 +134,12 @@ def main(
     prediction = heldin_outputs[Output.behavior_pred]
     target = heldin_outputs[Output.behavior]
     is_student = heldin_outputs[Output.behavior_query_mask]
+    is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
+    valid = is_student_rolling > model.cfg.eval.student_gap
     # Compute R2
-    r2 = r2_score(target, prediction)
-    r2_student = r2_score(target[is_student], prediction[is_student])
-    print(f'R2: {r2:.4f}')
+    # r2 = r2_score(target, prediction)
+    r2_student = r2_score(target[valid], prediction[valid])
+    # print(f'R2: {r2:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
     pprint(model.cfg.eval)
     print(f"Data label: {data_label}")
@@ -146,7 +154,8 @@ if __name__ == "__main__":
     parser.add_argument("-i", "--id", type=str, required=True, help="ID number.")
     parser.add_argument("-p", "--student_prob", type=float, default=1., help="Probability of student.")
     parser.add_argument("-d", "--data_label", type=str, required=True, help="Data label.")
-    parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
+    # parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
+    parser.add_argument('-g', '--gap', type=int, default=0, help="Gap for student.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
     parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit eval length (s)")
     parser.add_argument("--trials", type=int, default=96, help="Number of trials per session to evaluate. 0 for no subset")

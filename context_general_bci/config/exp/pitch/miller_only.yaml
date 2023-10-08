@@ -40,14 +40,12 @@ model:
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.
-  - churchland.*
-  - gallego.*
-  - dyer_co.*
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
   - miller.*
-  - odoherty_rtt.*
-  - delay.*
-
-  - pitt_broad.*
+  # - odoherty_rtt.*
+  # - delay.*
   exclude_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
@@ -64,11 +62,10 @@ dataset:
     chop_size_ms: 5000
   max_channels: 224 # 211
   max_arrays: 2
-  pitt_co:
-    chop_size_ms: 5000
 train:
   # batch_size: 64 # 80G - OOM
-  # batch_size: 16 # 40G
-  batch_size: 32 # 80G
+  batch_size: 24 # 40G
+  # batch_size: 48 # 80G
   patience: 50
-  effective_batch_size: 8192
+  effective_batch_size: 1024
+  # effective_batch_size: 8192
