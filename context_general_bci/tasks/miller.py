@@ -63,8 +63,8 @@ class MillerLoader(ExperimentalTaskLoader):
             if my_xds.has_EMG:
                 # Use muscle labels
                 canonical_labels.extend(my_xds.EMG_names)
-                for i, label in enumerate(my_xds.EMG_names):
-                    assert label in EMG_CANON_LABELS, f"EMG label {label} not in canonical labels, please regiser in `config_base` for bookkeeping."
+                # for i, label in enumerate(my_xds.EMG_names):
+                    # assert label in EMG_CANON_LABELS, f"EMG label {label} not in canonical labels, please regiser in `config_base` for bookkeeping."
             if my_xds.has_force:
                 # Cursor, EMG (we don't include manipulandum force, mostly to stay under 10 dims for now)
                 logger.info('Force data found but not loaded for now')
@@ -74,6 +74,8 @@ class MillerLoader(ExperimentalTaskLoader):
         all_trials = [*my_xds.get_trial_info('R'), *my_xds.get_trial_info('F')] # 'A' not included
         end_times = [trial['trial_end_time'] for trial in all_trials]
         start_times = [trial['trial_gocue_time'] for trial in all_trials]
+        if isinstance(start_times[0], np.ndarray):
+            start_times = [start[0] for start in start_times]
         # ? Does the end time indicate the sort of... bin count?
         total_time = sum([end - start for start, end in zip(start_times, end_times)])
         print(f'Total trial/active time: {total_time:.2f} / {(my_xds.time_frame[-1] - my_xds.time_frame[0])[0]:.2f}')
@@ -100,9 +102,16 @@ class MillerLoader(ExperimentalTaskLoader):
             vel = (vel - global_args['cov_mean']) / rescale
             vel = torch.clamp(vel, -1, 1)
 
+        spikes = my_xds.spike_counts
+        if spikes.shape[0] == vel.shape[0] + 1:
+            spikes = spikes[1:] # Off by 1s in velocity
+        elif spikes.shape[0] == vel.shape[0] + 2:
+            spikes = spikes[1:-1]
+        else:
+            raise ValueError("Spikes and velocity size mismatch")
         vel = chop_vector(vel) # T x H
-        full_spikes = chop_vector(torch.as_tensor(my_xds.spike_counts, dtype=torch.float))
-        # breakpoint()
+        full_spikes = chop_vector(torch.as_tensor(spikes, dtype=torch.float))
+        assert full_spikes.size(0) == vel.size(0), "Chop size mismatch"
         for t in range(full_spikes.size(0)):
             single_payload = {
                 DataKey.spikes: create_spike_payload(full_spikes[t], context_arrays),

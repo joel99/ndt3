@@ -410,10 +410,10 @@ class PittCOLoader(ExperimentalTaskLoader):
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
                 # ! If we ever extend beyond 9 dims, the other force dimensions all belong to the grasp domain: src - Jeff Weiss
                 if override_assist is not None:
-                    breakpoint() # assuming override dimension is Trial T (domain 3) after chop
+                    # breakpoint() # assuming override dimension is Trial T (domain 3) after chop
                     chopped_override = chop_vector(override_assist)
-                    chopped_constraints[..., 0] = torch.maximum(chopped_constraints[..., 0], chopped_override) # if override is on, brain control is off, which means FBC constraint is 1
-                    chopped_constraints[..., 1] = torch.maximum(chopped_constraints[..., 1], chopped_override) # if override is on, active assist is on, which means active assist constraint is 1
+                    chopped_constraints[..., 0, :] = torch.maximum(chopped_constraints[..., 0, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, brain control is off, which means FBC constraint is 1
+                    chopped_constraints[..., 1, :] = torch.maximum(chopped_constraints[..., 1, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, active assist is on, which means active assist constraint is 1
 
             if reward_dense is not None:
                 reward_dense = chop_vector(reward_dense)

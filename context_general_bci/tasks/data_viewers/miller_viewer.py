@@ -18,10 +18,6 @@ logger = logging.getLogger(__name__)
 import numpy as np
 import pandas as pd
 import torch
-try:
-    import pyaldata
-except:
-    logging.info("Pyaldata not installed, please install from https://github.com/NeuralAnalysis/PyalData. Import will fail")
 
 from einops import reduce
 from scipy.signal import decimate
@@ -36,10 +32,16 @@ from context_general_bci.analyze_utils import prep_plt
 import matplotlib.pyplot as plt
 import numpy as np
 
-data_path = Path('data/miller/adversarial')
-file_name = 'Jango_20150730_001.mat'
-file_name = 'Jango_20150731_001.mat'
-my_xds = xds.lab_data(str(data_path), file_name) # Load the data using the lab_data class in xds.py
+data_path = Path('data/miller/Chewie_CO_2016') # Cursor
+data_path = Path('data/miller/Greyson_Key_2019') # EMG + Forces
+# data_path = Path('data/miller/Jango_ISO_2015') # EMG + Forces
+# data_path = Path('data/miller/Mihili_CO_2014') # Just cursor
+# data_path = Path('data/miller/Mihili_RT_2013_2014') # Just cursor
+# data_path = Path('data/miller/Spike_ISO_2012') # Cursor, force, emg
+
+data_path = data_path.glob('*.mat').__next__()
+print()
+my_xds = xds.lab_data(str(data_path.parent), data_path.name) # Load the data using the lab_data class in xds.py
 print(my_xds.bin_width)
 print('Are there EMGs? %d'%(my_xds.has_EMG))
 print('Are there cursor trajectories? %d'%(my_xds.has_cursor))
@@ -53,22 +55,40 @@ my_xds.update_bin_data(0.020) # rebin to 20ms
 
 cont_time_frame = my_xds.time_frame
 cont_spike_counts = my_xds.spike_counts
-cont_EMG = my_xds.EMG
 
 # Print total active time etc
 all_trials = [*my_xds.get_trial_info('R'), *my_xds.get_trial_info('F')] # 'A' not included
 end_times = [trial['trial_end_time'] for trial in all_trials]
 start_times = [trial['trial_gocue_time'] for trial in all_trials]
 # ? Does the end time indicate the sort of... bin count?
+print("Start: ", start_times)
+print("End: ", end_times)
+print(len(start_times), len(end_times))
+if isinstance(start_times[0], np.ndarray):
+    start_times = [start[0] for start in start_times]
 total_time = sum([end - start for start, end in zip(start_times, end_times)])
-print('Total trial time: %f'%(total_time))
-print('Estimated recording time: %f'%(my_xds.time_frame[-1] - my_xds.time_frame[0]))
+print(total_time)
+
+print(f"Total trial time: {total_time:.2f}")
+print(f"Estimated recording time: {(my_xds.time_frame[-1] - my_xds.time_frame[0])}")
+print(f"Timeframe start: {my_xds.time_frame[0]}")
+print(f"Timeframe end: {my_xds.time_frame[-1]}")
+print(f"First trial start: {start_times[0]:.2f}")
+print(f"Last trial end: {end_times[-1]:.2f}")
+print(f"Active trial %: {(total_time / (my_xds.time_frame[-1] - my_xds.time_frame[0])[0] * 100):.2f}%")
+
 print('Shapes')
-print(my_xds.force.shape)
-print(my_xds.curs_v.shape)
-print(cont_time_frame.shape)
-print(cont_spike_counts.shape)
-print(cont_EMG.shape)
+print('Time frame : ', cont_time_frame.shape)
+print('Spike counts : ', cont_spike_counts.shape)
+
+if my_xds.has_EMG:
+    cont_EMG = my_xds.EMG
+    print('EMG : ', cont_EMG.shape)
+if my_xds.has_cursor:
+    print('Cursor : ', my_xds.curs_v.shape)
+if my_xds.has_force:
+    print('Force : ', my_xds.force.shape)
+# TODO low pri - there's off by 1 alignment in covariates
 #%%
 import seaborn as sns
 import matplotlib.pyplot as plt
@@ -101,22 +121,23 @@ def annotate_title(ax, data, label):
     ax.set_title(f"{label} (Min: {min_val:.2f}, Max: {max_val:.2f}, Mean: {mean_val:.2f})")
 
 # Plot each data series in its own subplot and annotate title
-annotate_title(axs[0], my_xds.curs_v[:, 0], 'vx')
-axs[0].plot(my_xds.curs_v[:, 0])
+if my_xds.has_cursor:
+    annotate_title(axs[0], my_xds.curs_v[:, 0], 'vx')
+    axs[0].plot(my_xds.curs_v[:, 0])
 
-annotate_title(axs[1], my_xds.curs_v[:, 1], 'vy')
-axs[1].plot(my_xds.curs_v[:, 1])
+    annotate_title(axs[1], my_xds.curs_v[:, 1], 'vy')
+    axs[1].plot(my_xds.curs_v[:, 1])
+if my_xds.has_force:
+    annotate_title(axs[2], my_xds.force[:, 0], 'fx')
+    axs[2].plot(my_xds.force[:, 0])
 
-annotate_title(axs[2], my_xds.force[:, 0], 'fx')
-axs[2].plot(my_xds.force[:, 0])
-
-annotate_title(axs[3], my_xds.force[:, 1], 'fy')
-axs[3].plot(my_xds.force[:, 1])
-
-# Plot EMG (assuming 7 dimensions)
-for i in range(7):
-    annotate_title(axs[4 + i], my_xds.EMG[:, i], f'e{i}')
-    axs[4 + i].plot(my_xds.EMG[:, i])
+    annotate_title(axs[3], my_xds.force[:, 1], 'fy')
+    axs[3].plot(my_xds.force[:, 1])
+if my_xds.has_EMG:
+    # Plot EMG (assuming 7 dimensions)
+    for i in range(7):
+        annotate_title(axs[4 + i], my_xds.EMG[:, i], f'e{i}')
+        axs[4 + i].plot(my_xds.EMG[:, i])
 
 plt.tight_layout()
 plt.show()

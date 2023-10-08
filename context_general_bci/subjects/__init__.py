@@ -23,6 +23,8 @@ class SubjectName(OrderedEnum):
     loco = "Loco"
     nitschke = "Nitschke"
     mihi = "Mihi"
+    greyson = "Greyson"
+    spike = "Spike"
     chewie = "Chewie"
     han = "Han"
     lando = "Lando"

@@ -538,7 +538,10 @@ class MillerContextInfo(ContextInfo):
             return []
         def make_info(path: Path):
             subject, *_ = path.stem.split("_")
-            subject = SubjectArrayRegistry.query_by_subject(subject.lower())
+            subject = subject.lower()
+            if subject == "mihili":
+                subject = "mihi" # alias
+            subject = SubjectArrayRegistry.query_by_subject(subject)
             return MillerContextInfo(
                 subject=subject,
                 task=task,

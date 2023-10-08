@@ -48,7 +48,8 @@ class Mihi(SubjectInfo):
     name = SubjectName.mihi
     _arrays = {
         'main': SortedArrayInfo(_max_channels=187), # single-session (Dyer)
-        'M1': SortedArrayInfo(_max_channels=52), # dual
+        'M1': SortedArrayInfo(_max_channels=96), # dual
+        # 'M1': SortedArrayInfo(_max_channels=52), # dual
         'PMd': SortedArrayInfo(_max_channels=121), # dual
     }
 
@@ -57,8 +58,23 @@ class Chewie(SubjectInfo):
     name = SubjectName.chewie
     _arrays = {
         'main': SortedArrayInfo(_max_channels=174), # single-session (Dyer)
-        'M1': SortedArrayInfo(_max_channels=88), # left hemisphere
+        'M1': SortedArrayInfo(_max_channels=96), # left hemisphere
+        # 'M1': SortedArrayInfo(_max_channels=88), # left hemisphere
         'PMd': SortedArrayInfo(_max_channels=211), # left hemisphere
+    }
+
+@SubjectArrayRegistry.register
+class Spike(SubjectInfo):
+    name = SubjectName.spike
+    _arrays = {
+        'M1': SortedArrayInfo(_max_channels=96),
+    }
+
+@SubjectArrayRegistry.register
+class Greyson(SubjectInfo):
+    name = SubjectName.greyson
+    _arrays = {
+        'M1': SortedArrayInfo(_max_channels=96),
     }
 
 @SubjectArrayRegistry.register

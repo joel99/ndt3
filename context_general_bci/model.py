@@ -794,36 +794,36 @@ class BrainBertInterface(pl.LightningModule):
         assert self.data_attrs.serve_tokens_flat, "Not implemented"
         # there are data keys and meta keys, that might be coming in unbatched
         batch_shapes = {
-            DataKey.spikes: '* t token_chan h',
-            DataKey.heldout_spikes: '* t c h',
-            DataKey.stim: '* t c h', # TODO review
-            DataKey.bhvr_vel: '* t h',
-            MetaKey.session: '*',
-            MetaKey.subject: '*',
-            MetaKey.task: '*',
-            MetaKey.array: '* a',
+            DataKey.spikes.name: '* t token_chan h',
+            DataKey.heldout_spikes.name: '* t c h',
+            DataKey.stim.name: '* t c h', # TODO review
+            DataKey.bhvr_vel.name: '* t h',
+            MetaKey.session.name: '*',
+            MetaKey.subject.name: '*',
+            MetaKey.task.name: '*',
+            MetaKey.array.name: '* a',
             LENGTH_KEY: '*',
             COVARIATE_LENGTH_KEY: '*',
             COVARIATE_CHANNEL_KEY: '*',
             CHANNEL_KEY: '* a', # or '* token'
-            DataKey.time: '* t',
-            DataKey.position: '* t',
-            DataKey.covariate_time: '* t',
-            DataKey.covariate_space: '* t',
-            DataKey.covariate_labels: '*',
-            DataKey.constraint: '* t constraint_dim',
-            DataKey.constraint_space: '* t',
-            DataKey.constraint_time: '* t',
-            DataKey.task_return: '* t h',
-            DataKey.task_reward: '* t h',
-            DataKey.task_return_time: '* t',
+            DataKey.time.name: '* t',
+            DataKey.position.name: '* t',
+            DataKey.covariate_time.name: '* t',
+            DataKey.covariate_space.name: '* t',
+            DataKey.covariate_labels.name: '*',
+            DataKey.constraint.name: '* t constraint_dim',
+            DataKey.constraint_space.name: '* t',
+            DataKey.constraint_time.name: '* t',
+            DataKey.task_return.name: '* t h',
+            DataKey.task_reward.name: '* t h',
+            DataKey.task_return_time.name: '* t',
             # DataKey.task_return_space: '* t',
             'constraint_length': '*',
             'return_length': '*',
         }
         pack_info = {}
         for k in batch:
-            if k == DataKey.covariate_labels:
+            if k == DataKey.covariate_labels.name:
                 continue
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
         batch_out: Dict[str | DataKey | MetaKey | Output, torch.Tensor] = {}
@@ -865,12 +865,18 @@ class BrainBertInterface(pl.LightningModule):
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
             predict_until = 0 # The goalpost hasn't been set yet.
             need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
-            # Want the first slice (batch wise) where anyone needs student force; predict up to that step (exclusvie)
-            # breakpoint()
-            if not need_student_slice.any():
-                predict_until = times.size(1)
+            if self.cfg.eval.use_student:
+                if need_student_slice.any():
+                    predict_until = need_student_slice.nonzero()[0][0].item() # Predict_until is exclusive.
+                else:
+                    predict_until = times.size(1)
             else:
-                predict_until = need_student_slice.nonzero()[0][0].item() # Predict_until is exclusive.
+                predict_until = times.size(1)
+                is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
+                is_kinematic_input[:, 0] = False
+                blacklist_kin_times = (times >= self.cfg.eval.teacher_timesteps) \
+                    & is_kinematic_input
+                pipeline_context[blacklist_kin_times] = 0
 
             if self.cfg.eval.maskout_last_n:
                 # We don't immediately load student, so we need to keep a copy on hand. For convenience, we copy full stream
@@ -962,8 +968,8 @@ class BrainBertInterface(pl.LightningModule):
                             to_infer_mask[:, proc_step] & should_student
                         ]
                 proc_step += 1
-                if True or proc_step % 100 == 0:
-                    print(f'Inferred {proc_step} of {times.size(1)} steps.')
+                # if True or proc_step % 100 == 0:
+                    # print(f'Inferred {proc_step} of {times.size(1)} steps.')
             raw_stream = torch.cat(raw_stream, 1) # B T
             stream_mask = torch.cat(stream_mask, 1) # B T
             target_stream = torch.cat(target_stream, 1) # B T

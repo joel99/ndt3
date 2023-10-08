@@ -59,10 +59,20 @@ def main(
             'odoherty_rtt-Loco-20170216_02',
             'odoherty_rtt-Loco-20170217_02',
         ]
-    elif data_label == 'indy':
+    elif data_label == 'indy': # EVAL SET
         target = [
-            'odoherty_rtt-Indy-20160407_02',
+            'odoherty_rtt-Indy-20160407_02', # First indy session
+            'odoherty_rtt-Indy-20160627_01', # Original
+            'odoherty_rtt-Indy-20161005_06',
             'odoherty_rtt-Indy-20161026_03',
+            'odoherty_rtt-Indy-20170131_02'
+        ]
+    elif data_label == 'miller':
+        target = [
+            'miller_Jango-Jango_20150730_001',
+            'miller_Jango-Jango_20150731_001',
+            'miller_Jango-Jango_20150801_001',
+            'miller_Jango-Jango_20150805_001'
         ]
     elif data_label == 'robust':
         target = [
