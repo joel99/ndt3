@@ -1121,7 +1121,8 @@ class BrainBertInterface(pl.LightningModule):
                 self.log(f'{prefix}_{m.value}', metrics[m.value].mean(), **kwargs)
             else:
                 self.log(f'{prefix}_{m.value}', metrics[m.value], **kwargs)
-        self.log('kin_maskout', self.kin_maskout, **kwargs)
+        if prefix == 'train':
+            self.log('kin_maskout', self.kin_maskout, **kwargs)
 
     def training_step(self, batch, batch_idx):
         # if batch_idx > 2:

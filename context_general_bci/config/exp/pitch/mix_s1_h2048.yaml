@@ -33,8 +33,8 @@ model:
   transformer:
     n_layers: 6
     max_trial_length: 1500 # Up to 30s
-    n_heads: 8
-  hidden_size: 1024
+    n_heads: 16
+  hidden_size: 2048
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
 dataset:
@@ -48,7 +48,7 @@ dataset:
   - delay.*
 
   - pitt_broad.*
-  eval_datasets:
+  exclude_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
   - odoherty_rtt-Indy-20161005_06
@@ -67,9 +67,6 @@ dataset:
   pitt_co:
     chop_size_ms: 5000
 train:
-  # batch_size: 64 # 80G - OOM
-  batch_size: 16 # 40G
-  # batch_size: 32 # 80G
+  batch_size: 4 # 40G # TODO can probably do 6
   patience: 50
   effective_batch_size: 8192
-load_from_id: mix_s1-6akt6och

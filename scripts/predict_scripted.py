@@ -118,7 +118,7 @@ def main(
         # devices=torch.cuda.device_count() if torch.cuda.is_available() else 0,
         default_root_dir='./data/tmp'
     )
-    def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=1, **kwargs) -> DataLoader:
+    def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=8, **kwargs) -> DataLoader:
         return DataLoader(dataset,
             batch_size=batch_size,
             num_workers=num_workers,

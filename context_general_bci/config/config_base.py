@@ -253,9 +253,9 @@ class TransformerConfig:
 @dataclass
 class EvalConfig:
     temperature: float = 0. # For sampling. 0. is argmax, higher is more uniform
-    teacher_timesteps: int = 0 # provide true labels up to N _timesteps_ in. In units of timebins
+    teacher_timesteps: int = 25 # provide true labels up to N _timesteps_ in. In units of timebins
     # Specifically re: off by 1 - do we use the predictions from >= this timestep as student labels?
-    use_student: bool = True # Use student predictions at next step, else drop. (For debugging constant predictions/train time parity)
+    use_student: bool = False # Use student predictions at next step, else drop. (For debugging constant predictions/train time parity)
     maskout_last_n: int = 0 # Assumes student path. Will allow student to fill in only if n timesteps older than present step.
     student_prob: float = 1. # If < 1, use this as a probability of using student predictions at next step, else drop. (For debugging constant predictions/train time parity)
     limit_timesteps: int = 0 # limit eval to N timesteps. In units of timebins
@@ -509,9 +509,12 @@ class DatasetConfig:
     # Datasets to hold a _subset_ of from training. (some exposure still required)
     # These datasets are used for evaluation (in analysis, and possibly during training), separate from validation step.
     eval_datasets: List[str] = field(default_factory=lambda: [])
-    eval_ratio: float = 0.5 # ratio of eval dataset to reserve for eval
+    eval_ratio: float = 1.0 # ratio of eval dataset to reserve for eval
+    # eval_ratio: float = 0.5 # ratio of eval dataset to reserve for eval
     eval_force_limit: bool = False # if true, ignore eval ratio, and simply reserve reserve the above `scale_limit_per_session``.
     eval_seed: int = 0 # for shuffling/splitting etc
+
+    # TODO what we really need are a suite of eval tasks/callbacks...
 
     eval_split_continuous: bool = False # For comparison with rEFH - make eval a continuous block that comes later in training.
 

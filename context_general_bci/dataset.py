@@ -6,6 +6,7 @@ from pathlib import Path
 from math import ceil
 import itertools
 import logging
+from concurrent.futures import ThreadPoolExecutor
 
 from omegaconf import OmegaConf
 from dataclasses import dataclass, field
@@ -152,8 +153,11 @@ class SpikingDataset(Dataset):
             contexts = [c for c in contexts if c not in exclude_contexts]
             if not contexts:
                 raise Exception(f"No contexts {self.cfg.datasets} left in dataset.")
-            self.meta_df = pd.concat([self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]).reset_index(drop=True)
-            # self.meta_df = pd.concat([self.load_single_session(c) for c in contexts]).reset_index(drop=True)
+            with ThreadPoolExecutor(max_workers=32) as executor: # Not processpool as it's mildly inconvenient to refactor our this preprocessing to a pickleable step right now
+                results = list(executor.map(lambda c: self.load_single_session(c, override_preprocess_path=override_preprocess_path), contexts))
+            self.meta_df = pd.concat(results).reset_index(drop=True)
+            # self.meta_df = pd.concat([self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]).reset_index(drop=True)
+
             if 'split' in self.meta_df.columns and len(self.meta_df['split'].unique()) > 1:
                 logger.warning("Non-train splits found in meta_df. Subsetting is expected.")
         else:
@@ -254,7 +258,10 @@ class SpikingDataset(Dataset):
         if self.cfg.eval_split_continuous:
             eval_subset = eval_pool.iloc[-int(self.cfg.eval_ratio * len(eval_pool)):] # take tail end, and we'll take head for train split
         else:
-            eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
+            if self.cfg.eval_ratio < 1:
+                eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
+            else:
+                eval_subset = eval_pool
         self.meta_df['split'] = self.meta_df['split'].mask(self.meta_df.index.isin(eval_subset.index), 'eval')
 
     def load_single_session(self, context_meta: ContextInfo, override_preprocess_path: bool=False) -> pd.DataFrame:

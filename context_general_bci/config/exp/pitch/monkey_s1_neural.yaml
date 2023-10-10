@@ -19,11 +19,11 @@ model:
     context_prompt_time_thresh: -25
     prefix_ratio: 0.25
     tasks:
-    - ModelTask.spike_context
+    - ModelTask.spike_infill
     - ModelTask.kinematic_infill
     - ModelTask.constraints
     - ModelTask.return_context
-    task_weights: [0., 1.0, 0., 0.]
+    task_weights: [1.0, 1.0, 0., 0.]
     metrics:
     - Metric.kinematic_r2
     - Metric.kinematic_acc
@@ -46,9 +46,7 @@ dataset:
   - miller.*
   - odoherty_rtt.*
   - delay.*
-
-  - pitt_broad.*
-  eval_datasets:
+  exclude_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
   - odoherty_rtt-Indy-20161005_06
@@ -64,12 +62,10 @@ dataset:
     chop_size_ms: 5000
   max_channels: 224 # 211
   max_arrays: 2
-  pitt_co:
-    chop_size_ms: 5000
 train:
   # batch_size: 64 # 80G - OOM
-  batch_size: 16 # 40G
-  # batch_size: 32 # 80G
+  batch_size: 24 # 40G
+  # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
-load_from_id: mix_s1-6akt6och
+load_from_id: monkey_s1_neural-ua9uq0xa
