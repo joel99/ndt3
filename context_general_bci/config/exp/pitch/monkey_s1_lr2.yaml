@@ -9,7 +9,8 @@ defaults:
     - decode_flat_v2
 model:
   lr_ramp_steps: 25
-  lr_decay_steps: 600
+  lr_decay_steps: 200 # pushed down based on previous estimate of where overfit occurred - ~130
+  lr_init: 4e-3
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
@@ -38,7 +39,6 @@ model:
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
 dataset:
-  scale_ratio: 0.1
   datasets:
   # All cropped trialized data, but ~100K trials.
   - churchland.*

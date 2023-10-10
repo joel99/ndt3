@@ -548,7 +548,12 @@ class BrainBertInterface(pl.LightningModule):
             raise ValueError(f"Unknown kinematic token maskout schedule {self.cfg.kinematic_token_maskout_schedule}")
         return maskout
 
-    def assemble_pipeline(self, batch: Dict[BatchKey, torch.Tensor], prefix=False) -> Tuple[
+    def assemble_pipeline(
+        self,
+        batch: Dict[BatchKey, torch.Tensor],
+        prefix=False,
+        kin_maskout=None,
+    ) -> Tuple[
         List[str], List[Any],
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
     ]:
@@ -624,7 +629,7 @@ class BrainBertInterface(pl.LightningModule):
                 elif self.do_kin_maskout:
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
-                    mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.kin_maskout
+                    mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < kin_maskout
                     if prefix and self.cfg.task.context_prompt_time_thresh > 0:
                         # Essentially - maskout only begins at timestamps past prompt threshold.
                         mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
@@ -668,7 +673,12 @@ class BrainBertInterface(pl.LightningModule):
             mask # tokens with no cue input, used for optional loss block
         )
 
-    def forward(self, batch: Dict[BatchKey, torch.Tensor], use_prefix=False) -> Tuple[
+    def forward(
+        self,
+        batch: Dict[BatchKey, torch.Tensor],
+        use_prefix=False,
+        kin_maskout=None,
+    ) -> Tuple[
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
     ]:
         r"""
@@ -677,7 +687,8 @@ class BrainBertInterface(pl.LightningModule):
         """
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(
             batch,
-            prefix=use_prefix
+            prefix=use_prefix,
+            kin_maskout=kin_maskout
         )
         # explanation = \
         #     torch._dynamo.explain(
@@ -712,7 +723,7 @@ class BrainBertInterface(pl.LightningModule):
                 enc_index = tks.index('spike_context')
             return outputs[enc_index], times[enc_index], space[enc_index], pipeline_padding[enc_index], None, None
 
-    def _step(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False) -> Dict[BatchKey, torch.Tensor]:
+    def _step(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False, use_prefix=False) -> Dict[BatchKey, torch.Tensor]:
         r"""
             batch provided contains all configured data_keys and meta_keys
             - The distinction with `forward` is not currently clear, but `_step` is specifically oriented around training.
@@ -733,14 +744,19 @@ class BrainBertInterface(pl.LightningModule):
         #     batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
-        if self.cfg.task.prefix_ratio > 0:
-            use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
-            prefix_loss = use_prefix
+        if use_prefix: # commanded externally, e.g. for eval
+            prefix_loss = True
+            kin_maskout = 1.0
         else:
-            use_prefix = True # feel free to use if available
-            prefix_loss = False
+            if self.cfg.task.prefix_ratio > 0:
+                use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
+                prefix_loss = use_prefix
+            else:
+                use_prefix = True # feel free to use if available
+                prefix_loss = False
+            kin_maskout = self.kin_maskout
 
-        features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix) # B T H
+        features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix, kin_maskout=kin_maskout) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -1162,7 +1178,7 @@ class BrainBertInterface(pl.LightningModule):
         #         metrics[k] = torch.stack([m[k] for m in all_metrics]).mean(0)
         #     else:
         #         metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
-        metrics = self._step(batch)
+        metrics = self._step(batch, use_prefix = dataloader_idx > 0)
         kin_labels = None #batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch and not self.cfg.compile else None
         self.common_log(
             metrics,

@@ -46,7 +46,7 @@ dataset:
   - miller.*
   - odoherty_rtt.*
   - delay.*
-  exclude_datasets:
+  eval_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
   - odoherty_rtt-Indy-20161005_06
@@ -68,3 +68,4 @@ train:
   # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 16384
+load_from_id: monkey_s1_b16k-9dysuqzs
