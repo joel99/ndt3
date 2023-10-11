@@ -72,4 +72,6 @@ train:
   # batch_size: 32 # 80G
   patience: 50
   effective_batch_size: 8192
-load_from_id: mix_s1-6akt6och
+# load_from_id: mix_s1-6akt6och
+load_from_id: mix_s1-t7pxl921
+notes: "Run further just to get eval set"

@@ -48,7 +48,7 @@ dataset:
   # - delay.*
 
   - pitt_test.*
-  exclude_datasets:
+  eval_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
   - odoherty_rtt-Indy-20161005_06

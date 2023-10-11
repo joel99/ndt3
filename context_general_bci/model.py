@@ -1314,7 +1314,7 @@ class BrainBertInterface(pl.LightningModule):
                 warmup_lr_init=self.cfg.lr_ramp_init_factor * self.cfg.lr_init,
                 warmup_t=self.cfg.lr_ramp_steps,
                 cycle_limit=1,
-                t_in_epochs=False,
+                t_in_epochs=True, # WTF why was this false... what even IS this arg
             )
         else:
             assert self.cfg.lr_schedule == 'fixed', f"Unknown lr_schedule {self.cfg.lr_schedule}"
@@ -1339,15 +1339,15 @@ class BrainBertInterface(pl.LightningModule):
         else:
             scheduler.step()
 
-    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-        super().on_load_checkpoint(checkpoint)
-        breakpoint()
-        for s in self.lr_schedulers():
-            lr = s._get_closed_form_lr()
-        for group in self.optimizer.param_groups:
-            group['lr'] = lr
-    #     # TODO hook diff_cfg for LR and reset LR schedule if LR changed
-    #     return
+    # def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+    #     super().on_load_checkpoint(checkpoint)
+    #     # breakpoint()
+    #     # for s in self.lr_schedulers():
+    #         # lr = s._get_closed_form_lr()
+    #     # for group in self.optimizer.param_groups:
+    #         # group['lr'] = lr
+    # #     # TODO hook diff_cfg for LR and reset LR schedule if LR changed
+    # #     return
     # ? No hope, IDK how to do this; just use `init_from_id` if you messed up the schedule
 
 # === Model loading ===

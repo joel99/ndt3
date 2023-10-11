@@ -312,6 +312,8 @@ class ModelConfig:
     lr_decay_steps: int = 1000 # epochs (for cosine)
     lr_min: float = 1e-6
 
+    lr_schedule_hotfix_epoch: int = 0 # If > 0, reload schedule at this epoch. For hotfixing old non-timm schedules that are stateful with new timm schedules that are stateless and directly read schedule from epoch. For rollback
+
     activation: str = 'gelu' # gelu
 
     weight_decay: float = 0.01
