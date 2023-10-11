@@ -71,3 +71,4 @@ train:
   batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
+  val_check_interval: 0 # Actual local steps, not global steps. Set according to actual batch size.

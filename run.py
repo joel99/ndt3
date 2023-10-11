@@ -324,7 +324,7 @@ def run_exp(cfg : RootConfig) -> None:
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         devices=torch.cuda.device_count() if torch.cuda.is_available() else None,
         num_nodes=cfg.nodes,
-        check_val_every_n_epoch=1,
+        check_val_every_n_epoch=None if cfg.train.val_check_interval else 1,
         log_every_n_steps=cfg.train.log_every_n_steps,
         val_check_interval=cfg.train.val_check_interval if cfg.train.val_check_interval > 0 else None,
         callbacks=callbacks,
@@ -396,11 +396,12 @@ def run_exp(cfg : RootConfig) -> None:
             cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / cfg.train.batch_size)
         trainer.accumulate_grad_batches = cfg.train.accumulate_batches
         logger.info(f"Accumulating {trainer.accumulate_grad_batches} batches to achieve effective batch size of {cfg.train.effective_batch_size}")
-        if cfg.model.lr_interval == 'step':
-            logger.info('Updating LR scheduler steps to account for accumulation')
+        # if cfg.model.lr_interval == 'step':
+            # Not actually necessary - timm uses global step
+            # logger.info('Updating LR scheduler steps to account for accumulation')
             # model.lr_schedulers() - don't think configure optimizers has even been called yet, directly override
-            cfg.model.lr_ramp_steps = cfg.model.lr_ramp_steps * cfg.train.accumulate_batches
-            cfg.model.lr_decay_steps = cfg.model.lr_decay_steps * cfg.train.accumulate_batches
+            # cfg.model.lr_ramp_steps = cfg.model.lr_ramp_steps * cfg.train.accumulate_batches
+            # cfg.model.lr_decay_steps = cfg.model.lr_decay_steps * cfg.train.accumulate_batches
         # ! note this post-hoc update... reliant on the Trainer api using this prop
         # https://lightning.ai/docs/pytorch/stable/_modules/lightning/pytorch/callbacks/gradient_accumulation_scheduler.html#GradientAccumulationScheduler
 

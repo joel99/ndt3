@@ -1333,7 +1333,7 @@ class BrainBertInterface(pl.LightningModule):
     def lr_scheduler_step(self, scheduler, metric):
         if self.cfg.lr_schedule == 'cosine_timm':
             if self.cfg.lr_interval == 'step':
-                scheduler.step(epoch=self.current_step)
+                scheduler.step(epoch=self.global_step)
             else:
                 scheduler.step(epoch=self.current_epoch)
         else:
