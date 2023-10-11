@@ -396,6 +396,11 @@ def run_exp(cfg : RootConfig) -> None:
             cfg.train.accumulate_batches = int(cfg.train.effective_batch_size / cfg.train.batch_size)
         trainer.accumulate_grad_batches = cfg.train.accumulate_batches
         logger.info(f"Accumulating {trainer.accumulate_grad_batches} batches to achieve effective batch size of {cfg.train.effective_batch_size}")
+        if cfg.model.lr_interval == 'step':
+            logger.info('Updating LR scheduler steps to account for accumulation')
+            # model.lr_schedulers() - don't think configure optimizers has even been called yet, directly override
+            cfg.model.lr_ramp_steps = cfg.model.lr_ramp_steps * cfg.train.accumulate_batches
+            cfg.model.lr_decay_steps = cfg.model.lr_decay_steps * cfg.train.accumulate_batches
         # ! note this post-hoc update... reliant on the Trainer api using this prop
         # https://lightning.ai/docs/pytorch/stable/_modules/lightning/pytorch/callbacks/gradient_accumulation_scheduler.html#GradientAccumulationScheduler
 

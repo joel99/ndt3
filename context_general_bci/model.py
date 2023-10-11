@@ -1305,6 +1305,17 @@ class BrainBertInterface(pl.LightningModule):
                     eta_min=self.cfg.lr_min
                 ),
             ])
+        elif self.cfg.lr_schedule == 'cosine_timm':
+            from timm.scheduler import CosineLRScheduler
+            scheduler = CosineLRScheduler(
+                optimizer,
+                t_initial=self.cfg.lr_decay_steps, # 1 cycle
+                lr_min=self.cfg.lr_min,
+                warmup_lr_init=self.cfg.lr_ramp_init_factor * self.cfg.lr_init,
+                warmup_t=self.cfg.lr_ramp_steps,
+                cycle_limit=1,
+                t_in_epochs=False,
+            )
         else:
             assert self.cfg.lr_schedule == 'fixed', f"Unknown lr_schedule {self.cfg.lr_schedule}"
         out = {
@@ -1312,12 +1323,29 @@ class BrainBertInterface(pl.LightningModule):
             'monitor': 'val_loss'
         }
         if scheduler is not None:
-            out['lr_scheduler'] = scheduler
+            # out['lr_scheduler'] = scheduler
+            out['lr_scheduler'] = {
+                'scheduler': scheduler, # https://lightning.ai/docs/pytorch/stable/common/lightning_module.html#configure-optimizers
+                'interval': getattr(self.cfg, 'lr_interval', 'epoch')
+            }
         return out
 
-    # def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-    #     super().on_load_checkpoint(checkpoint)
-    #     import pdb;pdb.set_trace()
+    def lr_scheduler_step(self, scheduler, metric):
+        if self.cfg.lr_schedule == 'cosine_timm':
+            if self.cfg.lr_interval == 'step':
+                scheduler.step(epoch=self.current_step)
+            else:
+                scheduler.step(epoch=self.current_epoch)
+        else:
+            scheduler.step()
+
+    def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
+        super().on_load_checkpoint(checkpoint)
+        breakpoint()
+        for s in self.lr_schedulers():
+            lr = s._get_closed_form_lr()
+        for group in self.optimizer.param_groups:
+            group['lr'] = lr
     #     # TODO hook diff_cfg for LR and reset LR schedule if LR changed
     #     return
     # ? No hope, IDK how to do this; just use `init_from_id` if you messed up the schedule
