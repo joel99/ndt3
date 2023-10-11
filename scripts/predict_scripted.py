@@ -92,6 +92,7 @@ def main(
     # Note: This won't preserve train val split, try to make sure eval datasets were held out
     cfg.dataset.datasets = target
     cfg.dataset.exclude_datasets = []
+    cfg.dataset.eval_datasets = []
     dataset = SpikingDataset(cfg.dataset)
     pl.seed_everything(0)
     # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
@@ -138,8 +139,10 @@ def main(
     valid = is_student_rolling > model.cfg.eval.student_gap
     # Compute R2
     # r2 = r2_score(target, prediction)
+    mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
     # print(f'R2: {r2:.4f}')
+    print(f'MSE: {mse:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
     pprint(model.cfg.eval)
     print(f"Data label: {data_label}")

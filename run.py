@@ -263,26 +263,13 @@ def run_exp(cfg : RootConfig) -> None:
         ModelCheckpoint(
             monitor='val_loss',
             filename='val-{epoch:02d}-{val_loss:.4f}',
-            save_top_k=1,
+            save_top_k=2, # For rollback efforts.
             mode='min',
-            every_n_epochs=1,
-            # every_n_train_steps=cfg.train.val_check_interval,
+            every_n_epochs=1 if cfg.train.val_check_interval == 0 else None,
+            every_n_train_steps=cfg.train.val_check_interval if cfg.train.val_check_interval > 0 else None,
             dirpath=None
         ),
     ]
-    # Eh, this doesn't produce different results.
-    # if ModelTask.kinematic_decoding in cfg.model.task.tasks:
-    #     callbacks.append(
-    #         ModelCheckpoint(
-    #         monitor='val_kinematic_decoding_loss',
-    #             filename='val_kin-{epoch:02d}-{val_loss:.4f}',
-    #             save_top_k=1,
-    #             mode='min',
-    #             every_n_epochs=1,
-    #             # every_n_train_steps=cfg.train.val_check_interval,
-    #             dirpath=None
-    #         ),
-    #     )
 
     if cfg.train.patience > 0:
         early_stop_cls = ProbeToFineTuneEarlyStopping if cfg.probe_finetune else EarlyStopping
@@ -305,20 +292,6 @@ def run_exp(cfg : RootConfig) -> None:
     if cfg.model.lr_schedule != "fixed":
         callbacks.append(lr_monitor)
 
-    for m in [Metric.co_bps, Metric.bps]:
-        if m in cfg.model.task.metrics:
-            callbacks.append(
-                ModelCheckpoint(
-                    monitor=f'val_{m.value}',
-                    filename='val_' + m.value + '-{epoch:02d}-{val_' + m.value + ':.4f}',
-                    save_top_k=1,
-                    mode='max',
-                    every_n_epochs=1,
-                    # every_n_train_steps=cfg.train.val_check_interval,
-                    dirpath=None
-                )
-            )
-
     pl.seed_everything(seed=cfg.seed)
 
     if cfg.train.steps:
@@ -335,7 +308,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     init_wandb(cfg, wandb_logger) # needed for checkpoint to save under wandb dir, for some reason wandb api changed.
 
-    is_distributed = (torch.cuda.device_count() > 1) or getattr(cfg, 'nodes', 1) > 1
+    is_distributed = (torch.cuda.device_count() > 1) or cfg.nodes > 1
     default_strat = 'auto' if pl.__version__.startswith('2.0') else None
     precision = 'bf16-mixed' if cfg.model.half_precision else 32
     strategy = DDPStrategy(find_unused_parameters=len(cfg.model.task.covariate_blacklist_dims) > 0 and not cfg.dataset.tokenize_covariates) if is_distributed else default_strat
@@ -350,10 +323,10 @@ def run_exp(cfg : RootConfig) -> None:
         max_steps=max_steps,
         accelerator='gpu' if torch.cuda.is_available() else 'cpu',
         devices=torch.cuda.device_count() if torch.cuda.is_available() else None,
-        num_nodes=getattr(cfg, 'nodes', 1),
+        num_nodes=cfg.nodes,
         check_val_every_n_epoch=1,
         log_every_n_steps=cfg.train.log_every_n_steps,
-        # val_check_interval=cfg.train.val_check_interval,
+        val_check_interval=cfg.train.val_check_interval if cfg.train.val_check_interval > 0 else None,
         callbacks=callbacks,
         default_root_dir=cfg.default_root_dir,
         # track_grad_norm=2 if cfg.train.log_grad else -1, # this is quite cluttered, but probably better that way. See https://github.com/Lightning-AI/lightning/issues/1462#issuecomment-1190253742 for patch if needed, though.

@@ -646,7 +646,8 @@ class TrainConfig:
     max_batch_size: int = 4096 # if autoscale, this is the max batch size
     overfit_batches: bool = False
     profiler: str = ""
-    val_check_interval: int = 100 # these are in steps, but mostly isn't used # TODO deprecate
+    val_check_epochs: int = 1
+    val_check_interval: int = 20 # these are in steps, but mostly isn't used
     strategy: str = "" # uses DDP or auto by default, can specify deepspeed
 
 @dataclass

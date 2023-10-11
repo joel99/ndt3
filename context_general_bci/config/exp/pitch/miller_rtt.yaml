@@ -9,8 +9,7 @@ defaults:
     - decode_flat_v2
 model:
   lr_ramp_steps: 25
-  lr_decay_steps: 200 # pushed down based on previous estimate of where overfit occurred - ~130
-  lr_init: 8e-4
+  lr_decay_steps: 600
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
@@ -41,12 +40,12 @@ model:
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.
-  - churchland.*
-  - gallego.*
-  - dyer_co.*
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
   - miller.*
   - odoherty_rtt.*
-  - delay.*
+  # - delay.*
   eval_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
@@ -65,9 +64,9 @@ dataset:
   max_arrays: 2
 train:
   # batch_size: 64 # 80G - OOM
-  batch_size: 24 # 40G
-  # batch_size: 48 # 80G
+  batch_size: 32 # 40G
+  # batch_size: 64 # 80G
   patience: 50
-  effective_batch_size: 8192
-# load_from_id: monkey_s1_lr1-9enojg1w
-load_from_id: monkey_s1_lr1-mnlx7fgy # lr_init: 1e-3
+  effective_batch_size: 2048
+  # effective_batch_size: 8192
+load_from_id: miller_rtt-bn1ksnh8
