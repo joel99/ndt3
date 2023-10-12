@@ -10,7 +10,12 @@ import logging
 from functools import partial
 
 from rotary_embedding_torch import RotaryEmbedding
-from flash_attn.models.gpt import create_block, _init_weights
+from flash_attn.modules.block import Block
+from flash_attn.modules.mha import MHA
+from flash_attn.modules.mlp import (
+    GatedMlp,
+    Mlp,
+)
 try:
     from flash_attn.ops.layer_norm import dropout_add_layer_norm
 except ImportError:
@@ -57,6 +62,155 @@ class FlippedDecoderLayer(nn.TransformerDecoderLayer):
 
         return x
 
+r"""
+    The following streamlined blocks are pulled from Flash Attn flash_attn.models.gpt, modified lightly
+"""
+
+def create_mixer_cls(config: TransformerConfig, layer_idx=None, device=None, dtype=None):
+    factory_kwargs = {"device": device, "dtype": dtype}
+    head_dim = config.n_state // config.n_heads
+    softmax_scale = head_dim ** (-0.5)
+    if getattr(config, 'scale_attn_by_inverse_layer_idx', False):
+        assert layer_idx is not None
+        softmax_scale /= float(layer_idx + 1)
+    dwconv = getattr(config, "attn_dwconv", False)
+    qkv_proj_bias = out_proj_bias = config.use_attn_biases
+    if config.rotary_position:
+        rotary_emb_dim = head_dim
+        rotary_emb_base = getattr(config, "rotary_emb_base", 10000.0)
+        rotary_emb_scale_base = getattr(config, "rotary_emb_scale_base", None)
+        rotary_emb_interleaved = getattr(config, "rotary_emb_interleaved", False)
+    else:
+        rotary_emb_dim = 0
+        rotary_emb_base = 10000.0
+        rotary_emb_scale_base = None
+        rotary_emb_interleaved = False
+    fused_bias_fc = getattr(config, "fused_bias_fc", False)
+    mixer_cls = partial(
+        MHA,
+        num_heads=config.n_heads, # JY: Note to self -- Grouped MQA is available here
+        qkv_proj_bias=qkv_proj_bias,
+        out_proj_bias=out_proj_bias,
+        dropout=config.dropout,
+        softmax_scale=softmax_scale,
+        causal=True,
+        layer_idx=layer_idx,
+        rotary_emb_dim=rotary_emb_dim,
+        rotary_emb_base=rotary_emb_base,
+        rotary_emb_scale_base=rotary_emb_scale_base,
+        rotary_emb_interleaved=rotary_emb_interleaved,
+        use_flash_attn=True,
+        fused_bias_fc=fused_bias_fc,
+        dwconv=dwconv,
+        **factory_kwargs,
+    )
+    return mixer_cls
+
+def create_mlp_cls(config: TransformerConfig, layer_idx=None, device=None, dtype=None):
+    r"""
+        vs. the one in flash_attn.models.gpt, we remove fused path
+    """
+    factory_kwargs = {"device": device, "dtype": dtype}
+    mlp_fc1_bias = config.use_biases
+    mlp_fc2_bias = config.use_biases
+
+    assert config.activation in [
+        "gelu",
+        "gelu_new",
+        "gelu_fast",
+        "gelu_approx",
+        "gelu_pytorch_tanh",
+        "relu",
+        "glu",
+        "swiglu",
+        "geglu",
+    ]
+    if config.activation in ["glu", "swiglu", "geglu"]:
+        activation = (
+            F.sigmoid
+            if config.activation == "glu"
+            else (F.silu if config.activation == "swiglu" else F.gelu)
+        )
+        mlp_cls = GatedMlp
+        mlp_cls = partial(
+            mlp_cls,
+            hidden_features=config.n_state * config.feedforward_factor,
+            activation=activation,
+            bias1=mlp_fc1_bias,
+            bias2=mlp_fc2_bias,
+            **factory_kwargs,
+        )
+    else:
+        if config.activation == "relu":
+            activation = partial(F.relu, inplace=True)
+        else:
+            approximate = (
+                "tanh"
+                if config.activation
+                in ["gelu_new", "gelu_fast", "gelu_approx", "gelu_pytorch_tanh"]
+                else "none"
+            )
+            activation = partial(F.gelu, approximate=approximate)
+        mlp_cls = Mlp
+        mlp_cls = partial(
+            mlp_cls,
+            hidden_features=config.n_state * config.feedforward_factor,
+            activation=activation,
+            bias1=mlp_fc1_bias,
+            bias2=mlp_fc2_bias,
+            **factory_kwargs,
+        )
+    return mlp_cls
+
+def create_block(config: TransformerConfig, layer_idx=None, device=None, dtype=None):
+    factory_kwargs = {"device": device, "dtype": dtype}
+    mixer_cls = create_mixer_cls(config, layer_idx, **factory_kwargs)
+    mlp_cls = create_mlp_cls(config, layer_idx, **factory_kwargs)
+    norm_cls = partial(
+        nn.LayerNorm,
+        elementwise_affine=config.learnable_norm,
+        bias=config.use_biases,
+        **factory_kwargs,
+    )
+    # TD [2022-07-30]: Force residual in fp32, seems to make fp16 training more stable
+    residual_in_fp32 = getattr(config, "residual_in_fp32", False)
+    block = Block(
+        config.n_state,
+        mixer_cls,
+        mlp_cls,
+        norm_cls=norm_cls,
+        prenorm=config.pre_norm,
+        resid_dropout1=config.dropout,
+        resid_dropout2=config.dropout,
+        fused_dropout_add_ln=getattr(config, "fused_dropout_add_ln", False),
+        residual_in_fp32=residual_in_fp32,
+        sequence_parallel=False,
+        mark_shared_params=False,
+    )
+    block.layer_idx = layer_idx
+    return block
+
+# https://github.com/huggingface/transformers/blob/c28d04e9e252a1a099944e325685f14d242ecdcd/src/transformers/models/gpt2/modeling_gpt2.py#L454
+def _init_weights(module, n_layer, initializer_range=0.02, rescale_prenorm_residual=True):
+    if isinstance(module, nn.Linear):
+        nn.init.normal_(module.weight, std=initializer_range)
+        if module.bias is not None:
+            nn.init.zeros_(module.bias)
+    elif isinstance(module, nn.Embedding):
+        nn.init.normal_(module.weight, std=initializer_range)
+
+    if rescale_prenorm_residual:
+        # Reinitialize selected weights subject to the OpenAI GPT-2 Paper Scheme:
+        #   > A modified initialization which accounts for the accumulation on the residual path with model depth. Scale
+        #   > the weights of residual layers at initialization by a factor of 1/√N where N is the # of residual layers.
+        #   >   -- GPT-2 :: https://openai.com/blog/better-language-models/
+        #
+        # Reference (Megatron-LM): https://github.com/NVIDIA/Megatron-LM/blob/main/megatron/model/gpt_model.py
+        for name, p in module.named_parameters():
+            if name in ["out_proj.weight", "fc2.weight"]:
+                # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
+                nn.init.normal_(p, mean=0.0, std=initializer_range / math.sqrt(2 * n_layer))
+
 class StreamlinedTransformer(nn.Module):
     r"""
         We follow FlashAttn's GPT example, swapping pieces out to support
@@ -89,9 +243,7 @@ class StreamlinedTransformer(nn.Module):
         super().__init__()
         self.cfg = config
         logger.info(f"Streamlined path ignoring kwargs: {kwargs}")
-        if self.cfg.rotary_position:
-            self.rotary_time_encoder = RotaryEmbedding(dim = self.cfg.n_state // self.cfg.n_heads)
-        else:
+        if not self.cfg.rotary_position: # hits inner mechanisms
             if allow_embed_padding:
                 self.time_encoder = nn.Embedding(self.cfg.max_trial_length + 1, self.cfg.n_state, padding_idx=self.cfg.max_trial_length)
             else:
@@ -132,7 +284,7 @@ class StreamlinedTransformer(nn.Module):
         # This is for performance reason: we can fuse dropout + add + layer_norm.
         self.layers = nn.ModuleList(
             [
-                create_block(config, layer_idx=i, process_group=process_group, **factory_kwargs) # TODO pretty sure I need to overwrite this
+                create_block(config, layer_idx=i, **factory_kwargs)
                 for i in range(self.cfg.n_layers)
             ]
         )
@@ -179,24 +331,11 @@ class StreamlinedTransformer(nn.Module):
             Out: (batch, seq_len, hidden)
         """
 
-        r"""
-            rotary stub
-            # mock queries and keys - dimensions should end with (seq_len, feature dimension), and any number of preceding dimensions (batch, heads, etc)
-
-            q = torch.randn(1, 8, 1024, 64) # queries - (batch, heads, seq len, dimension of head)
-            k = torch.randn(1, 8, 1024, 64) # keys
-
-            # apply the rotations to your queries and keys after the heads have been split out, but prior to the dot product and subsequent softmax (attention)
-
-            q = self.rotary_time_encoder.rotate_queries_or_keys(q)
-            k = self.rotary_time_encoder.rotate_queries_or_keys(k)
-            # TODO step in and ask - how do we apply absolute time?
-        """
-
-        # ! Make it work!
-        # ? Rotary?
-        hidden_states = hidden_states + self.time_encoder(times)
+        if not self.cfg.rotary_position:
+            hidden_states = hidden_states + self.time_encoder(times)
         hidden_states = hidden_states + self.space_encoder(positions)
+
+        # TODO use times for rotary path, use padding_mask
 
         residual = None
         mixer_kwargs = {}

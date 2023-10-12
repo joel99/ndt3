@@ -234,6 +234,7 @@ class TransformerConfig:
     # fixup_init: Optional[bool] = False # doesn't seem useful
 
     use_biases: bool = True # TODO implement false path - remove linear and layernorm biases, efficiency
+    use_attn_biases: bool = True
     initializer_range: float = 0.02 # for linear layers
     learnable_norm: bool = True # LN elementwise affine
 

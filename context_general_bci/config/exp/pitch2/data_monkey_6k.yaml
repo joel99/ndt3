@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  lr_decay_steps: 6000
+dataset:
+  datasets:
+  # All cropped trialized data, but ~100K trials.
+  - churchland.*
+  - gallego.*
+  - dyer_co.*
+  - miller.*
+  - odoherty_rtt.*
+  - delay.*
+train:
+  batch_size: 24 # 40G
+  # batch_size: 32 # 40G
+  # batch_size: 64 # 80G
+  patience: 50
+  # effective_batch_size: 2048
+  effective_batch_size: 8192
