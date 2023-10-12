@@ -48,7 +48,7 @@ def main(
     # cfg.model.task.metrics = [Metric.kinematic_r2]
     cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
     if data_label == 'dyer':
-        target = ['dyer_co_.*']
+        target = ['dyer_co_chewie_2']
     elif data_label == 'gallego':
         target = ['gallego_co_.*']
     elif data_label == 'churchland':
@@ -69,6 +69,19 @@ def main(
         ]
     elif data_label == 'miller':
         target = [
+            'miller_Jango-Jango_20150730_001',
+            'miller_Jango-Jango_20150731_001',
+            'miller_Jango-Jango_20150801_001',
+            'miller_Jango-Jango_20150805_001'
+        ]
+    elif data_label == 'eval':
+        target = [
+            'dyer_co_chewie_2',
+            'odoherty_rtt-Indy-20160407_02', # First indy session
+            'odoherty_rtt-Indy-20160627_01', # Original
+            'odoherty_rtt-Indy-20161005_06',
+            'odoherty_rtt-Indy-20161026_03',
+            'odoherty_rtt-Indy-20170131_02',
             'miller_Jango-Jango_20150730_001',
             'miller_Jango-Jango_20150731_001',
             'miller_Jango-Jango_20150801_001',

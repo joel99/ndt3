@@ -557,7 +557,11 @@ class BrainBertInterface(pl.LightningModule):
         List[str], List[Any],
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
     ]:
-        # modalities is _target_ at timestep, roll forward to determine input modality
+        r"""
+            Returns:
+                - modalities: modality of target at timestep. Roll forward to determine input modality.
+                - mask: Was kinematic _input_ zeroed at this timestep?
+        """
         # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
         trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
@@ -621,7 +625,7 @@ class BrainBertInterface(pl.LightningModule):
             # As _input_, we provide the previous step (teacher-forcing).
             # Output targets are maintained (individual tasks are responsible for tracking this)
             pipeline_context = pipeline_context.roll(1, dims=1)
-            if self.training:
+            if self.training or prefix: # we want some masking during some eval protocols using prefix
                 # breakpoint()
                 if self.cfg.token_maskout > 0:
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
@@ -632,14 +636,27 @@ class BrainBertInterface(pl.LightningModule):
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < kin_maskout
                     if prefix and self.cfg.task.context_prompt_time_thresh > 0:
                         # Essentially - maskout only begins at timestamps past prompt threshold.
-                        mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
+                        sample_thresh = torch.randint(
+                            getattr(self.cfg.task, 'context_prompt_time_thresh_min', 5),
+                            self.cfg.task.context_prompt_time_thresh,
+                            (1,),
+                            device=pipeline_context.device
+                        ) if getattr(self.cfg.task, 'context_prompt_time_thresh_min', 0) else self.cfg.task.context_prompt_time_thresh
+                        mask = mask & (times >= sample_thresh)
+                        # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
                     elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
                         # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
                         # print(times.shape)
+                        sample_thresh = torch.randint(
+                            self.cfg.task.context_prompt_time_thresh,
+                            getattr(self.cfg.task, 'context_prompt_time_thresh_min', -5),
+                            (1,),
+                            device=pipeline_context.device
+                        ) if getattr(self.cfg.task, 'context_prompt_time_thresh_min', 0) else self.cfg.task.context_prompt_time_thresh
                         non_pad_times = times.clone()
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
-                        mask = mask & (times_from_end >= self.cfg.task.context_prompt_time_thresh)
+                        mask = mask & (times_from_end >= sample_thresh)
                     mask = is_kinematic_input & mask
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
@@ -747,6 +764,8 @@ class BrainBertInterface(pl.LightningModule):
         if use_prefix: # commanded externally, e.g. for eval
             prefix_loss = True
             kin_maskout = 1.0
+            # breakpoint()
+            # print(f"prefix called, {batch[DataKey.spikes.value].shape}")
         else:
             if self.cfg.task.prefix_ratio > 0:
                 use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
@@ -772,8 +791,20 @@ class BrainBertInterface(pl.LightningModule):
                 sub_times = times[modalities == i]
                 sub_space = space[modalities == i]
                 sub_padding = padding[modalities == i]
-                sub_loss_mask = None if zero_mask is None else zero_mask[modalities == i]
-                # breakpoint() # Check the shape here. Also, check the modality mask, unclear we provide the right features if some task pipeline provides nothing
+                # sub_loss_mask = None if zero_mask is None else zero_mask[modalities == i]
+                # ! Beware off by 1 - include features that didn't receive kinematic input by virtue of receiving non-kinematic input, not just zero-masked.
+                # was_modality_input = (modalities == i).roll(1, dims=1)
+                # was_modality_input[:, 0] = False # Nope, keep this for even batches downstream. Probably the source of an insiduous bug, but should wash out.
+                if zero_mask is not None:
+                    target_will_mask = zero_mask.roll(-1, dims=1)
+                    target_will_mask[:, -1] = False
+                    sub_loss_mask = target_will_mask[modalities == i]
+                else:
+                    sub_loss_mask = None
+
+                # Heuristic: zero_mask is steps where inputs were masked - compute loss for these (reasonable mainly in prefix case with continuous mask span)
+                # Detail: What we actually want is the kin_target steps, which are 1 behind kin_input steps.
+                # Note this leaves an off-by-one error where we include compute loss on the first kin timestep that gets masked but was cued with a kinematic input.
             else:
                 sub_features = features
                 sub_times = times
@@ -794,6 +825,8 @@ class BrainBertInterface(pl.LightningModule):
                 batch_out[f'{task.value}_loss'] = update['loss']
                 running_loss = running_loss + self.cfg.task.task_weights[i] * update['loss']
         batch_out['loss'] = running_loss
+        # if use_prefix:
+            # print(f"prefix loss: {batch_out['loss']}")
         return batch_out
 
     @torch.inference_mode()
@@ -1178,6 +1211,8 @@ class BrainBertInterface(pl.LightningModule):
         #         metrics[k] = torch.stack([m[k] for m in all_metrics]).mean(0)
         #     else:
         #         metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
+        # if dataloader_idx == 0 and batch_idx > 0:
+            # return None # debug
         metrics = self._step(batch, use_prefix = dataloader_idx > 0)
         kin_labels = None #batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch and not self.cfg.compile else None
         self.common_log(
@@ -1188,9 +1223,20 @@ class BrainBertInterface(pl.LightningModule):
             add_dataloader_idx=False,
             kinematic_labels=kin_labels,
         )
-        # return None metrics['loss']
         # if dataloader_idx == 0:
-            # return metrics['loss']
+        #     self.full_loss = 0
+        #     self.full_mse = 0
+        #     self.full_r2 = 0
+        #     self.full_acc = 0
+        # if dataloader_idx == 1:
+        #     self.full_loss += metrics['loss']
+        #     self.full_mse += metrics[Metric.kinematic_mse.value]
+        #     self.full_r2 += metrics[Metric.kinematic_r2.value].mean()
+        #     self.full_acc += metrics[Metric.kinematic_acc.value]
+        #     print(f"Batch {batch_idx}: avg prefix loss: {(self.full_loss / (batch_idx+1)):.3f}")
+        #     print(f"Batch {batch_idx}: avg prefix mse: {(self.full_mse / (batch_idx+1)):.5f}")
+        #     print(f"Batch {batch_idx}: avg prefix r2: {(self.full_r2 / (batch_idx+1)):.3f}")
+        #     print(f"Batch {batch_idx}: avg prefix acc: {(self.full_acc / (batch_idx+1)):.3f}")
 
     @torch.inference_mode()
     def test_step(self, batch, batch_idx):
@@ -1338,17 +1384,6 @@ class BrainBertInterface(pl.LightningModule):
                 scheduler.step(epoch=self.current_epoch)
         else:
             scheduler.step()
-
-    # def on_load_checkpoint(self, checkpoint: Dict[str, Any]) -> None:
-    #     super().on_load_checkpoint(checkpoint)
-    #     # breakpoint()
-    #     # for s in self.lr_schedulers():
-    #         # lr = s._get_closed_form_lr()
-    #     # for group in self.optimizer.param_groups:
-    #         # group['lr'] = lr
-    # #     # TODO hook diff_cfg for LR and reset LR schedule if LR changed
-    # #     return
-    # ? No hope, IDK how to do this; just use `init_from_id` if you messed up the schedule
 
 # === Model loading ===
 def transfer_cfg(src_cfg: ModelConfig, target_cfg: ModelConfig):

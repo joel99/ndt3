@@ -51,6 +51,7 @@ class Metric(Enum):
     kinematic_r2 = 'kinematic_r2'
     kinematic_r2_thresh = 'kinematic_r2_thresh' # a clone that will threshold out extremely low velocities to match Pitt settings
     kinematic_acc = 'kinematic_acc'
+    kinematic_mse = 'kinematic_mse'
     all_loss = 'all_loss'
 
 class Output(Enum):
@@ -158,6 +159,7 @@ class TaskConfig:
     # infill
     mask_ratio: float = 0.25 # we don't have any schedule right now - the smaller this is, the higher the ceiling (probably), the slower the training
     context_prompt_time_thresh: int = 0 # Supporting in-context learning by providing minimal start of sequence
+    context_prompt_time_thresh_min: int = 0
     # Based on timestep of tokens (in token bin units)
     # For autoregressive models, this just means we start evaluating loss after N tokens (and is probably honestly unnecessary)
     prefix_ratio: float = 0.0 # ratio of using prefix loss - i.e. only count loss on maskout suffix. Assumes negative context_prompt_time_thresh
@@ -313,6 +315,7 @@ class ModelConfig:
     lr_min: float = 1e-6
 
     lr_schedule_hotfix_epoch: int = 0 # If > 0, reload schedule at this epoch. For hotfixing old non-timm schedules that are stateful with new timm schedules that are stateless and directly read schedule from epoch. For rollback
+    lr_schedule_hotfix_factor: float = 0.8
 
     activation: str = 'gelu' # gelu
 
@@ -651,7 +654,7 @@ class TrainConfig:
     overfit_batches: bool = False
     profiler: str = ""
     val_check_epochs: int = 1
-    val_check_interval: int = 20 # these are in steps, but mostly isn't used
+    val_check_interval: int = 0 # these are in steps, but mostly isn't used
     strategy: str = "" # uses DDP or auto by default, can specify deepspeed
 
 @dataclass

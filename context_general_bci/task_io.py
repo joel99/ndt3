@@ -1758,13 +1758,11 @@ class CovariateInfill(ClassificationMixin):
         loss = loss[loss_mask].mean()
         batch_out['loss'] = loss
 
-        r2_mask = ~backbone_padding
-
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr
             # breakpoint()
-            valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
-            valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
+            valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[loss_mask].float().detach().cpu()
+            valid_tgt = bhvr_tgt[loss_mask].float().detach().cpu()
             batch_out[Metric.kinematic_r2.value] = np.array([r2_score(valid_tgt, valid_bhvr)])
             # breakpoint() # Something is wildly wrong...
             if batch_out[Metric.kinematic_r2.value].mean() < -10000:
@@ -1775,8 +1773,11 @@ class CovariateInfill(ClassificationMixin):
             batch_out[Metric.kinematic_r2.value] = torch.as_tensor(batch_out[Metric.kinematic_r2.value])
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
-            batch_out[Metric.kinematic_acc.value] = acc[r2_mask].float().mean()
-        # print(batch_out[Metric.kinematic_r2])
+            batch_out[Metric.kinematic_acc.value] = acc[loss_mask].float().mean()
+        if Metric.kinematic_mse in self.cfg.metrics:
+            mse = F.mse_loss(self.simplify_logits_to_prediction(bhvr), bhvr_tgt, reduction='none')
+            mse_mask = mse[loss_mask].mean()
+            batch_out[Metric.kinematic_mse.value] = mse_mask
         return batch_out
 
 # === Utils ===

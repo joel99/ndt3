@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  datasets:
+  # All cropped trialized data, but ~100K trials.
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
+  - miller.*
+  # - odoherty_rtt.*
+  # - delay.*
+
+  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+  # - miller_Jango-Jango_20150730_001
+  # - miller_Jango-Jango_20150731_001
+  # - miller_Jango-Jango_20150801_001
+  # - miller_Jango-Jango_20150805_001
+train:
+  batch_size: 32 # 40G
+  # batch_size: 64 # 80G
+  patience: 50
+  effective_batch_size: 1024
+  # effective_batch_size: 8192

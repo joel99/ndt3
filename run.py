@@ -22,13 +22,13 @@ from lightning import seed_everything
 from lightning.pytorch.callbacks import (
     ModelCheckpoint,
     EarlyStopping,
-    LearningRateMonitor
+    LearningRateMonitor,
+    Callback
 )
 from lightning.pytorch.loggers.wandb import WandbLogger
 from lightning.pytorch.strategies.ddp import DDPStrategy
 from lightning_utilities.core.rank_zero import rank_zero_only
 from lightning.pytorch.trainer import Trainer
-from lightning.pytorch.tuner import Tuner
 from lightning.pytorch.tuner import Tuner
 
 import wandb
@@ -270,6 +270,25 @@ def run_exp(cfg : RootConfig) -> None:
             dirpath=None
         ),
     ]
+
+    if cfg.model.lr_schedule_hotfix_epoch:
+        raise NotImplementedError("Doesn't seem to work. Max LR increases, for some reason.")
+        class LRSwapCallback(Callback):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+                self.swapped = False
+
+            def on_train_epoch_start(self, trainer, pl_module):
+                if not self.swapped and trainer.current_epoch <= cfg.model.lr_schedule_hotfix_epoch:
+                    # Rather specific intervention for pytorch native lr schedulers
+                    last_state_dict = pl_module.lr_schedulers().state_dict()
+                    refresh_state_dict = pl_module.configure_optimizers()['lr_scheduler']['scheduler'].state_dict()
+                    refresh_state_dict['_last_lr'] = [lr * cfg.model.lr_schedule_hotfix_factor for lr in refresh_state_dict['_last_lr']]
+                    for i, sched in enumerate(refresh_state_dict['_schedulers']):
+                        sched['_last_lr'] = [lr * cfg.model.lr_schedule_hotfix_factor for lr in last_state_dict['_schedulers'][i]['_last_lr']]
+                    pl_module.lr_schedulers().load_state_dict(refresh_state_dict)
+                    self.swapped = True
+        callbacks.append(LRSwapCallback())
 
     if cfg.train.patience > 0:
         early_stop_cls = ProbeToFineTuneEarlyStopping if cfg.probe_finetune else EarlyStopping

@@ -10,19 +10,13 @@ defaults:
 model:
   lr_ramp_steps: 25
   lr_decay_steps: 600
-  # lr_init: 5e-4 # Explodes
-
-  lr_schedule_hotfix_epoch: 25 # Backoff: 1. Set to some number higher than where breakage was. This will prompt a scheduler reset.
-  lr_schedule_hotfix_factor: 0.8
-  lr_init: 4e-4 # Backoff: 1. To backoff further, decrement lr_init (to update scheduler traj) for decremented LR
-
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
   kinematic_token_maskout_start: 1.0
   kinematic_token_maskout: 0.5
   task:
-    context_prompt_time_thresh: -25
+    context_prompt_time_thresh: -125
     prefix_ratio: 0.25
     tasks:
     - ModelTask.spike_context
@@ -33,27 +27,26 @@ model:
     metrics:
     - Metric.kinematic_r2
     - Metric.kinematic_acc
+    - Metric.kinematic_mse
     encode_constraints: True
     use_constraint_cls: False # No need
     decode_quantize_classes: 512
   transformer:
     n_layers: 6
     max_trial_length: 1500 # Up to 30s
-    n_heads: 16
-  hidden_size: 2048
+    n_heads: 8
+  hidden_size: 1024
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.
-  - churchland.*
-  - gallego.*
-  - dyer_co.*
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
   - miller.*
   - odoherty_rtt.*
-  - delay.*
-
-  - pitt_broad.*
+  # - delay.*
   eval_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
@@ -70,10 +63,13 @@ dataset:
     chop_size_ms: 5000
   max_channels: 224 # 211
   max_arrays: 2
-  pitt_co:
-    chop_size_ms: 5000
 train:
-  batch_size: 4 # 40G # TODO can probably do 6
+  # batch_size: 64 # 80G - OOM
+  batch_size: 24 # 40G
+  # batch_size: 32 # 40G
+  # batch_size: 64 # 80G
   patience: 50
-  effective_batch_size: 8192
-load_from_id: mix_s1_h2048-n5my3ev8
+  effective_batch_size: 2048
+  # effective_batch_size: 8192
+  val_check_interval: 20
+load_from_id: miller_rtt-c9j078m4

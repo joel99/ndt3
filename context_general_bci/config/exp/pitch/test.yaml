@@ -9,14 +9,16 @@ defaults:
     - decode_flat_v2
 model:
   lr_ramp_steps: 25
-  lr_decay_steps: 600
+  lr_decay_steps: 200 # pushed down based on previous estimate of where overfit occurred - ~130
+  lr_init: 8e-4
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
   # kinematic_token_maskout_start: 0.9
   kinematic_token_maskout_start: 1.0
   kinematic_token_maskout: 0.5
   task:
-    context_prompt_time_thresh: -25
+    context_prompt_time_thresh: -125
+    # context_prompt_time_thresh: -25
     prefix_ratio: 0.25
     tasks:
     - ModelTask.spike_context
@@ -27,6 +29,7 @@ model:
     metrics:
     - Metric.kinematic_r2
     - Metric.kinematic_acc
+    - Metric.kinematic_mse
     encode_constraints: True
     use_constraint_cls: False # No need
     decode_quantize_classes: 512
@@ -40,14 +43,12 @@ model:
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.
-  # - churchland.*
-  # - gallego.*
-  # - dyer_co.*
-  # - miller.*
-  # - odoherty_rtt.*
-  # - delay.*
-
-  - pitt_test.*
+  - churchland.*
+  - gallego.*
+  - dyer_co.*
+  - miller.*
+  - odoherty_rtt.*
+  - delay.*
   eval_datasets:
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
@@ -64,11 +65,13 @@ dataset:
     chop_size_ms: 5000
   max_channels: 224 # 211
   max_arrays: 2
-  pitt_co:
-    chop_size_ms: 5000
 train:
   # batch_size: 64 # 80G - OOM
-  # batch_size: 16 # 40G
-  batch_size: 32 # 80G
+  batch_size: 24 # 40G
+  # batch_size: 48 # 80G
   patience: 50
   effective_batch_size: 8192
+  val_check_interval: 20
+# load_from_id: monkey_s1_lr1-9enojg1w
+# load_from_id: monkey_s1_lr1-mnlx7fgy # lr_init: 1e-3
+load_from_id: monkey_s1_lr1-sbnugyc8
