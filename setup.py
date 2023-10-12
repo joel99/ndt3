@@ -31,5 +31,11 @@ setup(
         'mat73',
         'dacite',
         'gdown',
+        'packaging', # Flash Attn https://github.com/Dao-AILab/flash-attention
+        'rotary-embedding-torch', # https://github.com/lucidrains/rotary-embedding-torch
+        # 'flash-attn', # install following build instructions on https://github.com/Dao-AILab/flash-attention
+        # Add nvcc corresponding to torch (module system on cluster, cuda/11.8)
+        # -- export CUDA_HOME=/ihome/crc/install/cuda/11.8
+        # pip install flash-attn --no-build-isolation
     ],
 )

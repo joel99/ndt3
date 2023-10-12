@@ -7,6 +7,14 @@ import torch.nn.functional as F
 import math
 from einops import rearrange, pack, unpack, repeat, reduce
 import logging
+from functools import partial
+
+from rotary_embedding_torch import RotaryEmbedding
+from flash_attn.models.gpt import create_block, _init_weights
+try:
+    from flash_attn.ops.layer_norm import dropout_add_layer_norm
+except ImportError:
+    dropout_add_layer_norm = None
 
 from context_general_bci.config import TransformerConfig, ModelConfig
 from context_general_bci.dataset import DataAttrs, MetaKey
@@ -49,34 +57,177 @@ class FlippedDecoderLayer(nn.TransformerDecoderLayer):
 
         return x
 
+class StreamlinedTransformer(nn.Module):
+    r"""
+        We follow FlashAttn's GPT example, swapping pieces out to support
+        our explicit time + space embeddings (over flat sequences).
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, cfg: TransformerConfig, input_times: bool = False):
+        Compared to SpaceTimeTransformer, this should add support for:
+        - Rotary position encoding
+        - SwiGLU
+        - Removed biases/simplify norms
+        - FlashAttn v2
+
+        We remove the Model/Tensor/SequenceParallel optimizations from FlashAttn for simplicity.
+    """
+    @property
+    def out_size(self):
+        return self.cfg.n_state
+
+    def __init__(
+        self,
+        config: TransformerConfig,
+        max_spatial_tokens: int = 0,
+        allow_embed_padding=True,
+        device=None,
+        dtype=None,
+        process_group=None,
+        **kwargs
+        # Missing: process_group, device, dtype
+    ):
+
         super().__init__()
-        self.input_times = input_times
-        position = torch.arange(0, cfg.max_trial_length, dtype=torch.float).unsqueeze(1)
-        self.learnable = cfg.learnable_position and not getattr(cfg, 'debug_force_nonlearned_position', False)
-        # if self.learnable:
-        #     self.register_buffer('pe', position.long())
-        #     self.pos_embedding = nn.Embedding(cfg.max_trial_length, cfg.n_state)
-        # else:
-        pe = torch.zeros(cfg.max_trial_length, cfg.n_state)
-        div_term = torch.exp(torch.arange(0, cfg.n_state, 2).float() * (-math.log(10000.0) / cfg.n_state))
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        pe = pe.unsqueeze(1) # t x 1 x d
-        self.register_buffer('pe', pe)
-        if self.learnable:
-            self.pe = nn.Parameter(self.pe)
-
-    def forward(self, x: torch.Tensor, batch_first=True):
-        if self.input_times:
-            pos_embed = self.pe[x].squeeze(2)
+        self.cfg = config
+        logger.info(f"Streamlined path ignoring kwargs: {kwargs}")
+        if self.cfg.rotary_position:
+            self.rotary_time_encoder = RotaryEmbedding(dim = self.cfg.n_state // self.cfg.n_heads)
         else:
-            pos_embed = self.pe[:x.size(1 if batch_first else 0), :]
-            pos_embed = pos_embed.transpose(0, 1) if batch_first else pos_embed
-        return pos_embed
-        # return rearrange(pos_embed, 't b d -> b t 1 d' if batch_first else 't b d -> t b 1 d')
+            if allow_embed_padding:
+                self.time_encoder = nn.Embedding(self.cfg.max_trial_length + 1, self.cfg.n_state, padding_idx=self.cfg.max_trial_length)
+            else:
+                self.time_encoder = nn.Embedding(self.cfg.max_trial_length, self.cfg.n_state)
+
+        self.n_space = max_spatial_tokens if max_spatial_tokens else self.cfg.max_spatial_tokens
+        if allow_embed_padding:
+            self.space_encoder = nn.Embedding(self.n_space + 1, self.cfg.n_state, padding_idx=self.n_space)
+        else:
+            self.space_encoder = nn.Embedding(self.n_space, self.cfg.n_state)
+
+        # Begin FlashAttn copy-path
+        factory_kwargs = {"device": device, "dtype": dtype}
+        assert not process_group, "TensorParallel not supported"
+        self.sequence_parallel = getattr(config, "sequence_parallel", True)
+        assert self.cfg.activation in [
+            "gelu",
+            "gelu_new",
+            "gelu_fast",
+            "gelu_approx",
+            "gelu_pytorch_tanh",
+            "relu",
+            "sqrelu",
+            "glu",
+            "swiglu",
+            "geglu",
+        ]
+
+        # TD [2022-07-30]: Force residual in fp32, seems to make fp16 training more stable
+        self.residual_in_fp32 = getattr(config, "residual_in_fp32", False)
+        self.prenorm = self.cfg.pre_norm
+
+        # We change the order of dropout, residual and layer norm:
+        # Instead of LN -> Attn / MLP -> Dropout -> Add, we do:
+        # Dropout -> Add -> LN -> Attn / MLP, returning both the residual branch (output of Add) and
+        # the main branch (output of MLP). The model definition is unchanged, but the mapping of the
+        # nn.Dropout probabilities are changed.
+        # This is for performance reason: we can fuse dropout + add + layer_norm.
+        self.layers = nn.ModuleList(
+            [
+                create_block(config, layer_idx=i, process_group=process_group, **factory_kwargs) # TODO pretty sure I need to overwrite this
+                for i in range(self.cfg.n_layers)
+            ]
+        )
+
+        self.fused_dropout_add_ln = getattr(config, "fused_dropout_add_ln", False)
+        if self.fused_dropout_add_ln:
+            if dropout_add_layer_norm is None:
+                raise ImportError("dropout_layer_norm is not installed")
+        if self.prenorm:
+            self.drop_f = nn.Dropout(self.cfg.dropout)
+            self.ln_f = nn.LayerNorm(
+                self.cfg.n_state,
+                elementwise_affine=self.cfg.learnable_norm,
+                bias=self.cfg.use_biases,
+                # **factory_kwargs
+            )
+
+        self.apply(
+            partial(
+                _init_weights,
+                n_layer=self.cfg.n_layers,
+                initializer_range=self.cfg.initializer_range,
+            )
+        )
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        return {
+            i: layer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
+            for i, layer in enumerate(self.layers)
+        }
+
+    def forward(
+        self,
+        hidden_states, # (batch, seq_len, hidden)
+        padding_mask: torch.Tensor,
+        times: torch.Tensor, # for flat spacetime path, B x Token
+        positions: torch.Tensor, # for flat spacetime path
+        inference_params=None
+    ):
+        r"""
+            Assumes autoregressive, causal mask.
+            Assumes self-attention, not cross-attention.
+            Assumes times and positions are provided
+            Out: (batch, seq_len, hidden)
+        """
+
+        r"""
+            rotary stub
+            # mock queries and keys - dimensions should end with (seq_len, feature dimension), and any number of preceding dimensions (batch, heads, etc)
+
+            q = torch.randn(1, 8, 1024, 64) # queries - (batch, heads, seq len, dimension of head)
+            k = torch.randn(1, 8, 1024, 64) # keys
+
+            # apply the rotations to your queries and keys after the heads have been split out, but prior to the dot product and subsequent softmax (attention)
+
+            q = self.rotary_time_encoder.rotate_queries_or_keys(q)
+            k = self.rotary_time_encoder.rotate_queries_or_keys(k)
+            # TODO step in and ask - how do we apply absolute time?
+        """
+
+        # ! Make it work!
+        # ? Rotary?
+        hidden_states = hidden_states + self.time_encoder(times)
+        hidden_states = hidden_states + self.space_encoder(positions)
+
+        residual = None
+        mixer_kwargs = {}
+        if inference_params is not None:
+            mixer_kwargs["inference_params"] = inference_params
+        for layer in self.layers:
+            if self.prenorm:
+                hidden_states, residual = layer(
+                    hidden_states, residual, mixer_kwargs=mixer_kwargs
+                )
+            else:
+                hidden_states = layer(hidden_states, mixer_kwargs=mixer_kwargs)
+        if self.prenorm:
+            if not self.fused_dropout_add_ln or dropout_add_layer_norm is None:
+                dropped = self.drop_f(hidden_states)
+                residual = (dropped + residual) if residual is not None else dropped
+                hidden_states = self.ln_f(residual.to(dtype=self.ln_f.weight.dtype))
+            else:
+                # Set prenorm=False here since we don't need the residual
+                hidden_states = dropout_add_layer_norm(
+                    hidden_states,
+                    residual,
+                    self.ln_f.weight,
+                    self.ln_f.bias,
+                    self.drop_f.p if self.training else 0.0,
+                    self.ln_f.eps,
+                    prenorm=False,
+                    residual_in_fp32=self.residual_in_fp32,
+                )
+        return hidden_states
+
 
 class SpaceTimeTransformer(nn.Module):
     r"""
@@ -125,21 +276,17 @@ class SpaceTimeTransformer(nn.Module):
             self.time_transformer_encoder = nn.TransformerEncoder(enc_layer, n_layers - round(n_layers / 2))
         else:
             self.transformer_encoder = enc_cls(enc_layer, n_layers)
-        # if not getattr(self.cfg, 'debug_force_nonlearned_position', False) and (self.cfg.flat_encoder or self.cfg.learnable_position):
-        if allow_embed_padding:
-            self.time_encoder = nn.Embedding(self.cfg.max_trial_length + 1, self.cfg.n_state, padding_idx=self.cfg.max_trial_length)
+
+        if getattr(self.cfg, 'rotary_position', False):
+            raise NotImplementedError('Rotary position not supported for Pytorch native ')
         else:
-            self.time_encoder = nn.Embedding(self.cfg.max_trial_length, self.cfg.n_state)
-        # else:
-            # self.time_encoder = PositionalEncoding(self.cfg, input_times=self.cfg.transform_space)
-        if debug_override_dropout_in:
-            self.dropout_in = nn.Identity()
-        else:
-            self.dropout_in = nn.Dropout(self.cfg.dropout)
-        if debug_override_dropout_out:
-            self.dropout_out = nn.Identity()
-        else:
-            self.dropout_out = nn.Dropout(self.cfg.dropout)
+            if allow_embed_padding:
+                self.time_encoder = nn.Embedding(self.cfg.max_trial_length + 1, self.cfg.n_state, padding_idx=self.cfg.max_trial_length)
+            else:
+                self.time_encoder = nn.Embedding(self.cfg.max_trial_length, self.cfg.n_state)
+
+        self.dropout_in = nn.Dropout(self.cfg.dropout)
+        self.dropout_out = nn.Dropout(self.cfg.dropout)
         self.embed_space = embed_space
         if self.cfg.transform_space and self.embed_space:
             n_space = max_spatial_tokens if max_spatial_tokens else self.cfg.max_spatial_tokens
@@ -202,6 +349,7 @@ class SpaceTimeTransformer(nn.Module):
         # breakpoint()
         src = self.dropout_in(src)
         # === Embeddings ===
+
         src = src + self.time_encoder(times)
         if self.embed_space:
             src = src + self.space_encoder(positions)

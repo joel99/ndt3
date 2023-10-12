@@ -31,11 +31,12 @@ from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
 # through most of data collection (certainly good if we aggregate sensor/sessions)
 from context_general_bci.components import (
-    SpaceTimeTransformer
+    SpaceTimeTransformer,
+    StreamlinedTransformer
 )
+
 from context_general_bci.task_io import task_modules
 from context_general_bci.utils import (
-    enum_backport,
     sort_A_by_B,
     unflatten,
     cosine_schedule,
@@ -97,13 +98,18 @@ class BrainBertInterface(pl.LightningModule):
                 f"Neurons per token served by data ({self.data_attrs.neurons_per_token}) must match model token size {self.cfg.neurons_per_token}"
         if self.data_attrs.serve_tokens_flat:
             assert self.cfg.transformer.flat_encoder, "Flat encoder must be true if serving flat tokens"
-        assert self.cfg.arch == Architecture.ndt, "ndt is all you need"
-        if self.cfg.transformer.n_layers == 0: # debug for parity
-            self.backbone = nn.Identity()
-            self.backbone.out_size = self.cfg.hidden_size
+        assert self.cfg.arch in [Architecture.ndt, Architecture.flash_ndt], "ndt is all you need"
+
+        # Max space can be manipulated in model in next_step path; thus model is responsible for determining max space to encode. If not, use raw max token expected
+        max_spatial_tokens = self.cfg.max_spatial_position if self.cfg.next_step_prediction else data_attrs.max_spatial_tokens
+        if self.cfg.arch == Architecture.flash_ndt:
+            self.backbone = StreamlinedTransformer(
+                self.cfg.transformer,
+                max_spatial_tokens=max_spatial_tokens,
+                embed_space=cfg.transformer.embed_space,
+                allow_embed_padding=True,
+            )
         else:
-            # Max space can be manipulated in model in next_step path; thus model is responsible for determining max space to encode. If not, use raw max token expected
-            max_spatial_tokens = self.cfg.max_spatial_position if self.cfg.next_step_prediction else data_attrs.max_spatial_tokens
             self.backbone = SpaceTimeTransformer(
                 self.cfg.transformer,
                 max_spatial_tokens=max_spatial_tokens,
@@ -112,10 +118,10 @@ class BrainBertInterface(pl.LightningModule):
                 embed_space=cfg.transformer.embed_space,
                 allow_embed_padding=True,
             )
+            if self.cfg.cm3leon_init:
+                self.backbone.apply(cm3leon_init)
         self.bind_io()
 
-        if self.cfg.cm3leon_init:
-            self.backbone.apply(cm3leon_init)
         if self.cfg.compile:
             self.backbone = torch.compile(self.backbone, dynamic=True, fullgraph=True)
             # No marginal value in optimizing the linear readouts, also we will have dynamic shapes due to mixed batch sizes.
@@ -718,14 +724,16 @@ class BrainBertInterface(pl.LightningModule):
         #         positions=space,
         #     )
         # print(explanation)
-
+        backbone_kwargs = {
+            'autoregressive': self.cfg.next_step_prediction,
+            'causal': self.cfg.causal,
+        } if self.cfg.arch == Architecture.ndt else {}
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
-            autoregressive=self.cfg.next_step_prediction,
             padding_mask=None if self.cfg.next_step_prediction else pipeline_padding, # suppress padding if flash attn-able
-            causal=self.cfg.causal,
             times=times,
             positions=space,
+            **backbone_kwargs,
         ) # B x Token x H (flat)
         if self.cfg.use_full_encode:
             return outputs, times, space, pipeline_padding, modalities, zero_mask
@@ -946,13 +954,17 @@ class BrainBertInterface(pl.LightningModule):
                 if proc_step + 1 > predicted_to:
                     if proc_step + 1 > predict_until: # If we want step 100, and we haven't predicted until 101 exclusive, we need to predict until 101
                         predict_until = proc_step + 1
+
+                    backbone_kwargs = {
+                        'autoregressive': self.cfg.next_step_prediction,
+                        'causal': self.cfg.causal,
+                    } if self.cfg.arch == Architecture.ndt else {}
                     outputs = self.backbone( # No, this isn't enough. If I want a prediction at proc_step, I need to predict until proc_step+1
                         pipeline_context[:, :predict_until], # We want predictions at the current step - provide input up to current step
-                        autoregressive=True,
                         padding_mask=None,
-                        causal=self.cfg.causal,
                         times=times[:, :predict_until],
                         positions=space[:, :predict_until],
+                        **backbone_kwargs,
                     )
                     predicted_to = predict_until
                     # breakpoint()
@@ -1300,11 +1312,14 @@ class BrainBertInterface(pl.LightningModule):
                     # Supported pipelines use "out" and "decoder" terminology for final readout and transformer decoder, respectively
                     grouped_params.append({"params": pipeline.decoder.transformer_encoder.layers[i].parameters(), 'lr': decayed_lr})
             # Encoder
-            if hasattr(self.backbone, 'final_norm'):
-                grouped_params.append({"params": self.backbone.final_norm.parameters(), 'lr': decayed_lr})
-            for i in reversed(range(self.cfg.transformer.n_layers)):
-                decayed_lr *= self.cfg.tune_decay
-                grouped_params.append({"params": self.backbone.transformer_encoder.layers[i].parameters(), 'lr': decayed_lr})
+            if self.cfg.arch == Architecture.ndt:
+                if hasattr(self.backbone, 'final_norm'):
+                    grouped_params.append({"params": self.backbone.final_norm.parameters(), 'lr': decayed_lr})
+                for i in reversed(range(self.cfg.transformer.n_layers)):
+                    decayed_lr *= self.cfg.tune_decay
+                    grouped_params.append({"params": self.backbone.transformer_encoder.layers[i].parameters(), 'lr': decayed_lr})
+            else:
+                raise NotImplementedError
         elif self.novel_params and self.cfg.accelerate_new_params > 1.0:
             params = list(self.named_parameters()) # As of 2/24/23 all my parameters are named, this better stay the case
             accel_flag = lambda name: name in self.novel_params or ('session_embed' in name or 'subject_embed' in name or 'task_embed' in name or 'array_embed' in name)

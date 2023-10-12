@@ -16,6 +16,7 @@ LENGTH = 'length'
 # config is typed
 class Architecture(Enum):
     ndt = 'ndt'
+    flash_ndt = 'flash_ndt'
 
 class ModelTask(Enum):
     next_step_prediction = 'next_step' # Decoder-only path, global modality
@@ -233,6 +234,8 @@ class TransformerConfig:
     # fixup_init: Optional[bool] = False # doesn't seem useful
 
     use_biases: bool = True # TODO implement false path - remove linear and layernorm biases, efficiency
+    initializer_range: float = 0.02 # for linear layers
+    learnable_norm: bool = True # LN elementwise affine
 
     # Position
     learnable_position: bool = False
