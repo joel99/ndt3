@@ -2,7 +2,7 @@
 # Autoregressive inference procedure, for generalist model
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 from matplotlib import pyplot as plt
 import seaborn as sns
@@ -31,51 +31,37 @@ DIMS = {
     'odoherty': REACH_DEFAULT_KIN_LABELS,
 }
 
-# A whole bunch heldout
-# query = 'monkey_trialized_6l_1024-zgsjsog0' # converged
 
-# Dyer held out
-query = 'monkey_trialized_6l_1024_broad-yy3ve3gf' # converged
-
-# Indy held out
-query = 'monkey_random_6l_1024-n3f68hj2'
-
-# Dyer heldout
-# query = 'monkey_random_6l_1024_d2-s1wrxq2e'
-
-# query = 'monkey_random_q512_6l_1024-nyaug2cb'
-# query = 'monkey_random_q512_km5_6l_1024-of2d38iz'
-# query = 'monkey_random_q512_km2_6l_1024-a0sbjnut'
-query = 'monkey_random_q512_km_6l_1024-e9x6b6j7'
-# query = 'monkey_eval_q512_km_ct-500_6l_1024-gutjedh9'
-query = 'monkey_random_q512_km_ct-500_6l_1024-3uiuyifp'
-
-query = 'monkey_eval_q512_kmu0.5-1_6l_1024-jjnr4r0i'
-query = 'monkey_eval_q512_prefix0.5-1_6l_1024-zt2cvbrc'
+query = 'data_monkey-qhskbnpb'
+# query = 'data_monkey-pitt-xfhobr8j'
+# query = 'data_min_pre75-dzipr845'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
+old_sessions = old_data_attrs.context.session
+# filt_sessions = [i for i in old_sessions if 'dyer_co_chewie' in i]
+# print(filt_sessions)
 
-# cfg.model.task.metrics = [Metric.kinematic_r2]
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 target = [
     # 'miller_Jango-Jango_20150730_001',
 
-    # 'dyer_co_.*',
-    # 'dyer_co_mihi_1',
+    'dyer_co_chewie_2',
+
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_jenkins.*'
-    'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
+
+    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
+
     # 'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
     # 'odoherty_rtt-Indy-20161005_06',
     # 'odoherty_rtt-Indy-20161026_03',
     # 'odoherty_rtt-Indy-20170131_02',
-    # 'odoherty_rtt-Indy-20160627_01',
 
     # 'odoherty_rtt-Loco-20170210_03',
     # 'odoherty_rtt-Loco-20170213_02',
@@ -94,10 +80,11 @@ target = [
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 cfg.dataset.datasets = target
 cfg.dataset.exclude_datasets = []
+cfg.dataset.eval_datasets = []
 dataset = SpikingDataset(cfg.dataset)
 pl.seed_everything(0)
 # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
-dataset.subset_scale(limit_per_session=48)
+# dataset.subset_scale(limit_per_session=48)
 # train, val = dataset.create_tv_datasets()
 # dataset = val
 print("Eval length: ", len(dataset))
@@ -113,18 +100,19 @@ model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
 model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
-model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
+# model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
 # model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
 # model.cfg.eval.teacher_timesteps = int(50 * 4.5) # up to 4s
-model.cfg.eval.limit_timesteps = 50 * 5 # up to 4s
+model.cfg.eval.limit_timesteps = 0
 model.cfg.eval.temperature = 0.
 # model.cfg.eval.temperature = 0.1
 # model.cfg.eval.temperature = 0.5
 # model.cfg.eval.temperature = 0.01
 # model.cfg.eval.use_student = False
-model.cfg.eval.maskout_last_n = abs(cfg.model.task.context_prompt_time_thresh)
-model.cfg.eval.use_student = True
-# model.cfg.eval.use_student = False
+model.cfg.eval.maskout_last_n = 0 # abs(cfg.model.task.context_prompt_time_thresh)
+# model.cfg.eval.maskout_last_n = abs(cfg.model.task.context_prompt_time_thresh)
+# model.cfg.eval.use_student = True
+model.cfg.eval.use_student = False
 
 trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:

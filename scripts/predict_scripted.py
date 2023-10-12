@@ -39,14 +39,33 @@ def main(
     print("Starting eval")
     print(f"ID: {id}")
     print(f"Data label: {data_label}")
-
     wandb_run = wandb_query_latest(id, allow_running=True, use_display=True)[0]
     print(wandb_run.id)
-
     src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
-
     # cfg.model.task.metrics = [Metric.kinematic_r2]
     cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
+    cfg.dataset.exclude_datasets = []
+    cfg.dataset.eval_datasets = []
+    cfg.model.eval.teacher_timesteps = int(50 * cue) # 0.5s
+    cfg.model.eval.limit_timesteps = int(50 * limit) # up to 4s
+    cfg.model.eval.temperature = temperature
+    cfg.model.eval.use_student = student
+    cfg.model.eval.student_prob = student_prob
+    cfg.model.eval.maskout_last_n = maskout_last_n
+    cfg.model.eval.student_gap = gap
+    if data_label == "eval":
+        for sub_label in ['dyer', 'indy', 'miller']: # TODO infer from eval_datasets
+            inner(src_model, cfg, sub_label, trials, batch_size)
+    else:
+        inner(src_model, cfg, data_label, trials, batch_size)
+
+def inner(
+    src_model,
+    cfg,
+    data_label: str,
+    trials: int,
+    batch_size: int,
+):
     if data_label == 'dyer':
         target = ['dyer_co_chewie_2']
     elif data_label == 'gallego':
@@ -91,23 +110,14 @@ def main(
         target = [
             'odoherty_rtt-Indy-20160627_01'
         ]
-    elif data_label == "rtt":
-        target = [
-            'odoherty_rtt-Indy-20160407_02',
-            'odoherty_rtt-Indy-20161026_03',
-            'odoherty_rtt-Loco-20170215_02',
-            'odoherty_rtt-Loco-20170216_02',
-            'odoherty_rtt-Loco-20170217_02',
-        ]
     else:
         raise ValueError(f"Unknown data label: {data_label}")
 
     # Note: This won't preserve train val split, try to make sure eval datasets were held out
     cfg.dataset.datasets = target
-    cfg.dataset.exclude_datasets = []
-    cfg.dataset.eval_datasets = []
     dataset = SpikingDataset(cfg.dataset)
     pl.seed_everything(0)
+    print(f"Data label: {data_label}")
     # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
     if trials > 0:
         dataset.subset_scale(limit_per_session=trials)
@@ -117,13 +127,6 @@ def main(
 
     model = transfer_model(src_model, cfg.model, data_attrs)
 
-    model.cfg.eval.teacher_timesteps = int(50 * cue) # 0.5s
-    model.cfg.eval.limit_timesteps = int(50 * limit) # up to 4s
-    model.cfg.eval.temperature = temperature
-    model.cfg.eval.use_student = student
-    model.cfg.eval.student_prob = student_prob
-    model.cfg.eval.maskout_last_n = maskout_last_n
-    model.cfg.eval.student_gap = gap
     pprint(model.cfg.eval)
 
     trainer = pl.Trainer(
