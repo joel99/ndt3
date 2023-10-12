@@ -236,6 +236,7 @@ class TransformerConfig:
 
     # Position
     learnable_position: bool = False
+    rotary_position: bool = False
     scale_sin: bool = False # per https://proceedings.mlr.press/v162/hua22a/hua22a.pdf
 
     max_trial_length: int = 250 # This is in BINS for the position encoding, not bound to dataset config for easy transfer
