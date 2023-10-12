@@ -727,10 +727,10 @@ class BrainBertInterface(pl.LightningModule):
         backbone_kwargs = {
             'autoregressive': self.cfg.next_step_prediction,
             'causal': self.cfg.causal,
+            'padding_mask': None if self.cfg.next_step_prediction else pipeline_padding, # suppress padding if flash attn-able
         } if self.cfg.arch == Architecture.ndt else {}
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
-            padding_mask=None if self.cfg.next_step_prediction else pipeline_padding, # suppress padding if flash attn-able
             times=times,
             positions=space,
             **backbone_kwargs,
@@ -958,10 +958,10 @@ class BrainBertInterface(pl.LightningModule):
                     backbone_kwargs = {
                         'autoregressive': self.cfg.next_step_prediction,
                         'causal': self.cfg.causal,
+                        'padding_mask': None,
                     } if self.cfg.arch == Architecture.ndt else {}
                     outputs = self.backbone( # No, this isn't enough. If I want a prediction at proc_step, I need to predict until proc_step+1
                         pipeline_context[:, :predict_until], # We want predictions at the current step - provide input up to current step
-                        padding_mask=None,
                         times=times[:, :predict_until],
                         positions=space[:, :predict_until],
                         **backbone_kwargs,

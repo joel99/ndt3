@@ -113,7 +113,6 @@ def create_mlp_cls(config: TransformerConfig, layer_idx=None, device=None, dtype
     factory_kwargs = {"device": device, "dtype": dtype}
     mlp_fc1_bias = config.use_biases
     mlp_fc2_bias = config.use_biases
-
     assert config.activation in [
         "gelu",
         "gelu_new",
@@ -134,7 +133,7 @@ def create_mlp_cls(config: TransformerConfig, layer_idx=None, device=None, dtype
         mlp_cls = GatedMlp
         mlp_cls = partial(
             mlp_cls,
-            hidden_features=config.n_state * config.feedforward_factor,
+            hidden_features=int(config.n_state * config.feedforward_factor),
             activation=activation,
             bias1=mlp_fc1_bias,
             bias2=mlp_fc2_bias,
@@ -154,7 +153,7 @@ def create_mlp_cls(config: TransformerConfig, layer_idx=None, device=None, dtype
         mlp_cls = Mlp
         mlp_cls = partial(
             mlp_cls,
-            hidden_features=config.n_state * config.feedforward_factor,
+            hidden_features=int(config.n_state * config.feedforward_factor),
             activation=activation,
             bias1=mlp_fc1_bias,
             bias2=mlp_fc2_bias,
@@ -211,6 +210,10 @@ def _init_weights(module, n_layer, initializer_range=0.02, rescale_prenorm_resid
                 # Special Scaled Initialization --> There are 2 Layer Norms per Transformer Block
                 nn.init.normal_(p, mean=0.0, std=initializer_range / math.sqrt(2 * n_layer))
 
+def check_trues_at_end(tensor):
+    cumsum = torch.cumsum(tensor, dim=1)
+    return torch.all(cumsum == cumsum[:, -1].unsqueeze(1) * tensor)
+
 class StreamlinedTransformer(nn.Module):
     r"""
         We follow FlashAttn's GPT example, swapping pieces out to support
@@ -239,7 +242,6 @@ class StreamlinedTransformer(nn.Module):
         **kwargs
         # Missing: process_group, device, dtype
     ):
-
         super().__init__()
         self.cfg = config
         logger.info(f"Streamlined path ignoring kwargs: {kwargs}")
@@ -319,7 +321,6 @@ class StreamlinedTransformer(nn.Module):
     def forward(
         self,
         hidden_states, # (batch, seq_len, hidden)
-        padding_mask: torch.Tensor,
         times: torch.Tensor, # for flat spacetime path, B x Token
         positions: torch.Tensor, # for flat spacetime path
         inference_params=None

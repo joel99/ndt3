@@ -4,6 +4,9 @@ defaults:
   - _default
 model:
   arch: Architecture.flash_ndt
+  transformer:
+    use_biases: False
+    learnable_norm: False
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.
