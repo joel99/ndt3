@@ -610,6 +610,15 @@ class StreamlinedTransformer(nn.Module):
                 # **factory_kwargs
             )
 
+        if self.cfg.flash_as_base:
+            self.dropout_in = nn.Dropout(self.cfg.dropout)
+            self.dropout_out = nn.Dropout(self.cfg.dropout)
+            self.final_norm = nn.LayerNorm(
+                self.cfg.n_state,
+                elementwise_affine=self.cfg.learnable_norm,
+                bias=self.cfg.use_biases,
+            ) # per Kaiming's MAE for vision
+
         self.apply(
             partial(
                 _init_weights,
@@ -637,7 +646,8 @@ class StreamlinedTransformer(nn.Module):
             Assumes times and positions are provided
             Out: (batch, seq_len, hidden)
         """
-
+        if self.cfg.flash_as_base:
+            hidden_states = self.dropout_in(hidden_states)
         if not self.cfg.rotary_position:
             hidden_states = hidden_states + self.time_encoder(times)
         hidden_states = hidden_states + self.space_encoder(positions)
@@ -672,6 +682,10 @@ class StreamlinedTransformer(nn.Module):
                     prenorm=False,
                     residual_in_fp32=self.residual_in_fp32,
                 )
+
+        if self.cfg.flash_as_base:
+            hidden_states = self.dropout_out(hidden_states)
+            hidden_states = self.final_norm(hidden_states)
         return hidden_states
 
 

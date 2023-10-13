@@ -228,6 +228,7 @@ class TransformerConfig:
     activation: str = 'gelu'
     pre_norm: bool = False
     final_norm: bool = True # if pre-norm, add another layer norm at the end of the transformer, per Kaiming's MAE for vision and GPT
+    flash_as_base: bool = False # add dropouts and norm matching baselines in flash path
     # causal: bool = True # Pretty sure this should be passed in by task, not configured
 
     # Optional pattern for phasing in config?
