@@ -1,0 +1,25 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  arch: Architecture.flash_ndt
+  transformer:
+    flash_as_base: True
+    initializer_trunc: 0.031 # Empirical uniform ~0.0312
+    initializer_range: 0.018 # Match torch native empirical init std, though they don't use Gaussian
+    # initializer_range: 0.018 # Match torch native empirical init std, though they don't use Gaussian
+dataset:
+  datasets:
+  # All cropped trialized data, but ~100K trials.
+  - churchland.*
+  - gallego.*
+  - dyer_co.*
+  - miller.*
+  - odoherty_rtt.*
+  - delay.*
+train:
+  batch_size: 24 # 40G
+  patience: 50
+  # effective_batch_size: 2048
+  effective_batch_size: 8192

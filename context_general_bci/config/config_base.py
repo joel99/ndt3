@@ -234,9 +234,16 @@ class TransformerConfig:
     # Optional pattern for phasing in config?
     # fixup_init: Optional[bool] = False # doesn't seem useful
 
-    use_biases: bool = True # TODO implement false path - remove linear and layernorm biases, efficiency
+    use_biases: bool = True
     use_attn_biases: bool = True
-    initializer_range: float = 0.02 # for linear layers
+
+    # These initializers current are not applied to base path unless cm3leon_init is True.
+    # They're always active for flash path.
+    # This discrepancy is just based on how the respective codebases started, no experiments to bring them to parity yet.
+    initializer_range: float = 0.02 # for linear layers. 0.02 for flash, 0.006 for CM3Leon copy. Applies for both flash and non-flash paths.
+    initializer_trunc: float = 0. # truncated init. 0 for flash default (GPT2 style), 1.8e-2 for CM3Leon.
+    initializer_rescale_prenorm_residual: bool = True # for flash path only
+
     learnable_norm: bool = True # LN elementwise affine
 
     # Position
@@ -286,7 +293,6 @@ class ModelConfig:
     spike_context_integration: str = "in_context" # TODO merge into above, just testing for memory right now
     use_full_encode: bool = False # ! Major change, return all tokens in decode stream
     cm3leon_init: bool = False # Copy truncated normal params used in cm3leon https://scontent.fagc3-1.fna.fbcdn.net/v/t39.2365-6/358725877_789390529544546_1176484804732743296_n.pdf?_nc_cat=108&ccb=1-7&_nc_sid=3c67a6&_nc_ohc=uzIGsR3Sm-QAX9dir0m&_nc_ht=scontent.fagc3-1.fna&oh=00_AfDTfWg1ZiNMx_GtFdvmQNx8gRoLjlP3lgnp2PngsUC4nQ&oe=651C2FB2
-
 
     next_step_prediction: bool = False # Major change, autoregressive path, limited compatibility with most NDT2 settigs
     # Behavioral data is nearly Markovian, nearly constant; we want to learn longer order dependencies, so upweight that learning

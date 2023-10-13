@@ -1,5 +1,6 @@
 from typing import Tuple, Dict, List, Optional, Any, Mapping, Union
 from copy import deepcopy
+from functools import partial
 import math
 import numpy as np
 import torch
@@ -67,11 +68,11 @@ MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for c
 }
 MAX_KINEMATIC_DIMS = 10
 
-def cm3leon_init(m):
+def cm3leon_init(m, std: float=6e-3, trunc: float=6e-3 * 3):
     if isinstance(m, nn.Linear):
-        init.trunc_normal_(m.weight, std=6e-3, a=-3, b=3)
+        init.trunc_normal_(m.weight, std=std, a=-trunc, b=trunc)
     elif isinstance(m, nn.MultiheadAttention):
-        init.trunc_normal_(m.in_proj_weight, std=6e-3, a=-3, b=3)
+        init.trunc_normal_(m.in_proj_weight, std=std, a=-trunc, b=trunc)
         # Initialize bias terms if they exist
         if m.in_proj_bias is not None:
             nn.init.constant_(m.in_proj_bias, 0)
@@ -119,7 +120,11 @@ class BrainBertInterface(pl.LightningModule):
                 allow_embed_padding=True,
             )
             if self.cfg.cm3leon_init:
-                self.backbone.apply(cm3leon_init)
+                self.backbone.apply(partial(
+                    cm3leon_init,
+                    std=self.cfg.transformer.initializer_range,
+                    trunc=self.cfg.transformer.initializer_trunc
+                ))
         self.bind_io()
 
         if self.cfg.compile:

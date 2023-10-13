@@ -1763,6 +1763,10 @@ class CovariateInfill(ClassificationMixin):
             # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[loss_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[loss_mask].float().detach().cpu()
+            # check for empty comparison
+            if len(valid_bhvr) == 0:
+                batch_out[Metric.kinematic_r2.value] = np.array([0])
+
             batch_out[Metric.kinematic_r2.value] = np.array([r2_score(valid_tgt, valid_bhvr)])
             # breakpoint() # Something is wildly wrong...
             if batch_out[Metric.kinematic_r2.value].mean() < -10000:

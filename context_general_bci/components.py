@@ -198,13 +198,21 @@ def create_block(config: TransformerConfig, layer_idx=None, device=None, dtype=N
     return block
 
 # https://github.com/huggingface/transformers/blob/c28d04e9e252a1a099944e325685f14d242ecdcd/src/transformers/models/gpt2/modeling_gpt2.py#L454
-def _init_weights(module, n_layer, initializer_range=0.02, rescale_prenorm_residual=True):
+def _init_weights(module, n_layer, initializer_range=0.02, trunc=0., rescale_prenorm_residual=True):
+    if initializer_range <= 0.:
+        return
     if isinstance(module, nn.Linear):
-        nn.init.normal_(module.weight, std=initializer_range)
+        if trunc > 0.:
+            nn.init.trunc_normal_(module.weight, std=initializer_range, a=-trunc, b=trunc)
+        else:
+            nn.init.normal_(module.weight, std=initializer_range)
         if module.bias is not None:
             nn.init.zeros_(module.bias)
     elif isinstance(module, nn.Embedding):
-        nn.init.normal_(module.weight, std=initializer_range)
+        if trunc > 0.:
+            nn.init.trunc_normal_(module.weight, std=initializer_range, a=-trunc, b=trunc)
+        else:
+            nn.init.normal_(module.weight, std=initializer_range)
 
     if rescale_prenorm_residual:
         # Reinitialize selected weights subject to the OpenAI GPT-2 Paper Scheme:
@@ -624,6 +632,8 @@ class StreamlinedTransformer(nn.Module):
                 _init_weights,
                 n_layer=self.cfg.n_layers,
                 initializer_range=self.cfg.initializer_range,
+                trunc=self.cfg.initializer_trunc,
+                rescale_prenorm_residual=self.cfg.initializer_rescale_prenorm_residual,
             )
         )
 
@@ -798,13 +808,6 @@ class SpaceTimeTransformer(nn.Module):
             We assume that the provided trial and temporal context is consistently shaped. i.e. any context provided is provided for all samples.
             (So attention masks do not vary across batch)
         """
-        # breakpoint()
-        # if times.max() > self.cfg.max_trial_length:
-            # raise ValueError(f'Trial length {times.max()} exceeds max trial length {self.cfg.max_trial_length}')
-        # if positions is not None and positions.max() > self.n_space:
-            # raise ValueError(f'Space length {positions.max()} exceeds max space length {self.n_space}')
-        # print(f'Debug: Time: {times.unique()} Space: {positions.unique()}')
-        # print(f'Debug: Space: {positions.unique()}')
         # breakpoint()
         src = self.dropout_in(src)
         # === Embeddings ===
