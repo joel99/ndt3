@@ -646,13 +646,12 @@ class StreamlinedTransformer(nn.Module):
             Assumes times and positions are provided
             Out: (batch, seq_len, hidden)
         """
+        # breakpoint()
         if self.cfg.flash_as_base:
             hidden_states = self.dropout_in(hidden_states)
         if not self.cfg.rotary_position:
             hidden_states = hidden_states + self.time_encoder(times)
         hidden_states = hidden_states + self.space_encoder(positions)
-
-        # TODO use times for rotary path, use padding_mask
 
         residual = None
         mixer_kwargs = {}

@@ -583,7 +583,7 @@ class BrainBertInterface(pl.LightningModule):
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
         # breakpoint()
         tks = [tks[i] for i in filtered]
-
+        # breakpoint()
         pipeline_context = [pipeline_context[i] for i in filtered] # embedded at this point
         pipeline_times = [pipeline_times[i] for i in filtered]
         pipeline_space = [pipeline_space[i] for i in filtered]
@@ -729,6 +729,7 @@ class BrainBertInterface(pl.LightningModule):
             'causal': self.cfg.causal,
             'padding_mask': None if self.cfg.next_step_prediction else pipeline_padding, # suppress padding if flash attn-able
         } if self.cfg.arch == Architecture.ndt else {}
+        # breakpoint()
         outputs: torch.Tensor = self.backbone(
             pipeline_context,
             times=times,
