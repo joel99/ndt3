@@ -240,7 +240,7 @@ class TransformerConfig:
     # These initializers current are not applied to base path unless cm3leon_init is True.
     # They're always active for flash path.
     # This discrepancy is just based on how the respective codebases started, no experiments to bring them to parity yet.
-    initializer_range: float = 0.02 # for linear layers. 0.02 for flash, 0.006 for CM3Leon copy. Applies for both flash and non-flash paths.
+    initializer_range: float = 0.0 # for linear layers. 0.02 for flash, 0.006 for CM3Leon copy. Applies for both flash and non-flash paths. Default to 0 to inactivate flash initialization, which hurts for some reason. Maybe CM3Leon still will be fine.
     initializer_trunc: float = 0. # truncated init. 0 for flash default (GPT2 style), 1.8e-2 for CM3Leon.
     initializer_rescale_prenorm_residual: bool = True # for flash path only
 
