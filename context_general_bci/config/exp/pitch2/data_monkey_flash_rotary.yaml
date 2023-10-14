@@ -5,11 +5,9 @@ defaults:
 model:
   arch: Architecture.flash_ndt
   transformer:
-    activation: swiglu
-    # rotary_position: True
-    # use_biases: False
-    # learnable_norm: False
+    flash_as_base: True
     initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
+    rotary_position: True
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.

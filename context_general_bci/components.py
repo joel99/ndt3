@@ -9,6 +9,7 @@ from einops import rearrange, pack, unpack, repeat, reduce
 import logging
 from functools import partial
 
+# from rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
 from flash_attn.layers.rotary import RotaryEmbedding, apply_rotary_emb_kv_, apply_rotary_emb_qkv_, apply_rotary_emb_func
 from flash_attn.modules.block import Block
 from flash_attn.modules.mha import MHA
@@ -95,7 +96,7 @@ def create_mixer_cls(config: TransformerConfig, layer_idx=None, device=None, dty
         rotary_emb_interleaved = False
     fused_bias_fc = getattr(config, "fused_bias_fc", False)
     mixer_cls = partial(
-        MHA,
+        TemporalMHA if config.rotary_position else MHA,
         num_heads=config.n_heads, # JY: Note to self -- Grouped MQA is available here
         qkv_proj_bias=qkv_proj_bias,
         out_proj_bias=out_proj_bias,
@@ -237,7 +238,7 @@ class TemporalRotaryEmbedding(RotaryEmbedding):
         kv: Optional[torch.Tensor] = None,
         seqlen_offset: int | torch.Tensor = 0,
         max_seqlen: Optional[int] = None,
-        seqlen_positionality: torch.Tensor | None = None
+        seqlen_position: torch.Tensor | None = None
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """
         qkv: (batch, seqlen, 3, nheads, headdim) if kv is none,
@@ -249,21 +250,22 @@ class TemporalRotaryEmbedding(RotaryEmbedding):
             should pass in max_seqlen, which will update the cos / sin cache up to that length.
         Apply rotary embedding *inplace* to qkv and / or kv.
 
-        seqlen_positionality: Overwrite, (batch, seqlen) of positions to use for rotary embedding.
+        seqlen_position: Overwrite, (batch, seqlen) of positions to use for rotary embedding.
         Use to index the inital rotary embedding cache.
         # * Note, due to JY's unfamiliarity we are hoping that interleaved, and deeper mechanisms aren't important here.
         """
+        # breakpoint()
         seqlen = qkv.shape[1]
         if max_seqlen is not None:
             self._update_cos_sin_cache(max_seqlen, device=qkv.device, dtype=qkv.dtype)
         elif isinstance(seqlen_offset, int):
             self._update_cos_sin_cache(seqlen + seqlen_offset, device=qkv.device, dtype=qkv.dtype)
-        if seqlen_positionality is not None:
-            cos_pos: torch.Tensor = self._cos_cached[seqlen_positionality]
-            sin_pos: torch.Tensor = self._sin_cached[seqlen_positionality]
+        if seqlen_position is not None:
+            cos_pos: torch.Tensor = self._cos_cached[seqlen_position]
+            sin_pos: torch.Tensor = self._sin_cached[seqlen_position]
             if self.scale is not None:
-                cos_pos_k: torch.Tensor = self._cos_k_cached[seqlen_positionality]
-                sin_pos_k: torch.Tensor = self._sin_k_cached[seqlen_positionality]
+                cos_pos_k: torch.Tensor = self._cos_k_cached[seqlen_position]
+                sin_pos_k: torch.Tensor = self._sin_k_cached[seqlen_position]
         else:
             cos_pos: torch.Tensor = self._cos_cached
             sin_pos: torch.Tensor = self._sin_cached
@@ -287,6 +289,7 @@ class TemporalRotaryEmbedding(RotaryEmbedding):
                     seqlen_offsets=seqlen_offset,
                 )
         else:
+            raise NotImplementedError("Not implemented for kv != None")
             q = qkv
             q = apply_rotary_emb_func(
                 q,
@@ -337,7 +340,7 @@ class TemporalMHA(MHA):
             device=device,
         )
 
-    def _apply_rotary_update_kvcache_attention(self, q, kv, inference_params, positionality: torch.Tensor | None = None):
+    def _apply_rotary_update_kvcache_attention(self, q, kv, inference_params, position: torch.Tensor | None = None):
         """
         Fast path that combine 3 steps: apply rotary to Q and K, update kv cache, and apply attention.
         q: (batch_size, seqlen_q, nheads, head_dim)
@@ -351,8 +354,8 @@ class TemporalMHA(MHA):
                 inference_params.max_seqlen, device=q.device, dtype=q.dtype
             )
             rotary_cos, rotary_sin = self.rotary_emb._cos_cached, self.rotary_emb._sin_cached
-            breakpoint()
-            rotary_cos, rotary_sin = rotary_cos[positionality], rotary_sin[positionality]
+            # breakpoint()
+            rotary_cos, rotary_sin = rotary_cos[position], rotary_sin[position]
         else:
             rotary_cos, rotary_sin = None, None
         batch = q.shape[0]
@@ -387,7 +390,7 @@ class TemporalMHA(MHA):
         max_seqlen=None,
         mixer_subset=None,
         inference_params=None,
-        positionality: torch.Tensor | None = None,
+        position: torch.Tensor | None = None,
         **kwargs,
     ):
         """
@@ -459,7 +462,7 @@ class TemporalMHA(MHA):
                 if self.rotary_emb_dim > 0:
                     qkv = self.rotary_emb(
                         qkv, seqlen_offset=seqlen_offset, max_seqlen=rotary_max_seqlen,
-                        seqlen_positionality=positionality
+                        seqlen_position=position
                     )
                 if inference_params is None:
                     if not self.checkpointing:
@@ -472,7 +475,7 @@ class TemporalMHA(MHA):
                     )
             else:
                 context = self._apply_rotary_update_kvcache_attention(
-                    qkv[:, :, 0], qkv[:, :, 1:], inference_params, positionality=positionality
+                    qkv[:, :, 0], qkv[:, :, 1:], inference_params, position=position
                 )
         else:
             if self.cross_attn:
@@ -511,7 +514,7 @@ class TemporalMHA(MHA):
                 if self.rotary_emb_dim > 0:
                     q, kv = self.rotary_emb(
                         q, kv, seqlen_offset=seqlen_offset, max_seqlen=rotary_max_seqlen,
-                        seqlen_positionality=positionality
+                        seqlen_position=position
                     )
                 if inference_params is None:
                     if not self.checkpointing:
@@ -604,6 +607,8 @@ class StreamlinedTransformer(nn.Module):
                 for i in range(self.cfg.n_layers)
             ]
         )
+        if self.cfg.rotary_position:
+            logger.warning("Using rotary embedding without positionality implementation; i.e. rotary embedding doesn't respect timestep. Procrastinating since implementation not straightfoward. Timestep should be technically inferrable by combining rotary + position encoding.")
 
         self.fused_dropout_add_ln = getattr(config, "fused_dropout_add_ln", False)
         if self.fused_dropout_add_ln:
@@ -665,6 +670,9 @@ class StreamlinedTransformer(nn.Module):
 
         residual = None
         mixer_kwargs = {}
+        # if self.cfg.rotary_position:
+            # times[times == self.cfg.max_trial_length] = 0 # Zero out padding TODO migrate upward
+            # mixer_kwargs["position"] = times
         if inference_params is not None:
             mixer_kwargs["inference_params"] = inference_params
         for layer in self.layers:
