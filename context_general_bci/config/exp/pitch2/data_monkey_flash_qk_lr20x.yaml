@@ -3,9 +3,12 @@
 defaults:
   - _default
 model:
+  lr_init: 1e-2
   arch: Architecture.flash_ndt
   transformer:
-    # flash_as_base: True
+    # use_biases: False
+    # learnable_norm: False
+    qk_normalization: True
     initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
 dataset:
   datasets:

@@ -234,8 +234,10 @@ class TransformerConfig:
     # Optional pattern for phasing in config?
     # fixup_init: Optional[bool] = False # doesn't seem useful
 
-    use_biases: bool = True
+    use_biases: bool = True # Typically for LayerNorms
     use_attn_biases: bool = True
+    fused_dropout_add_ln: bool = False # for flash path only -- currently broken as of flash 2.3.2?
+    qk_normalization: bool = False # for flash path only
 
     # These initializers current are not applied to base path unless cm3leon_init is True.
     # They're always active for flash path.
@@ -249,6 +251,7 @@ class TransformerConfig:
     # Position
     learnable_position: bool = False
     rotary_position: bool = False
+    rotary_position_torch: bool = False
     scale_sin: bool = False # per https://proceedings.mlr.press/v162/hua22a/hua22a.pdf
 
     max_trial_length: int = 250 # This is in BINS for the position encoding, not bound to dataset config for easy transfer

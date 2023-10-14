@@ -10,7 +10,8 @@ import logging
 from functools import partial
 
 # from rotary_embedding_torch import RotaryEmbedding, apply_rotary_emb
-from flash_attn.layers.rotary import RotaryEmbedding, apply_rotary_emb_kv_, apply_rotary_emb_qkv_, apply_rotary_emb_func
+from flash_attn.layers.rotary import RotaryEmbedding, apply_rotary_emb_kv_, apply_rotary_emb_qkv_, apply_rotary_emb_func, apply_rotary_emb_torch
+from context_general_bci.batch_rotary import apply_rotary_emb_qkv_ as apply_rotary_emb_qkv_batch
 from flash_attn.modules.block import Block
 from flash_attn.modules.mha import MHA
 from flash_attn.modules.mlp import (
@@ -96,7 +97,7 @@ def create_mixer_cls(config: TransformerConfig, layer_idx=None, device=None, dty
         rotary_emb_interleaved = False
     fused_bias_fc = getattr(config, "fused_bias_fc", False)
     mixer_cls = partial(
-        TemporalMHA if config.rotary_position else MHA,
+        TemporalMHA if config.rotary_position or config.qk_normalization else MHA,
         num_heads=config.n_heads, # JY: Note to self -- Grouped MQA is available here
         qkv_proj_bias=qkv_proj_bias,
         out_proj_bias=out_proj_bias,
@@ -111,6 +112,8 @@ def create_mixer_cls(config: TransformerConfig, layer_idx=None, device=None, dty
         use_flash_attn=True,
         fused_bias_fc=fused_bias_fc,
         dwconv=dwconv,
+        use_qk_norm=getattr(config, "qk_normalization", False),
+        use_qk_norm_bias=getattr(config, "use_biases", False),
         **factory_kwargs,
     )
     return mixer_cls
@@ -170,6 +173,171 @@ def create_mlp_cls(config: TransformerConfig, layer_idx=None, device=None, dtype
         )
     return mlp_cls
 
+class NoBiasBlock(Block):
+    # Support no bias in norm
+    def forward(
+        self,
+        hidden_states: Tensor,
+        residual: Optional[Tensor] = None,
+        mixer_subset=None,
+        mixer_kwargs=None,
+    ):
+        r"""
+
+        Args:
+            hidden_states: the sequence to the encoder layer (required).
+            residual: if postnorm, residual=None, If prenorm, hidden_states = Attn/MLP(LN(residual))
+            mixer_subset: for cross-attention only. If not None, will take a subset of x
+                before applying the query projection. Useful for e.g., ViT where we only care
+                about the CLS token in the last layer.
+        """
+        fused_add_norm_fn = dropout_add_layer_norm
+        if self.prenorm:
+            if not self.fused_dropout_add_ln:
+                dropped = self.drop_path1(self.dropout1(hidden_states))
+                residual = (dropped + residual) if residual is not None else dropped
+                if getattr(self.norm1, 'weight', None) is not None:
+                    hidden_states = self.norm1(residual.to(dtype=self.norm1.weight.dtype))
+                else:
+                    hidden_states = self.norm1(residual)
+                if self.residual_in_fp32:
+                    residual = residual.to(torch.float32)
+            else:
+                if self.drop_path1.p == 0 or not self.training:
+                    rowscale1 = None
+                else:
+                    rowscale1 = self.drop_path1(
+                        torch.ones(
+                            hidden_states.shape[:-1],
+                            device=hidden_states.device,
+                            dtype=hidden_states.dtype,
+                        )
+                    )
+                hidden_states, residual = fused_add_norm_fn(
+                    hidden_states,
+                    residual,
+                    self.norm1.weight,
+                    self.norm1.bias,
+                    self.dropout1.p if self.training else 0.0,
+                    self.norm1.eps,
+                    rowscale=rowscale1,
+                    prenorm=True,
+                    residual_in_fp32=self.residual_in_fp32,
+                )
+            if mixer_kwargs is None:
+                mixer_kwargs = {}
+            if mixer_subset is not None:
+                mixer_kwargs["mixer_subset"] = mixer_subset
+            hidden_states = self.mixer(hidden_states, **mixer_kwargs)
+            if mixer_subset is not None:
+                residual = residual[:, mixer_subset]
+            if not isinstance(self.mlp, nn.Identity):
+                if not self.fused_dropout_add_ln:
+                    dropped = self.drop_path2(self.dropout2(hidden_states))
+                    residual = (dropped + residual) if residual is not None else dropped
+                    if getattr(self.norm2, 'weight', None) is not None:
+                        hidden_states = self.norm2(residual.to(dtype=self.norm2.weight.dtype))
+                    else:
+                        hidden_states = self.norm2(residual)
+                    if self.residual_in_fp32:
+                        residual = residual.to(torch.float32)
+                else:
+                    if self.drop_path2.p == 0 or not self.training:
+                        rowscale2 = None
+                    else:
+                        rowscale2 = self.drop_path2(
+                            torch.ones(
+                                hidden_states.shape[:-1],
+                                device=hidden_states.device,
+                                dtype=hidden_states.dtype,
+                            )
+                        )
+                    hidden_states, residual = fused_add_norm_fn(
+                        hidden_states,
+                        residual,
+                        self.norm2.weight,
+                        self.norm2.bias,
+                        self.dropout2.p if self.training else 0.0,
+                        self.norm2.eps,
+                        rowscale=rowscale2,
+                        prenorm=True,
+                        residual_in_fp32=self.residual_in_fp32,
+                    )
+                hidden_states = self.mlp(hidden_states)
+            return hidden_states, residual
+        else:
+            assert residual is None
+            mixer_out = self.mixer(
+                hidden_states, **(mixer_kwargs if mixer_kwargs is not None else {})
+            )
+            if self.return_residual:  # mixer out is actually a pair here
+                mixer_out, hidden_states = mixer_out
+            if not self.fused_dropout_add_ln:
+                if getattr(self.norm1, 'weight', None) is not None:
+                    hidden_states = self.norm1(
+                        (self.drop_path1(self.dropout1(mixer_out)) + hidden_states).to(
+                            dtype=self.norm1.weight.dtype
+                        )
+                    )
+                else:
+                    hidden_states = self.norm1(
+                        (self.drop_path1(self.dropout1(mixer_out)) + hidden_states)
+                    )
+            else:
+                if self.drop_path1.p == 0 or not self.training:
+                    rowscale1 = None
+                else:
+                    rowscale1 = self.drop_path1(
+                        torch.ones(
+                            mixer_out.shape[:-1], device=mixer_out.device, dtype=mixer_out.dtype
+                        )
+                    )
+                hidden_states = fused_add_norm_fn(
+                    mixer_out,
+                    hidden_states,
+                    self.norm1.weight,
+                    self.norm1.bias,
+                    self.dropout1.p if self.training else 0.0,
+                    self.norm1.eps,
+                    rowscale=rowscale1,
+                    prenorm=False,
+                )
+            if not isinstance(self.mlp, nn.Identity):
+                mlp_out = self.mlp(hidden_states)
+                if self.return_residual:  # mlp out is actually a pair here
+                    mlp_out, hidden_states = mlp_out
+                if not self.fused_dropout_add_ln:
+                    if getattr(self.norm2, 'weight', None) is not None:
+                        hidden_states = self.norm2(
+                            (self.drop_path2(self.dropout2(mlp_out)) + hidden_states).to(
+                                dtype=self.norm2.weight.dtype
+                            )
+                        )
+                    else:
+                        hidden_states = self.norm2(
+                            (self.drop_path2(self.dropout2(mlp_out)) + hidden_states)
+                        )
+                else:
+                    if self.drop_path2.p == 0 or not self.training:
+                        rowscale2 = None
+                    else:
+                        rowscale2 = self.drop_path2(
+                            torch.ones(
+                                mlp_out.shape[:-1], device=mlp_out.device, dtype=mlp_out.dtype
+                            )
+                        )
+                    hidden_states = fused_add_norm_fn(
+                        mlp_out,
+                        hidden_states,
+                        self.norm2.weight,
+                        self.norm2.bias,
+                        self.dropout2.p if self.training else 0.0,
+                        self.norm2.eps,
+                        rowscale=rowscale2,
+                        prenorm=False,
+                    )
+            return hidden_states
+
 def create_block(config: TransformerConfig, layer_idx=None, device=None, dtype=None):
     factory_kwargs = {"device": device, "dtype": dtype}
     mixer_cls = create_mixer_cls(config, layer_idx, **factory_kwargs)
@@ -182,7 +350,7 @@ def create_block(config: TransformerConfig, layer_idx=None, device=None, dtype=N
     )
     # TD [2022-07-30]: Force residual in fp32, seems to make fp16 training more stable
     residual_in_fp32 = getattr(config, "residual_in_fp32", False)
-    block = Block(
+    block = NoBiasBlock(
         config.n_state,
         mixer_cls,
         mlp_cls,
@@ -269,57 +437,75 @@ class TemporalRotaryEmbedding(RotaryEmbedding):
         else:
             cos_pos: torch.Tensor = self._cos_cached
             sin_pos: torch.Tensor = self._sin_cached
-        if kv is None:
-            if self.scale is None:
-                return apply_rotary_emb_qkv_(
-                    qkv,
-                    cos_pos,
-                    sin_pos,
-                    interleaved=self.interleaved,
-                    seqlen_offsets=seqlen_offset,
-                )
-            else:
-                return apply_rotary_emb_qkv_(
-                    qkv,
-                    cos_pos,
-                    sin_pos,
-                    cos_pos_k,
-                    sin_pos_k,
-                    interleaved=self.interleaved,
-                    seqlen_offsets=seqlen_offset,
-                )
-        else:
-            raise NotImplementedError("Not implemented for kv != None")
-            q = qkv
-            q = apply_rotary_emb_func(
-                q,
-                cos_pos,
-                sin_pos,
+        if seqlen_position is not None:
+            # TODO update to use triton guesswork https://chat.openai.com/share/a3535b83-db43-4113-9214-6b68221bdbab in batch_rotary.py
+            # return apply_rotary_emb_qkv_batch(
+            #     qkv,
+            #     cos_pos,
+            #     sin_pos,
+            #     interleaved=self.interleaved,
+            #     seqlen_offsets=seqlen_offset,
+            # )
+            qkv = rearrange(qkv, 'b s three h d -> (b three) s h d', three=3)
+            return rearrange(apply_rotary_emb_torch(
+                qkv,
+                repeat(cos_pos, 'b s r -> (b three) s r', three=3),
+                repeat(sin_pos, 'b s r -> (b three) s r', three=3),
                 interleaved=self.interleaved,
-                inplace=True,
-                seqlen_offsets=seqlen_offset,
-            )
-            if self.scale is None:
-                kv = apply_rotary_emb_kv_(
-                    kv,
+            ), '(b three) s h d -> b s three h d', three=3)
+        else:
+            if kv is None:
+                if self.scale is None:
+                    breakpoint() # TODO need to figure out how to deal with batch dimension in this function
+                    return apply_rotary_emb_qkv_(
+                        qkv,
+                        cos_pos,
+                        sin_pos,
+                        interleaved=self.interleaved,
+                        seqlen_offsets=seqlen_offset,
+                    )
+                else:
+                    return apply_rotary_emb_qkv_(
+                        qkv,
+                        cos_pos,
+                        sin_pos,
+                        cos_pos_k,
+                        sin_pos_k,
+                        interleaved=self.interleaved,
+                        seqlen_offsets=seqlen_offset,
+                    )
+            else:
+                q = qkv
+                q = apply_rotary_emb_func(
+                    q,
                     cos_pos,
                     sin_pos,
                     interleaved=self.interleaved,
+                    inplace=True,
                     seqlen_offsets=seqlen_offset,
                 )
-            else:
-                kv = apply_rotary_emb_kv_(
-                    kv,
-                    cos_pos_k,
-                    sin_pos_k,
-                    interleaved=self.interleaved,
-                    seqlen_offsets=seqlen_offset,
-                )
-            return q, kv
+                if self.scale is None:
+                    kv = apply_rotary_emb_kv_(
+                        kv,
+                        cos_pos,
+                        sin_pos,
+                        interleaved=self.interleaved,
+                        seqlen_offsets=seqlen_offset,
+                    )
+                else:
+                    kv = apply_rotary_emb_kv_(
+                        kv,
+                        cos_pos_k,
+                        sin_pos_k,
+                        interleaved=self.interleaved,
+                        seqlen_offsets=seqlen_offset,
+                    )
+                return q, kv
 
 class TemporalMHA(MHA):
     r"""
-        We add support temporal rotary embeddings.
+        We add support temporal rotary embeddings - this didn't end up working but..
+        ALSO allows QK normalization (Dehghani et al 2023) for stabilization
         Diffs from FlashAttn 2.3.2 only in presence of positionality tensor.
     """
     def __init__(
@@ -329,6 +515,8 @@ class TemporalMHA(MHA):
             rotary_emb_scale_base=None,
             rotary_emb_interleaved=False,
             device=None,
+            use_qk_norm=False,
+            use_qk_norm_bias=False,
             **kwargs
         ):
         super().__init__(*args, **kwargs)
@@ -339,6 +527,9 @@ class TemporalMHA(MHA):
             interleaved=rotary_emb_interleaved,
             device=device,
         )
+        self.use_qk_norm = use_qk_norm
+        if self.use_qk_norm:
+            self.qk_norm = nn.LayerNorm(self.head_dim, bias=use_qk_norm_bias) # per head norm, Wortsman et al 2023, over embed_dim full norm
 
     def _apply_rotary_update_kvcache_attention(self, q, kv, inference_params, position: torch.Tensor | None = None):
         """
@@ -453,6 +644,10 @@ class TemporalMHA(MHA):
                     self.dwconv_qkv(rearrange(qkv, "b s d -> b d s"))[..., :-2], "b d s -> b s d"
                 ).contiguous()
             qkv = rearrange(qkv, "... (three h d) -> ... three h d", three=3, d=self.head_dim)
+            if self.use_qk_norm:
+                qk = self.qk_norm(qkv[...,:2, :,:])
+                v = qkv[..., 2:, :, :]
+                qkv = torch.cat([qk, v], dim=-3)
             if (
                 inference_params is None
                 or inference_params.seqlen_offset == 0
@@ -478,6 +673,7 @@ class TemporalMHA(MHA):
                     qkv[:, :, 0], qkv[:, :, 1:], inference_params, position=position
                 )
         else:
+            raise NotImplementedError("QK normalization not implemented on this path")
             if self.cross_attn:
                 if not self.return_residual:
                     q = self.Wq(x if mixer_subset is None else x[:, mixer_subset])
@@ -670,9 +866,9 @@ class StreamlinedTransformer(nn.Module):
 
         residual = None
         mixer_kwargs = {}
-        # if self.cfg.rotary_position:
-            # times[times == self.cfg.max_trial_length] = 0 # Zero out padding TODO migrate upward
-            # mixer_kwargs["position"] = times
+        if getattr(self.cfg, "rotary_position_torch", False):
+            times[times == self.cfg.max_trial_length] = 0 # Zero out padding TODO migrate upward
+            mixer_kwargs["position"] = times
         if inference_params is not None:
             mixer_kwargs["inference_params"] = inference_params
         for layer in self.layers:

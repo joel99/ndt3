@@ -7,6 +7,7 @@ model:
   transformer:
     use_biases: False
     learnable_norm: False
+    initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.

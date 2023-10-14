@@ -3,6 +3,7 @@
 defaults:
   - _default
 model:
+  lr_init: 1e-2
   arch: Architecture.flash_ndt
   transformer:
     # flash_as_base: True

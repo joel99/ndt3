@@ -1,4 +1,35 @@
 #%%
+import torch
+from rotary_embedding_torch import apply_rotary_emb, RotaryEmbedding, broadcat
+
+pos_emb = RotaryEmbedding(
+    dim = 32,
+    freqs_for = 'pixel',
+    max_freq = 256
+)
+
+# queries and keys for frequencies to be rotated into
+
+q = torch.randn(1, 256, 256, 64)
+k = torch.randn(1, 256, 256, 64)
+
+# get frequencies for each axial
+# -1 to 1 has been shown to be a good choice for images and audio
+
+freqs_h = pos_emb(torch.linspace(-1, 1, steps = 256), cache_key = 256)
+freqs_w = pos_emb(torch.linspace(-1, 1, steps = 256), cache_key = 256)
+
+# concat the frequencies along each axial
+# broadcat function makes this easy without a bunch of expands
+
+freqs = broadcat((freqs_h[:, None, :], freqs_w[None, :, :]), dim = -1)
+print(freqs.shape)
+# rotate in frequencies
+
+q = apply_rotary_emb(freqs, q)
+k = apply_rotary_emb(freqs, k)
+
+#%%
 import math
 import logging
 import sys

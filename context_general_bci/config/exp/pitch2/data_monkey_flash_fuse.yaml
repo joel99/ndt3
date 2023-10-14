@@ -5,8 +5,10 @@ defaults:
 model:
   arch: Architecture.flash_ndt
   transformer:
-    # flash_as_base: True
+    # use_biases: False
+    # learnable_norm: False
     initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
+    fused_dropout_add_ln: True
 dataset:
   datasets:
   # All cropped trialized data, but ~100K trials.
