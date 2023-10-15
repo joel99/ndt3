@@ -3,6 +3,7 @@
 import os
 import argparse
 from pprint import pprint
+import logging
 
 import torch
 torch.set_float32_matmul_precision('medium') # we don't care about precision really..
@@ -36,6 +37,7 @@ def main(
     maskout_last_n: int,
     batch_size: int,
 ):
+    logging.getLogger("lightning.pytorch").setLevel(logging.ERROR)
     print("Starting eval")
     print(f"ID: {id}")
     print(f"Data label: {data_label}")
@@ -53,11 +55,19 @@ def main(
     cfg.model.eval.student_prob = student_prob
     cfg.model.eval.maskout_last_n = maskout_last_n
     cfg.model.eval.student_gap = gap
+
+    trainer = pl.Trainer(
+        accelerator='gpu',
+        devices=1 if torch.cuda.is_available() else 0,
+        # devices=torch.cuda.device_count() if torch.cuda.is_available() else 0,
+        default_root_dir='./data/tmp',
+        precision='bf16-mixed',
+    )
     if data_label == "eval":
         for sub_label in ['dyer', 'indy', 'miller']: # TODO infer from eval_datasets
-            inner(src_model, cfg, sub_label, trials, batch_size)
+            inner(src_model, cfg, sub_label, trials, batch_size, trainer)
     else:
-        inner(src_model, cfg, data_label, trials, batch_size)
+        inner(src_model, cfg, data_label, trials, batch_size, trainer)
 
 def inner(
     src_model,
@@ -65,6 +75,7 @@ def inner(
     data_label: str,
     trials: int,
     batch_size: int,
+    trainer: pl.Trainer,
 ):
     if data_label == 'dyer':
         target = ['dyer_co_chewie_2']
@@ -117,24 +128,18 @@ def inner(
     cfg.dataset.datasets = target
     dataset = SpikingDataset(cfg.dataset)
     pl.seed_everything(0)
-    print(f"Data label: {data_label}")
+    print(f"START Data label: {data_label}")
     # Quick cheese - IDR how to subset by length, so use "val" to get 20% quickly
     if trials > 0:
         dataset.subset_scale(limit_per_session=trials)
     print("Eval length: ", len(dataset))
     data_attrs = dataset.get_data_attrs()
-    print(data_attrs)
+    # print(data_attrs)
 
     model = transfer_model(src_model, cfg.model, data_attrs)
 
     pprint(model.cfg.eval)
 
-    trainer = pl.Trainer(
-        accelerator='gpu',
-        devices=1 if torch.cuda.is_available() else 0,
-        # devices=torch.cuda.device_count() if torch.cuda.is_available() else 0,
-        default_root_dir='./data/tmp'
-    )
     def get_dataloader(dataset: SpikingDataset, batch_size=batch_size, num_workers=8, **kwargs) -> DataLoader:
         return DataLoader(dataset,
             batch_size=batch_size,
@@ -161,7 +166,7 @@ def inner(
     print(f'MSE: {mse:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
     pprint(model.cfg.eval)
-    print(f"Data label: {data_label}")
+    print(f"END Data label: {data_label}")
     # print(query)
 
 

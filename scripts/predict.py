@@ -35,6 +35,7 @@ DIMS = {
 query = 'data_monkey-qhskbnpb'
 # query = 'data_monkey-pitt-xfhobr8j'
 # query = 'data_min_pre75-dzipr845'
+query = 'data_monkey_flash_min-xkh4tnxz'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -114,7 +115,10 @@ model.cfg.eval.maskout_last_n = 0 # abs(cfg.model.task.context_prompt_time_thres
 # model.cfg.eval.use_student = True
 model.cfg.eval.use_student = False
 
-trainer = pl.Trainer(accelerator='gpu', devices=1, default_root_dir='./data/tmp')
+trainer = pl.Trainer(
+    accelerator='gpu', devices=1, default_root_dir='./data/tmp',
+    precision='bf16-mixed',
+)
 # def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
 # def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
 def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:

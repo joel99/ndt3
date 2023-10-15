@@ -96,8 +96,12 @@ def create_mixer_cls(config: TransformerConfig, layer_idx=None, device=None, dty
         rotary_emb_scale_base = None
         rotary_emb_interleaved = False
     fused_bias_fc = getattr(config, "fused_bias_fc", False)
+    qk_kwargs = ({
+        "use_qk_norm": getattr(config, "qk_normalization", False),
+        "use_qk_norm_bias": getattr(config, "use_biases", False),
+    } if getattr(config, "qk_normalization", False) else {})
     mixer_cls = partial(
-        TemporalMHA if config.rotary_position or config.qk_normalization else MHA,
+        TemporalMHA if (config.rotary_position or getattr(config, 'qk_normalization', False)) else MHA,
         num_heads=config.n_heads, # JY: Note to self -- Grouped MQA is available here
         qkv_proj_bias=qkv_proj_bias,
         out_proj_bias=out_proj_bias,
@@ -112,8 +116,7 @@ def create_mixer_cls(config: TransformerConfig, layer_idx=None, device=None, dty
         use_flash_attn=True,
         fused_bias_fc=fused_bias_fc,
         dwconv=dwconv,
-        use_qk_norm=getattr(config, "qk_normalization", False),
-        use_qk_norm_bias=getattr(config, "use_biases", False),
+        **qk_kwargs,
         **factory_kwargs,
     )
     return mixer_cls
@@ -515,11 +518,20 @@ class TemporalMHA(MHA):
             rotary_emb_scale_base=None,
             rotary_emb_interleaved=False,
             device=None,
+            dtype=None,
             use_qk_norm=False,
             use_qk_norm_bias=False,
             **kwargs
         ):
-        super().__init__(*args, **kwargs)
+        super().__init__(
+            *args,
+            rotary_emb_base=10000.0,
+            rotary_emb_scale_base=None,
+            rotary_emb_interleaved=False,
+            device=device,
+            dtype=dtype,
+            **kwargs
+        )
         self.rotary_emb = TemporalRotaryEmbedding(
             self.rotary_emb_dim,
             base=rotary_emb_base,
@@ -529,7 +541,7 @@ class TemporalMHA(MHA):
         )
         self.use_qk_norm = use_qk_norm
         if self.use_qk_norm:
-            self.qk_norm = nn.LayerNorm(self.head_dim, bias=use_qk_norm_bias) # per head norm, Wortsman et al 2023, over embed_dim full norm
+            self.qk_norm = nn.LayerNorm(self.head_dim, bias=use_qk_norm_bias, device=device, dtype=dtype) # per head norm, Wortsman et al 2023, over embed_dim full norm
 
     def _apply_rotary_update_kvcache_attention(self, q, kv, inference_params, position: torch.Tensor | None = None):
         """
@@ -647,7 +659,7 @@ class TemporalMHA(MHA):
             if self.use_qk_norm:
                 qk = self.qk_norm(qkv[...,:2, :,:])
                 v = qkv[..., 2:, :, :]
-                qkv = torch.cat([qk, v], dim=-3)
+                qkv = torch.cat([qk, v], dim=-3).to(dtype=qkv.dtype)
             if (
                 inference_params is None
                 or inference_params.seqlen_offset == 0
