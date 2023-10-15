@@ -47,26 +47,72 @@ logger = logging.getLogger(__name__)
 
 # For autoregressive. If using a common position space to sort, this defines the canonical order.
 # Not sure I really believe in separators - the space input should cue the requisite modality.
-MODALITY_SPACE_RANGE_START = { # These include both human readable aliases for convenience, but code mainly reference task pipeline names
+# MODALITY CONSTS
+NULL = 0
+CONSTRAINTS = 1
+SPIKE = 2
+RETURN = 3
+COVARIATE = 4
+
+MAX_KINEMATIC_DIMS = 10
+def get_modality_dimensonality(
+    modality
+):
+    if modality == NULL:
+        return 1
+    elif modality == CONSTRAINTS:
+        return MAX_KINEMATIC_DIMS # 1-10. If tokenized, there are as many constraint dims as behavior dims. We allocate max of 10 behavior dims for now.
+    elif modality == SPIKE:
+        return 10 # 11-20. Max of 10 spike dims (32 neurons per -> 320 neurons, IIRC 288 was max for NDT2)
+    # TODO replace with config
+    elif modality == RETURN:
+        return 1
+    elif modality == COVARIATE:
+        return MAX_KINEMATIC_DIMS
+    # 22-31. Max of 10 covariate dims. Separator token possibly include.
+
+TASK_MODALITY_MAP = { # keys are pipeline names and some human readable terms
+    'padding': NULL,
+    'trial': NULL,
+    'constraints': CONSTRAINTS,
+    'spike': SPIKE,
+    'spike_context': SPIKE,
+    'spike_infill': SPIKE,
+    'return': RETURN,
+    'return_context': RETURN,
+    'return_infill': RETURN,
+    'covariate': COVARIATE,
+    'kinematic_classification': COVARIATE,
+    'kinematic_infill': COVARIATE,
+    'kinematic_context': COVARIATE,
+}
+MODALITY_SPACE_RANGE_START = {
     'padding': 0, # also trial context receives these space values
     'trial': 0, # also trial context receives these space values
 
-    'constraints': 1, # 1-10. If tokenized, there are as many constraint dims as behavior dims. We allocate max of 10 behavior dims for now.
+    'constraints': 1,
 
-    'spike': 11, # 11-20. Max of 10 spike dims (32 neurons per -> 320 neurons, IIRC 288 was max for NDT2)
+    'spike': 11,
     'spike_context': 11,
     'spike_infill': 11,
 
-    'return': 21, # Only 1 dimension needed for return.
+    'return': 21,
     'return_context': 21,
     'return_infill': 21,
 
-    'covariate': 22, # 22-31. Max of 10 covariate dims. Separator token possibly include.
+    'covariate': 22,
     'kinematic_classification': 22,
     'kinematic_infill': 22,
     'kinematic_context': 22,
 }
-MAX_KINEMATIC_DIMS = 10
+
+# What is a flexible system...?
+def get_positions(cfg: ModelConfig, data_attrs: DataAttrs, modality: str):
+    default = MODALITY_SPACE_RANGE_START[modality]
+    spike_offset = MODALITY_SPACE_RANGE_START['return'] - MODALITY_SPACE_RANGE_START['spike']
+    # if
+    # TODO... re-support lower patch size
+
 
 def cm3leon_init(m, std: float=6e-3, trunc: float=6e-3 * 3):
     if isinstance(m, nn.Linear):
@@ -153,10 +199,7 @@ class BrainBertInterface(pl.LightningModule):
         cfg = OmegaConf.merge(ModelConfig(), cfg)
 
         # Things that are allowed to change on init (actually most things should be allowed to change, but just register them explicitly here as needed)
-
         for safe_attr in [
-            'decoder_layers', # ! assuming we're freshly initializing, this is kind of not safe
-            'decoder_context_integration', # ^
             'use_full_encode',
             'dropout',
             'weight_decay',
@@ -173,7 +216,8 @@ class BrainBertInterface(pl.LightningModule):
             'val_iters',
             'extra_task_embed_ckpt',
             'extra_subject_embed_ckpt',
-            'closed_loop_crop_bins'
+            'closed_loop_crop_bins',
+            'eval',
         ]:
             setattr(self_copy, safe_attr, getattr(cfg, safe_attr))
         recursive_diff_log(self_copy, cfg)

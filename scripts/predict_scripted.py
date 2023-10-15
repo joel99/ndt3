@@ -182,7 +182,7 @@ if __name__ == "__main__":
     parser.add_argument('-g', '--gap', type=int, default=0, help="Gap for student.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
     parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit eval length (s)")
-    parser.add_argument("--trials", type=int, default=96, help="Number of trials per session to evaluate. 0 for no subset")
+    parser.add_argument("--trials", type=int, default=0, help="Number of trials per session to evaluate. 0 for no subset")
     parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")
     parser.add_argument("-m", "--maskout_last_n", type=int, default=0, help="Mask out last N timesteps.")
     args = parser.parse_args()

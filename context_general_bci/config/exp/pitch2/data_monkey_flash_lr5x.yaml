@@ -3,7 +3,8 @@
 defaults:
   - _default
 model:
-  lr_init: 2.5e-3
+  # lr_init: 2.5e-3
+  lr_init: 2.e-3 # rollback >= uigv3w5n
   arch: Architecture.flash_ndt
   transformer:
     # flash_as_base: True
@@ -22,3 +23,4 @@ train:
   patience: 50
   # effective_batch_size: 2048
   effective_batch_size: 8192
+load_from_id: data_monkey_flash_lr5x-uigv3w5n

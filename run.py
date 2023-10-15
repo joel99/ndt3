@@ -272,13 +272,14 @@ def run_exp(cfg : RootConfig) -> None:
     ]
 
     if cfg.model.lr_schedule_hotfix_epoch:
-        raise NotImplementedError("Doesn't seem to work. Max LR increases, for some reason.")
+        # raise NotImplementedError("Doesn't seem to work. Max LR increases, for some reason.")
         class LRSwapCallback(Callback):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
                 self.swapped = False
 
             def on_train_epoch_start(self, trainer, pl_module):
+                breakpoint()
                 if not self.swapped and trainer.current_epoch <= cfg.model.lr_schedule_hotfix_epoch:
                     # Rather specific intervention for pytorch native lr schedulers
                     last_state_dict = pl_module.lr_schedulers().state_dict()
