@@ -56,19 +56,21 @@ COVARIATE = 4
 
 MAX_KINEMATIC_DIMS = 10
 def get_modality_dimensonality(
-    modality
+    modality, data_attrs: DataAttrs
 ):
     if modality == NULL:
         return 1
     elif modality == CONSTRAINTS:
         return MAX_KINEMATIC_DIMS # 1-10. If tokenized, there are as many constraint dims as behavior dims. We allocate max of 10 behavior dims for now.
     elif modality == SPIKE:
+        if data_attrs is not None:
+            return data_attrs.max_spatial_tokens_neural
         return 10 # 11-20. Max of 10 spike dims (32 neurons per -> 320 neurons, IIRC 288 was max for NDT2)
-    # TODO replace with config
     elif modality == RETURN:
         return 1
     elif modality == COVARIATE:
         return MAX_KINEMATIC_DIMS
+    return 0
     # 22-31. Max of 10 covariate dims. Separator token possibly include.
 
 TASK_MODALITY_MAP = { # keys are pipeline names and some human readable terms
@@ -87,13 +89,19 @@ TASK_MODALITY_MAP = { # keys are pipeline names and some human readable terms
     'kinematic_context': COVARIATE,
 }
 
-def get_max_registered_dimensionalities():
-    return sum(get_modality_dimensonality(v) for v in set(TASK_MODALITY_MAP.values()))
+def get_task_dimensionality_range(task: str, data_attrs: DataAttrs):
+    r"""
+        returns highest dimension allocated for task
+    """
+    modality = TASK_MODALITY_MAP[task]
+    low = sum(get_modality_dimensonality(v, data_attrs=data_attrs) for v in range(modality))
+    hi = low + get_modality_dimensonality(modality, data_attrs=data_attrs)
+    return np.arange(low, hi)
 
 def get_task_dimensionality(
-    task: str,
+    task: str, data_attrs: DataAttrs
 ):
-    return get_modality_dimensonality(TASK_MODALITY_MAP[task])
+    return get_modality_dimensonality(TASK_MODALITY_MAP[task], data_attrs=data_attrs)
 
 def cm3leon_init(m, std: float=6e-3, trunc: float=6e-3 * 3):
     if isinstance(m, nn.Linear):
@@ -340,9 +348,7 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.next_step_prediction: # special tokens
             self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
             # Checks on spatial tokens
-            breakpoint() # TODO phase out
-            assert self.data_attrs.max_spatial_tokens_neural < get_task_dimensionality('return') -  get_task_dimensionality('spike')
-            assert self.cfg.max_spatial_position >= get_max_registered_dimensionalities()
+            assert self.cfg.max_spatial_position > get_task_dimensionality_range('kinematic_infill', data_attrs=self.data_attrs)[-1]
 
 
     def _wrap_key(self, prefix, key):
@@ -362,11 +368,7 @@ class BrainBertInterface(pl.LightningModule):
                     # Currently will fail for array flag transfer, no idea what the right policy is right now
                     module.data = transfer_module.data
                 else:
-                    if isinstance(module, ReadinMatrix):
-                        assert transfer_data_attrs is not None, "Must provide data attrs for readin matrix transfer"
-                        module.load_state_dict(transfer_module.state_dict(), transfer_data_attrs)
-                    else:
-                        module.load_state_dict(transfer_module.state_dict(), strict=False)
+                    module.load_state_dict(transfer_module.state_dict(), strict=False)
                 logger.info(f'Transferred {module_name} weights.')
             else:
                 # if isinstance(module, nn.Parameter):
@@ -380,8 +382,8 @@ class BrainBertInterface(pl.LightningModule):
         embed_name: str, # Used for looking up possibly existing attribute
         new_attrs: List[str],
         old_attrs: List[str],
-        transfer_embed: Union[nn.Embedding, nn.Parameter],
-    ) -> Union[nn.Embedding, nn.Parameter]:
+        transfer_embed: nn.Embedding | nn.Parameter,
+    ) -> nn.Embedding | nn.Parameter:
         if transfer_embed is None:
             logger.info(f'Found no weights to transfer for {embed_name}.')
             return
@@ -612,9 +614,7 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_space = [*pipeline_space, trial_space]
         pipeline_padding = [*pipeline_padding, trial_padding]
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
-        # breakpoint()
         tks = [tks[i] for i in filtered]
-        # breakpoint()
         pipeline_context = [pipeline_context[i] for i in filtered] # embedded at this point
         pipeline_times = [pipeline_times[i] for i in filtered]
         pipeline_space = [pipeline_space[i] for i in filtered]
@@ -625,7 +625,7 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.next_step_prediction:
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
-                pipeline_space[i] = s + get_task_dimensionality(tk)
+                pipeline_space[i] = s + get_task_dimensionality_range(tk, self.data_attrs)[0]
             modalities = [torch.full_like(s, filtered[i], dtype=torch.uint8) for i, s in enumerate(pipeline_space)] # track original task pipeline index
             modalities, _ = pack(modalities, 'b *')
         else:
@@ -713,7 +713,7 @@ class BrainBertInterface(pl.LightningModule):
                 pipeline_padding = F.pad(pipeline_padding, (0, self.cfg.fit_to_max_length - pipeline_padding.size(1)), value=True)
                 times = F.pad(times, (0, self.cfg.fit_to_max_length - times.size(1)), value=self.cfg.transformer.max_trial_length - 1)
                 space = F.pad(space, (0, self.cfg.fit_to_max_length - space.size(1)), value=self.cfg.max_spatial_position)
-                modalities = F.pad(modalities, (0, self.cfg.fit_to_max_length - modalities.size(1)), value=get_task_dimensionality('padding'))
+                modalities = F.pad(modalities, (0, self.cfg.fit_to_max_length - modalities.size(1)), value=get_task_dimensionality_range('padding', data_attrs=self.data_attrs)[0])
                 if mask is not None:
                     mask = F.pad(mask, (0, self.cfg.fit_to_max_length - mask.size(1)))
 
@@ -804,8 +804,6 @@ class BrainBertInterface(pl.LightningModule):
         if use_prefix: # commanded externally, e.g. for eval
             prefix_loss = True
             kin_maskout = 1.0
-            # breakpoint()
-            # print(f"prefix called, {batch[DataKey.spikes.value].shape}")
         else:
             if self.cfg.task.prefix_ratio > 0:
                 use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
@@ -937,8 +935,7 @@ class BrainBertInterface(pl.LightningModule):
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
             if self.cfg.eval.limit_timesteps: # Evaluating full length is slow with KV cache, we need to iterate faster
-                logger.warning('Assuming even batches for cropped prediction!!!')
-                # breakpoint()
+                # logger.warning('Assuming even batches for cropped prediction!!!')
                 first_step_time = ((times >= self.cfg.eval.limit_timesteps) & (times != self.data_attrs.max_trial_length)).any(0)
                 if first_step_time.any():
                     first_step_time = first_step_time.nonzero()[0][0].item()
@@ -950,7 +947,6 @@ class BrainBertInterface(pl.LightningModule):
             main_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel.name].dtype) # B T
             main_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel.name].flatten()
             target_stream = []
-            # breakpoint()
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
             predict_until = 0 # The goalpost hasn't been set yet.
             need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
@@ -971,7 +967,6 @@ class BrainBertInterface(pl.LightningModule):
                 # We don't immediately load student, so we need to keep a copy on hand. For convenience, we copy full stream
                 student_stream = pipeline_context.clone()
                 # Identify the kinematics up to n steps before the first student slice, and zero it out
-                # breakpoint()
                 is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                 is_kinematic_input[:, 0] = False
                 blacklist_kin_times = (times < self.cfg.eval.teacher_timesteps) \
@@ -999,7 +994,6 @@ class BrainBertInterface(pl.LightningModule):
                         **backbone_kwargs,
                     )
                     predicted_to = predict_until
-                    # breakpoint()
                     # The question hereafter is - is a prediction for proc_step ready?
                 # Sample the output from the kinematic pipeline
                 decode = self.task_pipelines['kinematic_infill'](
