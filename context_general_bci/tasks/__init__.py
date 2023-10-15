@@ -27,6 +27,7 @@ class ExperimentalTask(OrderedEnum):
     marino_batista_mp_reaching = "marino_batista_mp_reaching"
     marino_batista_mp_iso_force = "marino_batista_mp_iso_force"
     miller = "miller"
+    rouse = "rouse"
 
 from .task_registry import ExperimentalTaskRegistry, ExperimentalTaskLoader
 # Exports

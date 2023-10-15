@@ -33,6 +33,8 @@ class SubjectName(OrderedEnum):
     nigel = "Nigel"
     rocky = "Rocky"
     jango = "Jango"
+    rouse_p = "Rouse_P"
+    rouse_q = "Rouse_Q"
 
 from .array_info import SubjectInfo, ArrayInfo, ArrayID, GeometricArrayInfo, AliasArrayInfo, SortedArrayInfo
 from .array_registry import SubjectArrayRegistry, create_spike_payload

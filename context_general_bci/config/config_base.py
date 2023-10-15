@@ -619,6 +619,7 @@ class DatasetConfig:
     marino_batista_mp_reaching: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
     miller: ExperimentalConfig = field(default_factory=ExperimentalConfig)
+    rouse: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
     pitt_co: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([ # This is actually the catch all for Pitt, and doesn't have any particular structure. No guarantees, might not even be CO.
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',

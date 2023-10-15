@@ -20,6 +20,7 @@ from .context_info import (
     BCIContextInfo,
     BatistaContextInfo,
     MillerContextInfo,
+    RouseContextInfo
 )
 
 from context_general_bci.tasks import ExperimentalTask
@@ -186,6 +187,9 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
         *MillerContextInfo.build_from_dir('./data/miller/Greyson_Key_2019', task=ExperimentalTask.miller),
 
         # *MillerContextInfo.build_from_dir('./data/miller/Pop_PG_2021', task=ExperimentalTask.miller), # TODO fixup - it's at 50ms, maybe not worth in near future.
+
+        *RouseContextInfo.build_from_dir('./data/rouse_precision/monk_p/COT_SpikesCombined', task=ExperimentalTask.rouse),
+        *RouseContextInfo.build_from_dir('./data/rouse_precision/monk_q/COT_SpikesCombined', task=ExperimentalTask.rouse),
 
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_isometric_force', task=ExperimentalTask.marino_batista_mp_iso_force),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_bci', task=ExperimentalTask.marino_batista_mp_bci),

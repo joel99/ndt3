@@ -127,3 +127,17 @@ class Jango(SubjectInfo):
         'M1': SortedArrayInfo(_max_channels=np.arange(96)), # Sometimes not included
         # 'M1': GeometricArrayInfo(array=np.arange(96)),
     }
+
+@SubjectArrayRegistry.register
+class RouseP(SubjectInfo)
+    name = SubjectName.rouse_p
+    _arrays = {
+        'M1': SortedArrayInfo(_max_channels=96),
+    }
+
+@SubjectArrayRegistry.register
+class RouseQ(SubjectInfo)
+    name = SubjectName.rouse_q
+    _arrays = {
+        'M1': SortedArrayInfo(_max_channels=96),
+    }
