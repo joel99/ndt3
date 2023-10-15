@@ -86,33 +86,14 @@ TASK_MODALITY_MAP = { # keys are pipeline names and some human readable terms
     'kinematic_infill': COVARIATE,
     'kinematic_context': COVARIATE,
 }
-MODALITY_SPACE_RANGE_START = {
-    'padding': 0, # also trial context receives these space values
-    'trial': 0, # also trial context receives these space values
 
-    'constraints': 1,
+def get_max_registered_dimensionalities():
+    return sum(get_modality_dimensonality(v) for v in set(TASK_MODALITY_MAP.values()))
 
-    'spike': 11,
-    'spike_context': 11,
-    'spike_infill': 11,
-
-    'return': 21,
-    'return_context': 21,
-    'return_infill': 21,
-
-    'covariate': 22,
-    'kinematic_classification': 22,
-    'kinematic_infill': 22,
-    'kinematic_context': 22,
-}
-
-# What is a flexible system...?
-def get_positions(cfg: ModelConfig, data_attrs: DataAttrs, modality: str):
-    default = MODALITY_SPACE_RANGE_START[modality]
-    spike_offset = MODALITY_SPACE_RANGE_START['return'] - MODALITY_SPACE_RANGE_START['spike']
-    # if
-    # TODO... re-support lower patch size
-
+def get_task_dimensionality(
+    task: str,
+):
+    return get_modality_dimensonality(TASK_MODALITY_MAP[task])
 
 def cm3leon_init(m, std: float=6e-3, trunc: float=6e-3 * 3):
     if isinstance(m, nn.Linear):
@@ -359,8 +340,9 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.next_step_prediction: # special tokens
             self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
             # Checks on spatial tokens
-            assert self.data_attrs.max_spatial_tokens_neural < MODALITY_SPACE_RANGE_START['return'] -  MODALITY_SPACE_RANGE_START['spike']
-            assert self.cfg.max_spatial_position >= max(MODALITY_SPACE_RANGE_START.values()) + MAX_KINEMATIC_DIMS
+            breakpoint() # TODO phase out
+            assert self.data_attrs.max_spatial_tokens_neural < get_task_dimensionality('return') -  get_task_dimensionality('spike')
+            assert self.cfg.max_spatial_position >= get_max_registered_dimensionalities()
 
 
     def _wrap_key(self, prefix, key):
@@ -643,7 +625,7 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.next_step_prediction:
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
-                pipeline_space[i] = s + MODALITY_SPACE_RANGE_START[tk]
+                pipeline_space[i] = s + get_task_dimensionality(tk)
             modalities = [torch.full_like(s, filtered[i], dtype=torch.uint8) for i, s in enumerate(pipeline_space)] # track original task pipeline index
             modalities, _ = pack(modalities, 'b *')
         else:
@@ -731,7 +713,7 @@ class BrainBertInterface(pl.LightningModule):
                 pipeline_padding = F.pad(pipeline_padding, (0, self.cfg.fit_to_max_length - pipeline_padding.size(1)), value=True)
                 times = F.pad(times, (0, self.cfg.fit_to_max_length - times.size(1)), value=self.cfg.transformer.max_trial_length - 1)
                 space = F.pad(space, (0, self.cfg.fit_to_max_length - space.size(1)), value=self.cfg.max_spatial_position)
-                modalities = F.pad(modalities, (0, self.cfg.fit_to_max_length - modalities.size(1)), value=MODALITY_SPACE_RANGE_START['padding'])
+                modalities = F.pad(modalities, (0, self.cfg.fit_to_max_length - modalities.size(1)), value=get_task_dimensionality('padding'))
                 if mask is not None:
                     mask = F.pad(mask, (0, self.cfg.fit_to_max_length - mask.size(1)))
 
