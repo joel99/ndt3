@@ -1,0 +1,26 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  lr_decay_steps: 15000
+  neurons_per_token: 16
+  max_spatial_position: 42
+dataset:
+  datasets:
+  # All cropped trialized data, but ~100K trials.
+  - churchland.*
+  - gallego.*
+  - dyer_co.*
+  - miller.*
+  - odoherty_rtt.*
+  - delay.*
+  - pitt_broad.*
+train:
+  batch_size: 20 # 40G
+  # batch_size: 40 # 80G
+  patience: 50
+  # effective_batch_size: 2048
+  effective_batch_size: 8192
+# load_from_id: data_monkey-pitt-xfhobr8j # Loaded at around 2.5K steps, 40 epochs. Picked up because 6K doesn't look like enough.
+# TODO experiment with pushing the LR up, courtesy of QK
