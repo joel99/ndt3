@@ -11,8 +11,12 @@ data_dir = Path(
     'data/rouse_precision/monk_p/COT_SpikesCombined'
 )
 
+for sample_file in data_dir.glob('*.mat'):
+    data = loadmat(sample_file)
+    print(f'{sample_file.stem} -- Num channels : {len(data["AllSpikeTimes"])}')
 sample_file = data_dir.glob('*.mat').__next__()
-print(sample_file)
+
+
 #%%
 data = loadmat(sample_file)
 #%%

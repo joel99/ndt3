@@ -812,7 +812,7 @@ class BrainBertInterface(pl.LightningModule):
                 use_prefix = True # feel free to use if available
                 prefix_loss = False
             kin_maskout = self.kin_maskout
-
+        # breakpoint()
         features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix, kin_maskout=kin_maskout) # B T H
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly

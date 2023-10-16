@@ -504,7 +504,7 @@ class SpikeContext(ContextPipeline):
         state_in = torch.as_tensor(batch[DataKey.spikes.name], dtype=int)
         state_in = rearrange(state_in, 'b t c h -> b t (c h)')
         if self.spike_embed_style == EmbedStrat.token:
-            state_in = self.readin(state_in)
+            state_in = self.readin(state_in.clip(max=self.readin.num_embeddings - 1))
         elif self.spike_embed_style == EmbedStrat.project:
             state_in = self.readin(state_in.float().unsqueeze(-1))
         else:

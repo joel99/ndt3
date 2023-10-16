@@ -155,7 +155,7 @@ class SpikingDataset(Dataset):
                 raise Exception(f"No contexts {self.cfg.datasets} left in dataset.")
             if debug or True:
                 results = [self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]
-            else:
+            else: # Hm, thread pool also doesn't seem to surface errors properly
                 with ThreadPoolExecutor(max_workers=32) as executor: # Not processpool as it's mildly inconvenient to refactor our this preprocessing to a pickleable step right now
                     results = list(executor.map(lambda c: self.load_single_session(c, override_preprocess_path=override_preprocess_path), contexts))
             self.meta_df = pd.concat(results).reset_index(drop=True)

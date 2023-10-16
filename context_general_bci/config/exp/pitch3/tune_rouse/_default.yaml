@@ -61,21 +61,16 @@ dataset:
     chop_size_ms: 5000
   miller:
     chop_size_ms: 5000
-  max_channels: 288
+  rouse:
+    chop_size_ms: 5000
+  max_channels: 288 # Whoops.. need to increase this in future
   max_arrays: 2
-
   datasets:
-  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
-  - odoherty_rtt-Indy-20160407_02 # First indy session
-  - odoherty_rtt-Indy-20160627_01 # Original
-  - odoherty_rtt-Indy-20161005_06
-  - odoherty_rtt-Indy-20161026_03
-  - odoherty_rtt-Indy-20170131_02
-  - miller_Jango-Jango_20150730_001
-  - miller_Jango-Jango_20150731_001
-  - miller_Jango-Jango_20150801_001
-  - miller_Jango-Jango_20150805_001
-
+  - rouse.*
+  eval_datasets:
+  - rouse.*
+  scale_limit_per_eval_session: 32
+  eval_ratio: 0.8
   # scale_limit_per_eval_session: 100 # 100 trial calibration
 
   tokenize_covariates: True
@@ -88,7 +83,8 @@ dataset:
   - DataKey.task_return
 train:
   autoscale_batch_size: true
-  batch_size: 4 # 40G
+  # batch_size: 4 # 40G
+  batch_size: 16
   effective_batch_size: 256
   # effective_batch_size: 512
 inherit_exp: pitch3
