@@ -566,13 +566,14 @@ class RouseContextInfo(ContextInfo):
         def make_info(path: Path):
             # Format: Q_Spikes_20180418-data.mat
             subject, _, timestamp = path.stem.split("_")
+            timestamp = timestamp.split("-")[0]
             subject = f'rouse_{subject.lower()}'
             subject = SubjectArrayRegistry.query_by_subject(subject)
             return RouseContextInfo(
                 subject=subject,
                 task=task,
                 _arrays=arrays,
-                alias=f"{subject.name.value}-{timestamp}",
+                alias=f"rouse_{subject.name.value}-{timestamp}",
                 datapath=path,
             )
         infos = map(make_info, root.glob("*.mat"))

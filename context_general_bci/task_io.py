@@ -1765,9 +1765,9 @@ class CovariateInfill(ClassificationMixin):
             valid_tgt = bhvr_tgt[loss_mask].float().detach().cpu()
             # check for empty comparison
             if len(valid_bhvr) == 0:
-                batch_out[Metric.kinematic_r2.value] = np.array([0])
-
-            batch_out[Metric.kinematic_r2.value] = np.array([r2_score(valid_tgt, valid_bhvr)])
+                batch_out[Metric.kinematic_r2.value] = np.array([0.])
+            else:
+                batch_out[Metric.kinematic_r2.value] = np.array([r2_score(valid_tgt, valid_bhvr)])
             # breakpoint() # Something is wildly wrong...
             if batch_out[Metric.kinematic_r2.value].mean() < -10000:
                 # zero it out - this is a bug that occurs when the target has minimal variance (i.e. a dull batch with tiny batch size)
