@@ -128,7 +128,7 @@ class SpikingDataset(Dataset):
         - MetaKey.Subject column stores SubjectName (OrderedEnum), so that we can vet subjects exist before starting training. May work with SubjectInfo classes
         - Can we "mixin" time-varying data, or maybe simpler to just be a separate codepath in this class.
     """
-    def __init__(self, cfg: DatasetConfig, use_augment: bool = True, override_preprocess_path=False):
+    def __init__(self, cfg: DatasetConfig, use_augment: bool = True, override_preprocess_path=False, debug=False):
         super().__init__()
         if not isinstance(cfg, OmegaConf):
             cfg: DatasetConfig = OmegaConf.create(cfg)
@@ -153,8 +153,11 @@ class SpikingDataset(Dataset):
             contexts = [c for c in contexts if c not in exclude_contexts]
             if not contexts:
                 raise Exception(f"No contexts {self.cfg.datasets} left in dataset.")
-            with ThreadPoolExecutor(max_workers=32) as executor: # Not processpool as it's mildly inconvenient to refactor our this preprocessing to a pickleable step right now
-                results = list(executor.map(lambda c: self.load_single_session(c, override_preprocess_path=override_preprocess_path), contexts))
+            if debug or True:
+                results = [self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]
+            else:
+                with ThreadPoolExecutor(max_workers=32) as executor: # Not processpool as it's mildly inconvenient to refactor our this preprocessing to a pickleable step right now
+                    results = list(executor.map(lambda c: self.load_single_session(c, override_preprocess_path=override_preprocess_path), contexts))
             self.meta_df = pd.concat(results).reset_index(drop=True)
             # self.meta_df = pd.concat([self.load_single_session(c, override_preprocess_path=override_preprocess_path) for c in contexts]).reset_index(drop=True)
 

@@ -13,6 +13,8 @@ dataset:
   # - miller.*
   # - odoherty_rtt.*
   # - delay.*
+  rouse:
+    chop_size_ms: 5000
 train:
   batch_size: 32 # 40G
   # batch_size: 64 # 80G

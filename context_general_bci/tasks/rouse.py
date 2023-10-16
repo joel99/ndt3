@@ -24,6 +24,7 @@ from context_general_bci.utils import loadmat
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
 
 def flatten_single(channel_spikes, offsets): # offset in seconds
     # print(channel_spikes)
@@ -46,24 +47,59 @@ class RouseLoader(ExperimentalTaskLoader):
         dataset_alias: str,
         **kwargs,
     ):
-        breakpoint()
+        r"""
+            We are currently assuming that the start of covariate data is the same as time=0 for trial SpikeTimes
+            TODO do we want a <break> token between trials? For now no.
+        """
         payload = loadmat(datapath)
-        trial_starts = payload['TrialInfo']['trial_start_time'] # Covariate sampled at 100Hz
-        trial_spikes = payload['SpikeTimes']
-        trial_spikes = [s[0] for s in trial_spikes]
-        spikes = [flatten_single(channel, trial_starts) for channel in trial_spikes]
-        vel = payload['JoystickPos_disp']
-        def resample(data, covariate_rate=100): # Updated 9/10/23: Previous resample produces an undesirable strong artifact at timestep 0. This hopefully removes that and thus also removes outliers.
-            base_rate = int(1000 / cfg.bin_size_ms)
-            # print(base_rate, covariate_rate, base_rate / covariate_rate)
-            return torch.tensor(
-                signal.resample_poly(data, base_rate, covariate_rate, padtype='line')
-            )
-        # TODO vel has NaNs, TODO vel unlikely to exactly match trial spikes timeframe
-        # TODO trial spikes is sparse, not dense
-        breakpoint()
-        vel = resample(vel)
+        channel_trial_spikes = payload['SpikeTimes']
+        channel_trial_spikes = [s[0] for s in channel_trial_spikes]
+        # spikes = [flatten_single(channel, trial_starts) for channel in trial_spikes]
+        pos = payload['JoystickPos_disp'] # Trial x Time x Dim
+        vel = np.gradient(pos, axis=1)
+        base_rate = int(1000 / cfg.bin_size_ms)
+        vel = torch.tensor(
+            signal.resample_poly(vel, base_rate, 100, padtype='line', axis=1), # Default 100Hz
+            dtype=torch.float32
+        ) # Trial x Time x Dim
+        # Note this introduces NaNs at the start of trial, which we just accept for simplicity
+        all_vels = []
+        all_spikes = []
+        # Compact trialized representations
+        # We'll take the periods of time when velocity is valid, and build a spike matrix for exactly these times.
+        # Then we'll concatenate everything and chop it up into chunks.
+        for trial, trial_vel in enumerate(vel): # Time x Dim
+            # Find the longest continuous span of non-nan
+            trial_spikes = [s[trial] for s in channel_trial_spikes] # Outer is channel, inner is trial
+            # For now we assume that the trial spike time is given wrt exact same time as velocity[0]
+            valid_times_at_bin_rate = ~torch.isnan(trial_vel).any(1).to(dtype=bool) # Time
+            diffs = torch.diff(torch.cat((torch.tensor([False]), valid_times_at_bin_rate, torch.tensor([False]))).to(dtype=int))
+            # Find start and end indices
+            starts = torch.where(diffs == 1)[0]
+            ends = torch.where(diffs == -1)[0]
 
+            # Calculate span lengths and find the longest
+            lengths = ends - starts
+            longest_span_idx = torch.argmax(lengths)
+
+            # Endpoints of the longest span
+            start_longest_span = starts[longest_span_idx]
+            end_longest_span = ends[longest_span_idx]
+            all_vels.append(trial_vel[start_longest_span:end_longest_span])
+
+            cue_time_start = start_longest_span * cfg.bin_size_ms
+            cue_time_end = end_longest_span * cfg.bin_size_ms
+            # Create at ms resolution
+            trial_spikes_dense = torch.zeros(len(trial_spikes), cue_time_end - cue_time_start, dtype=torch.uint8)
+            for channel, channel_spikes in enumerate(trial_spikes):
+                if channel_spikes is None:
+                    continue
+                channel_spikes_ms = torch.as_tensor(channel_spikes * 1000, dtype=int)
+                channel_spikes_ms = (channel_spikes_ms[(channel_spikes_ms >= cue_time_start) & (channel_spikes_ms < cue_time_end)] - cue_time_start)
+                trial_spikes_dense[channel] = torch.bincount(channel_spikes_ms, minlength=trial_spikes_dense.shape[1])
+            all_spikes.append(trial_spikes_dense)
+        dense_spikes = torch.cat([compress_vector(s.T, 0, cfg.bin_size_ms) for s in all_spikes]) # Time x Channel x 1, at bin res
+        vel = torch.cat(all_vels) # Time x Dim, at bins
         meta_payload = {}
         meta_payload['path'] = []
         global_args = {}
@@ -71,14 +107,6 @@ class RouseLoader(ExperimentalTaskLoader):
         if cfg.tokenize_covariates:
             canonical_labels = REACH_DEFAULT_KIN_LABELS
             global_args[DataKey.covariate_labels] = canonical_labels
-
-        def chop_vector(vec: torch.Tensor):
-            # vec - already at target resolution, just needs chopping
-            chops = round(cfg.miller.chop_size_ms / cfg.bin_size_ms)
-            return rearrange(
-                vec.unfold(0, chops, chops),
-                'trial hidden time -> trial time hidden'
-             ) # Trial x C x chop_size (time)
 
         if cfg.rouse.minmax:
             # Aggregate velocities and get min/max
@@ -91,8 +119,8 @@ class RouseLoader(ExperimentalTaskLoader):
             vel = torch.clamp(vel, -1, 1)
 
         # Directly chop trialized data as though continuous - borrowing from LM convention
-        vel = chop_vector(vel) # T x H
-        full_spikes = chop_vector(torch.as_tensor(spikes, dtype=torch.float))
+        vel = chop_vector(vel, cfg.rouse.chop_size_ms, cfg.bin_size_ms) # T x H
+        full_spikes = chop_vector(dense_spikes[..., 0], cfg.rouse.chop_size_ms, cfg.bin_size_ms).unsqueeze(-1)
         assert full_spikes.size(0) == vel.size(0), "Chop size mismatch"
         for t in range(full_spikes.size(0)):
             single_payload = {

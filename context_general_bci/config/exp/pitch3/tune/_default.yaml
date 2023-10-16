@@ -1,0 +1,91 @@
+# @package _global_
+# Updated with low-hanging infrastructural updates. Remove a few norms, add rotary, add SwiGLU, Flash 2, QK norm
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+    - largescale
+  - /model/task:
+    - decode_flat_v2 # spcify individually
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - largescale # for the main runs, not debuggin runs
+model:
+  arch: Architecture.flash_ndt
+  lr_ramp_steps: 100
+  lr_decay_steps: 1000
+  lr_interval: step
+  lr_schedule: cosine_timm
+
+  next_step_prediction: True
+  kinematic_token_maskout_schedule: "random"
+  kinematic_token_maskout_start: 1.0
+  kinematic_token_maskout: 0.5
+  task:
+    context_prompt_time_thresh: -50 # 1s
+    context_prompt_time_thresh_min: -5
+    prefix_ratio: 0.25
+    tasks:
+    - ModelTask.spike_context
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [0., 1.0, 0., 0.]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    encode_constraints: True
+    use_constraint_cls: False # No need
+    decode_quantize_classes: 512
+  transformer:
+    initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
+    activation: swiglu
+    rotary_position: True
+    rotary_position_torch: True
+    use_biases: False
+    learnable_norm: False
+    n_layers: 6
+    max_trial_length: 1500 # Up to 30s
+    n_heads: 8
+  hidden_size: 1024
+  use_full_encode: True
+  decoder_context_integration: 'cross_attn' # Literally not even used
+dataset:
+  max_length_ms: 15000
+  max_trial_length: 1500
+  odoherty_rtt:
+    chop_size_ms: 5000
+  pitt_co:
+    chop_size_ms: 5000
+  miller:
+    chop_size_ms: 5000
+  max_channels: 288
+  max_arrays: 2
+
+  datasets:
+  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+  - miller_Jango-Jango_20150730_001
+  - miller_Jango-Jango_20150731_001
+  - miller_Jango-Jango_20150801_001
+  - miller_Jango-Jango_20150805_001
+
+  tokenize_covariates: True
+  sparse_constraints: True
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
+  data_keys:
+  - DataKey.spikes
+  - DataKey.constraint
+  - DataKey.bhvr_vel
+  - DataKey.task_return
+train:
+  autoscale_batch_size: true
+  batch_size: 4 # 40G
+  effective_batch_size: 512
+inherit_exp: pitch3

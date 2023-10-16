@@ -132,12 +132,12 @@ class Jango(SubjectInfo):
 class RouseP(SubjectInfo):
     name = SubjectName.rouse_p
     _arrays = {
-        'M1': SortedArrayInfo(_max_channels=96),
+        'M1': SortedArrayInfo(_max_channels=320), # Sorting be crazy
     }
 
 @SubjectArrayRegistry.register
 class RouseQ(SubjectInfo):
     name = SubjectName.rouse_q
     _arrays = {
-        'M1': SortedArrayInfo(_max_channels=96),
+        'M1': SortedArrayInfo(_max_channels=320),
     }

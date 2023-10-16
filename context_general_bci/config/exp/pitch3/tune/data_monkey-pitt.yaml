@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+train:
+  batch_size: 24 # 40G
+  # batch_size: 56 # 80G
+  patience: 50

@@ -19,6 +19,26 @@ data = loadmat(sample_file)
 print(data.keys())
 
 covariate = data['JoystickPos_disp'] # pretty sure this is 100Hz. What's the alignment wrt the trial?
+import scipy.signal as signal
+import matplotlib.pyplot as plt
+f = plt.figure(figsize=(20, 10))
+ax = f.gca()
+
+# ? Why do I suddenly have so many NaNs?
+pos = covariate
+vel = np.gradient(pos, axis=1)
+def resample(data, covariate_rate=100):
+    base_rate = int(1000 / 20)
+    return (
+        signal.resample_poly(data, base_rate, covariate_rate, padtype='line', axis=1)
+    )
+
+print(pos[0, :, 0])
+ax.plot(np.arange(pos.shape[1]), pos[0,:,0] / 10) # For visual scaling
+ax.plot(np.arange(pos.shape[1]), vel[0,:,0])
+fake_vel = vel.copy()
+fake_vel[np.isnan(fake_vel)] = 0
+ax.plot(np.arange(0, pos.shape[1], 2), resample(fake_vel)[0, :, 0])
 #%%
 plt.plot(covariate[0,:,0])
 plt.plot(covariate[0,:,1])

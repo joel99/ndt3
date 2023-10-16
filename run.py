@@ -219,7 +219,7 @@ def run_exp(cfg : RootConfig) -> None:
     logger = logging.getLogger(__name__)
     seed_everything(seed=cfg.seed)
 
-    dataset = SpikingDataset(cfg.dataset)
+    dataset = SpikingDataset(cfg.dataset, debug=cfg.debug)
     dataset.build_context_index()
     if cfg.dataset.eval_datasets:
         eval_dataset = copy.deepcopy(dataset)
