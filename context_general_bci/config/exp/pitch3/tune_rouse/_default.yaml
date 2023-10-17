@@ -16,6 +16,7 @@ model:
   arch: Architecture.flash_ndt
   lr_ramp_steps: 100
   lr_decay_steps: 1000
+  lr_init: 1e-4
   lr_interval: step
   lr_schedule: cosine_timm
 
@@ -69,8 +70,10 @@ dataset:
   - rouse.*
   eval_datasets:
   - rouse.*
-  scale_limit_per_eval_session: 32
-  eval_ratio: 0.8
+  scale_limit_per_eval_session: 100
+  # scale_limit_per_eval_session: 32 # Evidently not harsh enough...
+  eval_ratio: 0.5
+  # eval_ratio: 0.8
   # scale_limit_per_eval_session: 100 # 100 trial calibration
 
   tokenize_covariates: True
@@ -85,6 +88,6 @@ train:
   autoscale_batch_size: true
   # batch_size: 4 # 40G
   batch_size: 16
-  effective_batch_size: 256
+  effective_batch_size: 64
   # effective_batch_size: 512
 inherit_exp: pitch3

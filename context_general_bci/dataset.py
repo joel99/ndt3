@@ -887,12 +887,11 @@ class SpikingDataset(Dataset):
                     train_keys = train_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_session))[MetaKey.unique]
             else: # default is to assume no limit
                 train_keys = train_session_df[MetaKey.unique]
-
             keys = pd.concat([eval_keys, train_keys])
             self.subset_by_key(
                 key_values=keys,
                 keep_index=keep_index,
-                message_prefix=f"Scale {limit_per_session} per session"
+                message_prefix=f"Scale {limit_per_session} (eval {limit_per_eval_session}) per session"
             )
         elif limit > 0:
             self.subset_by_key(

@@ -833,13 +833,12 @@ class BrainBertInterface(pl.LightningModule):
                 # ! Beware off by 1 - include features that didn't receive kinematic input by virtue of receiving non-kinematic input, not just zero-masked.
                 # was_modality_input = (modalities == i).roll(1, dims=1)
                 # was_modality_input[:, 0] = False # Nope, keep this for even batches downstream. Probably the source of an insiduous bug, but should wash out.
-                if zero_mask is not None:
+                if zero_mask is not None and 'kinematic' in task.value:
                     target_will_mask = zero_mask.roll(-1, dims=1)
                     target_will_mask[:, -1] = False
                     sub_loss_mask = target_will_mask[modalities == i]
                 else:
                     sub_loss_mask = None
-
                 # Heuristic: zero_mask is steps where inputs were masked - compute loss for these (reasonable mainly in prefix case with continuous mask span)
                 # Detail: What we actually want is the kin_target steps, which are 1 behind kin_input steps.
                 # Note this leaves an off-by-one error where we include compute loss on the first kin timestep that gets masked but was cued with a kinematic input.
@@ -862,6 +861,8 @@ class BrainBertInterface(pl.LightningModule):
             if 'loss' in update and self.cfg.task.task_weights[i] > 0:
                 batch_out[f'{task.value}_loss'] = update['loss']
                 running_loss = running_loss + self.cfg.task.task_weights[i] * update['loss']
+            # if torch.isnan(running_loss).any():
+            #     breakpoint()
         batch_out['loss'] = running_loss
         # if use_prefix:
             # print(f"prefix loss: {batch_out['loss']}")

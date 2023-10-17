@@ -4,3 +4,4 @@ defaults:
   - _default
 train:
   patience: 50
+inherit_exp: ""
