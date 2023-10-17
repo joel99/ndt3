@@ -90,13 +90,13 @@ def main(
     )
     if data_label == "eval":
         for sub_label in ['dyer', 'indy', 'miller']: # TODO infer from eval_datasets
-            inner(src_model, cfg, sub_label, trials, batch_size, trainer)
+            return icl_eval(src_model, cfg, sub_label, trials, batch_size, trainer)
     else:
-        inner(src_model, cfg, data_label, trials, batch_size, trainer)
+        return icl_eval(src_model, cfg, data_label, trials, batch_size, trainer)
 
-def inner(
-    src_model,
-    cfg,
+def icl_eval(
+    src_model: pl.LightningModule,
+    cfg: RootConfig,
     data_label: str,
     trials: int,
     batch_size: int,
@@ -213,18 +213,3 @@ if __name__ == "__main__":
     parser.add_argument("-m", "--maskout_last_n", type=int, default=0, help="Mask out last N timesteps.")
     args = parser.parse_args()
     main(**vars(args))
-
-"""
-query = 'monkey_trialized_6l_1024-zgsjsog0'
-
-# query = 'monkey_trialized_6l_1024_broad-3x3mrjdh'
-# query = 'monkey_trialized_6l_1024_broad-yy3ve3gf'
-# query = 'monkey_trialized_6l_1024_all-ufyxs032'
-
-query = 'monkey_nomask_6l_1024-zfwshzmr'
-# query = 'monkey_schedule_6l_1024-0swiit7z'
-# query = 'monkey_kin_6l_1024-vgdhzzxm'
-# query = 'monkey_random_6l_1024-n3f68hj2'
-# query = 'monkey_schedule_6l_1024-7o3bb4z8'
-query = 'monkey_tune_6l_1024-wy62dj4v'
-"""

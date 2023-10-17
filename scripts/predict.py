@@ -1,14 +1,20 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+
+from datetime import datetime
+from pytz import timezone
 
 from matplotlib import pyplot as plt
+import numpy as np
 import seaborn as sns
 import torch
 from torch.utils.data import DataLoader
 import lightning.pytorch as pl
+
+from sklearn.metrics import r2_score
 
 from context_general_bci.model import transfer_model
 from context_general_bci.dataset import SpikingDataset
@@ -17,6 +23,7 @@ from context_general_bci.contexts import context_registry
 
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt, rolling_time_since_student
 
 from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS
@@ -32,31 +39,33 @@ DIMS = {
 }
 
 
-query = 'data_monkey-qhskbnpb'
-# query = 'data_monkey-pitt-xfhobr8j'
-# query = 'data_min_pre75-dzipr845'
-query = 'data_monkey_flash_min-xkh4tnxz'
+query = 'data_min-jkohlswe'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
-old_sessions = old_data_attrs.context.session
-# filt_sessions = [i for i in old_sessions if 'dyer_co_chewie' in i]
-# print(filt_sessions)
+# Hotfix position: check if wandb run is older than oct 15, 10:00am
+wandb_datetime_utc = datetime.fromisoformat(wandb_run.created_at).replace(tzinfo=timezone('UTC'))
+est = timezone('US/Eastern')
+wandb_datetime_est = wandb_datetime_utc.astimezone(est)
+
+# Create a datetime object for Oct 15, 2023, 10AM EST
+target_datetime_est = est.localize(datetime(2023, 10, 15, 10, 0, 0))
+
+if wandb_datetime_est < target_datetime_est:
+    cfg.model.eval.offset_kin_hotfix = 1
 
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 target = [
     # 'miller_Jango-Jango_20150730_001',
-
-    'dyer_co_chewie_2',
-
+    # 'dyer_co_chewie_2',
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_jenkins.*'
 
-    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
+    'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
 
     # 'odoherty_rtt-Indy-20160407_02',
     # 'odoherty_rtt-Indy-20160627_01',
@@ -99,32 +108,19 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 
 model.cfg.eval.teacher_timesteps = int(50 * 0.5) # 0.5s
 model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 0.1) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 0.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 2) # 2s
-# model.cfg.eval.limit_timesteps = 50 * 4 # up to 4s
-# model.cfg.eval.teacher_timesteps = int(50 * 4.5) # up to 4s
 model.cfg.eval.limit_timesteps = 0
 model.cfg.eval.temperature = 0.
-# model.cfg.eval.temperature = 0.1
-# model.cfg.eval.temperature = 0.5
-# model.cfg.eval.temperature = 0.01
-# model.cfg.eval.use_student = False
-model.cfg.eval.maskout_last_n = 0 # abs(cfg.model.task.context_prompt_time_thresh)
-# model.cfg.eval.maskout_last_n = abs(cfg.model.task.context_prompt_time_thresh)
-# model.cfg.eval.use_student = True
+model.cfg.eval.maskout_last_n = 0
 model.cfg.eval.use_student = False
+model.cfg.eval.student_gap = int(50 * 1.)
+
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
     precision='bf16-mixed',
 )
-# def get_dataloader(dataset: SpikingDataset, batch_size=8, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=16, num_workers=1, **kwargs) -> DataLoader:
+
 def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=48, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=64, num_workers=1, **kwargs) -> DataLoader:
-# def get_dataloader(dataset: SpikingDataset, batch_size=128, num_workers=1, **kwargs) -> DataLoader:
     return DataLoader(dataset,
         batch_size=batch_size,
         num_workers=num_workers,
@@ -139,7 +135,6 @@ data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0
 print(f'Assuming: {data_label}')
 
 #%%
-from sklearn.metrics import r2_score
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
 
@@ -149,6 +144,15 @@ is_student = heldin_outputs[Output.behavior_query_mask]
 # Compute R2
 r2 = r2_score(target, prediction)
 r2_student = r2_score(target[is_student], prediction[is_student])
+
+
+is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
+valid = is_student_rolling > model.cfg.eval.student_gap
+# Compute R2
+# r2 = r2_score(target, prediction)
+mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
+r2_student = r2_score(target[valid], prediction[valid])
+
 print(f'R2: {r2:.4f}')
 print(f'R2 Student: {r2_student:.4f}')
 print(model.cfg.eval)
@@ -166,46 +170,84 @@ ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}, Robust: {robust_r2_student:.2f} ')
 #%%
-def plot_target_pred_overlay(target, prediction, is_student, label='x', ax=None):
-    # Prepare the plot
-    ax = prep_plt(ax)
+palette = sns.color_palette(n_colors=2)
+camera_label = {
+    'x': 'Vel X',
+    'y': 'Vel Y',
+    'z': 'Vel Z',
+}
+def plot_target_pred_overlay(target, prediction, is_student, label, ax=None, palette=palette):
+    ax = prep_plt(ax, big=True)
 
     # Plot true and predicted values
-    ax.plot(target, label=f'true {label}', linestyle='-', alpha=0.75)
-    ax.plot(prediction, label=f'pred {label}', linestyle='--', alpha=0.75)
-
-    # Overlay student-guided traces
-    ax.scatter(
-        is_student.nonzero(),
-        target[is_student],
-        label=f'student true {label}',
-        color='k',
-        alpha=0.5,
-    )
+    ax.plot(target, label=f'True', linestyle='-', alpha=0.75, color=palette[0])
+    # ax.plot(prediction, label=f'pred', linestyle='--', alpha=0.75)
     ax.scatter(
         is_student.nonzero(),
         prediction[is_student],
-        label=f'student pred {label}',
+        label=f'Pred',
         alpha=0.5,
-        color='red'
+        color=palette[1],
+        s=5,
     )
 
-    ax.set_xlim(0, 1000)
     ax.set_xlim(0, 500)
-    # ax.set_xlim(0, 5000)
-    ax.legend()
-    ax.set_title(label, fontsize=20)
+    xticks = ax.get_xticks()
+    ax.set_xticks(xticks)
+    ax.set_xticklabels(xticks * cfg.dataset.bin_size_ms / 1000)
+    ax.set_xlabel('Time (s)')
+
+    ax.set_yticks([-1, 0, 1])
+    # Set minor y-ticks
+    ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
+    # Enable minor grid lines
+    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray', alpha=0.3)
+    ax.set_ylabel(f'{camera_label.get(label, label)} (au)')
+
+    legend = ax.legend(
+        loc='upper center',  # Positions the legend at the top center
+        bbox_to_anchor=(0.8, 1.05),  # Adjusts the box anchor to the top center
+        ncol=len(palette),  # Sets the number of columns equal to the length of the palette to display horizontally
+        frameon=False,
+        fontsize=20
+    )
+    # Make text in legend colored accordingly
+    for color, text in zip(palette, legend.get_texts()):
+        text.set_color(color)
+
+    # ax.get_legend().remove()
+    ax.annotate(
+        'True', xy=(0.15, 0.6), xytext=(0.15, 0.6),
+        xycoords='axes fraction', textcoords='axes fraction',
+        color=palette[0], fontsize=20
+    )
+    ax.annotate(
+        'Pred', xy=(0.25, 0.6), xytext=(0.25, 0.6),
+        xycoords='axes fraction', textcoords='axes fraction',
+        color=palette[1], fontsize=20
+    )
 
 labels = DIMS[data_label]
 num_dims = len(labels)
-fig, axs = plt.subplots(num_dims, 1, figsize=(20, 5 * num_dims), sharex=True)
-print(target.shape)
+fig, axs = plt.subplots(
+    num_dims, 1, figsize=(10, 2.5 * num_dims),
+    sharex=True, sharey=True
+)
 
 for i in range(num_dims):
     plot_target_pred_overlay(target[i::num_dims], prediction[i::num_dims], is_student[i::num_dims], label=labels[i], ax=axs[i])
 
 plt.tight_layout()
-fig.suptitle(f'{query}: {data_label} Velocity R2 Stud: {r2_student:.2f}')
+
+
+data_label_camera = {
+    'odoherty': "O'Doherty",
+}
+fig.suptitle(
+    f'{data_label_camera.get(data_label, data_label)} $R^2$ ($\\uparrow$): {r2_student:.2f}',
+    fontsize=20,
+)
+# fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
 #%%
 # ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims

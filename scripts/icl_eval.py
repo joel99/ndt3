@@ -15,8 +15,6 @@ from sklearn.metrics import r2_score
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, EmbedStrat, DataKey, MetaKey
 from context_general_bci.dataset import SpikingDataset, DataAttrs
 from context_general_bci.model import transfer_model
-from context_general_bci.task_io import create_token_padding_mask
-from context_general_bci.contexts import context_registry
 from context_general_bci.analyze_utils import stack_batch, load_wandb_run
 from context_general_bci.analyze_utils import prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
@@ -25,34 +23,70 @@ from context_general_bci.utils import get_wandb_run, wandb_query_latest
 CONTEXT_S_SUITE = [0, 1, 2, 3]
 BINS_PER_S = 50
 
-EVAL_DATASET_SUITE = [
-    "odoherty_rtt-Indy-20160407_02",
-    "odoherty_rtt-Indy-20160627_01",
-    "odoherty_rtt-Indy-20161005_06",
-    "odoherty_rtt-Indy-20161026_03",
-    "odoherty_rtt-Indy-20170131_02"
-]
-
+data_label ='indy'
+#%%
 wandb_run = wandb_query_latest('no_embed', allow_running=True)[0]
 # wandb_run = wandb_query_latest('30s_no_embed')[0]
 print(f'ICL Eval for: {wandb_run.id}')
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run)
 # cfg.model.task.outputs = [Output.behavior, Output.behavior_pred] # Don't actually need this, just need the metric
-
-def compute_icl_eval(data_id, context_s=27):
+from scripts.predict_scripted import icl_eval
+def compute_icl_eval(data_label, context_s=27):
     return 0. # TODO call out to `predict_scripted`
 results = []
 for context_s in CONTEXT_S_SUITE:
     results.append({
         'data_id': 'eval',
         'context_s': context_s,
-        'icl': compute_icl_eval(data_id, context_s)
+        'icl': compute_icl_eval(data_label, context_s)
     })
 results = pd.DataFrame(results)
 #%%
-f = plt.figure(figsize=(8, 8))
+results = {
+    'Model': [
+        '70 hr (Expert)',
+        '70 hr (Expert)',
+        '70 hr (Expert)',
+        '70 hr (Expert)',
+        '700 hr',
+        '700 hr',
+        '700 hr',
+        '700 hr',
+    ],
+    'context_s': [0, 1, 2, 3, 0, 1, 2, 3,],
+    'icl': [
+        0.6474,
+        0.6578,
+        0.6580,
+        0.663,
+        0.6120,
+        0.6222,
+        0.6321,
+        0.6432
+    ] # Produced by running for i in {0,1,2,3};do python scripts/predict_scripted.py -i <variant> -d indy -c $i;done
+}
+results = pd.DataFrame(results)
+f = plt.figure(figsize=(6, 6))
 ax = prep_plt(f.gca(), big=True)
 
-sns.lineplot(
-
+palette = sns.color_palette(
+    palette='pastel',
+    n_colors=2
 )
+sns.lineplot(
+    data=results,
+    x='context_s',
+    y='icl',
+    hue='Model',
+    ax=ax,
+    palette=palette,
+)
+# hline labeled "Single session, 300s" at 0.56
+ax.axhline(0.56, ls='--', color='k', label='Single session NDT2, 5 min')
+ax.legend(
+    loc=(0.0, 0.0),
+    bbox_to_anchor=(0.1, 0.1),
+    frameon=False
+)
+ax.set_ylabel("Eval Velocity $R^2$ ($\\uparrow$)")
+ax.set_xlabel('Velocity input (s)')
