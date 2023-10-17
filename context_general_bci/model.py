@@ -674,11 +674,11 @@ class BrainBertInterface(pl.LightningModule):
                     if prefix and self.cfg.task.context_prompt_time_thresh > 0:
                         # Essentially - maskout only begins at timestamps past prompt threshold.
                         sample_thresh = torch.randint(
-                            getattr(self.cfg.task, 'context_prompt_time_thresh_min', 5),
+                            self.cfg.task.context_prompt_time_thresh_min,
                             self.cfg.task.context_prompt_time_thresh,
                             (1,),
                             device=pipeline_context.device
-                        ) if getattr(self.cfg.task, 'context_prompt_time_thresh_min', 0) else self.cfg.task.context_prompt_time_thresh
+                        ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
                         mask = mask & (times >= sample_thresh)
                         # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
                     elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
@@ -686,10 +686,10 @@ class BrainBertInterface(pl.LightningModule):
                         # print(times.shape)
                         sample_thresh = torch.randint(
                             self.cfg.task.context_prompt_time_thresh,
-                            getattr(self.cfg.task, 'context_prompt_time_thresh_min', -5),
+                            self.cfg.task.context_prompt_time_thresh_min,
                             (1,),
                             device=pipeline_context.device
-                        ) if getattr(self.cfg.task, 'context_prompt_time_thresh_min', 0) else self.cfg.task.context_prompt_time_thresh
+                        ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
                         non_pad_times = times.clone()
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
@@ -861,8 +861,6 @@ class BrainBertInterface(pl.LightningModule):
             if 'loss' in update and self.cfg.task.task_weights[i] > 0:
                 batch_out[f'{task.value}_loss'] = update['loss']
                 running_loss = running_loss + self.cfg.task.task_weights[i] * update['loss']
-            # if torch.isnan(running_loss).any():
-            #     breakpoint()
         batch_out['loss'] = running_loss
         # if use_prefix:
             # print(f"prefix loss: {batch_out['loss']}")
