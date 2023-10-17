@@ -30,6 +30,7 @@ def main(
     student_prob: float,
     data_label: str,
     gap: int,
+    eval_tail_s: int,
     # gpu: int,
     cue: float,
     limit: float,
@@ -48,12 +49,23 @@ def main(
     cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
     cfg.dataset.exclude_datasets = []
     cfg.dataset.eval_datasets = []
-    cfg.model.eval.teacher_timesteps = int(50 * cue) # 0.5s
-    cfg.model.eval.limit_timesteps = int(50 * limit) # up to 4s
+    cfg.model.eval.teacher_timesteps = round(cue * 1000 // cfg.dataset.bin_size_ms) # 0.5s
+    cfg.model.eval.limit_timesteps = round(limit * 1000 // cfg.dataset.bin_size_ms) # up to 4s
     cfg.model.eval.temperature = temperature
     cfg.model.eval.use_student = student
     cfg.model.eval.student_prob = student_prob
     cfg.model.eval.maskout_last_n = maskout_last_n
+
+    if eval_tail_s:
+        if data_label not in ['robust', 'eval', 'indy', 'miller']:
+            raise ValueError("Eval tail only supported for 5s chop datasets")
+        print(f"Eval tail: {eval_tail_s}")
+        # Compute gap based on total timebins - eval tail bins - teacher timesteps
+        # Hm,... I need to update this script.
+        total_bins = round(cfg.dataset.odoherty_rtt.chop_size_ms // cfg.dataset.bin_size_ms)
+        eval_bins = round(eval_tail_s * 1000 // cfg.dataset.bin_size_ms)
+        teacher_bins = cfg.model.eval.teacher_timesteps
+        gap = total_bins - eval_bins - teacher_bins
     cfg.model.eval.student_gap = gap
 
     trainer = pl.Trainer(
@@ -181,7 +193,8 @@ if __name__ == "__main__":
     # parser.add_argument("-g", "--gpu", type=int, default=0, help="GPU index.")
     parser.add_argument('-g', '--gap', type=int, default=0, help="Gap for student.")
     parser.add_argument("-c", "--cue", type=float, default=0.5, help="Cue context length (s)" )
-    parser.add_argument("-l", "--limit", type=float, default=1.0, help="Limit eval length (s)")
+    parser.add_argument("-l", "--limit", type=float, default=0., help="Limit eval length (s)")
+    parser.add_argument("-e", "--eval_tail_s", type=int, default=1., help="Eval tail length (s)")
     parser.add_argument("--trials", type=int, default=0, help="Number of trials per session to evaluate. 0 for no subset")
     parser.add_argument("-b", "--batch_size", type=int, default=48, help="Batch size.")
     parser.add_argument("-m", "--maskout_last_n", type=int, default=0, help="Mask out last N timesteps.")

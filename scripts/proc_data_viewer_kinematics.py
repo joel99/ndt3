@@ -19,23 +19,15 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest, unflatten
 
-sample_query = 'base' # just pull the latest run to ensure we're keeping its preproc config
-sample_query = '10s_loco_regression'
-
-# Return run
-# sample_query = 'sparse'
-sample_query = 'bhvr_12l_512_t_2048-qu2ssi6d'
-sample_query = 'bhvr_12l_1024_km8_c512-6p6h9m7l'
-sample_query = 'monkey_trialized-0kksyosm' # Need this for jenkins
-# sample_query = 'reggie-9mmfeh2p'
-sample_query = 'monkey_trialized_6l_1024-zgsjsog0'
-
+sample_query = "data_min-jkohlswe"
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
 
 # print(wandb_run)
 _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
 run_cfg = cfg.dataset
+cfg.dataset.eval_datasets = []
+cfg.dataset.exclude_datasets = []
 
 run_cfg.datasets = [
     # FBC Helicopter
@@ -88,8 +80,9 @@ run_cfg.datasets = [
 
     # 'dyer_co.*',
     # 'gallego_.*', # Gallego
+    'odoherty_rtt-Indy-20160627_01.*',
     # 'churchland_maze_jenkins.*',
-    'churchland_maze_nitschke.*',
+    # 'churchland_maze_nitschke.*',
     # 'churchland_misc_jenkins.*',
     # 'churchland_misc_nitschke.*',
     # 'churchland_misc_reggie-1-qq.*', # reggie covs sus
@@ -131,11 +124,30 @@ pprint(dimensions)
 
 #%%
 from pathlib import Path
-from matplotlib.gridspec import GridSpec
 
-def plot_covs(ax, trial_cov, cov_dims, cov_space: torch.Tensor | None =None):
+trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
+trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
+# trial_indices = range(40)
+# trial_indices = np.arange(6)
+# trial_indices = np.arange(2)
+# trial_indices = np.arange(12)+12
+# trial_indices = np.arange(12)+24
+# trial_indices = np.arange(12)+24+12
+# trial_indices = np.arange(5)
+# trial_indices = np.arange(3)+24+26
+# trial_indices = range(4)
+trial_indices = range(2)
+USE_CONSTRAINT = False
+USE_RETURN = False
+def plot_covs(
+        ax,
+        trial_cov,
+        cov_dims,
+        cov_space: torch.Tensor | None =None,
+        fontsize=18,
+    ):
     # print(trial_cov.shape)
-    ax = prep_plt(ax=ax, big=True)
+    ax = prep_plt(ax=ax, size='huge')
     if cov_space is None:
         for cov, label in zip(trial_cov.T, cov_dims):
             if label != 'f':
@@ -157,11 +169,23 @@ def plot_covs(ax, trial_cov, cov_dims, cov_space: torch.Tensor | None =None):
             # cov_pos = cov_pos - cov_pos[0]
             ax.plot(cov_pos, label=cov_dims[i])
     ax.set_ylim(-1, 1)
-    # ax.set_ylabel('Position')
+    # Set major y-ticks
+    ax.set_yticks([-1, 0, 1])
+
+    # Set minor y-ticks
+    ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
+
+    # Enable minor grid lines
+    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray', alpha=0.3)
+
+    ax.set_ylabel('Velocity (au)')
     # Convert xticks to 20x ms
     xticks = ax.get_xticks()
+    xticks = np.arange(0, xticks.max(), 50)
     ax.set_xticks(xticks)
-    ax.set_xticklabels((xticks * 20).astype(int))
+    ax.set_xticklabels((xticks / 50).astype(int))
+    # Set all fontsizes huge
+
 
 def plot_spikes(ax, spikes, spike_times, spike_positions):
     r"""
@@ -170,10 +194,11 @@ def plot_spikes(ax, spikes, spike_times, spike_positions):
         spike_times: (n_tokens, 1)
         spike_positions: (n_tokens, 1)
     """
-    ax = prep_plt(ax=ax)
+    ax = prep_plt(ax=ax, size='huge')
     spike_population = unflatten(spikes.unsqueeze(0), spike_times.unsqueeze(0), spike_positions.unsqueeze(0)).squeeze(0)
     # Do imshow instead
     ax.imshow(spike_population.T, aspect='auto', cmap='gray_r')
+    ax.set_ylabel("Channels")
     # Raster plot
     # spike_time, spike_space = spike_population.nonzero().T
     # ax.scatter(spike_time, spike_space, s=5, marker='|', color='k')
@@ -183,7 +208,7 @@ def plot_constraints(ax_row, dataset, col, trial):
     times = dataset[trial][DataKey.constraint_time]
     space = dataset[trial][DataKey.constraint_space]
     # print('Constraint:', constraints.shape)
-    prep_plt(ax_row[col], big=True)
+    prep_plt(ax_row[col], size="huge")
     # print(constraints.shape, times)
     # If off axis, that means it's on
     space_offset = constraints / 2 + constraints / 24 * space.unsqueeze(-1)
@@ -202,7 +227,7 @@ def plot_rewards(ax_row, dataset, col, trial):
     returns = dataset[trial][DataKey.task_return]
     rewards = dataset[trial][DataKey.task_reward]
     times = dataset[trial][DataKey.task_return_time]
-    prep_plt(ax_row[col], big=True)
+    prep_plt(ax_row[col], size="huge")
     ax_row[col].scatter(times, returns[:, 0], label='return', marker='|', s=1000)
     ax_row[col].scatter(times, rewards[:, 0] + 0.25, label='reward', marker='|', s=1000) # Offset for visibility
     # ax_row[col].set_ylim(-0.1, 8.1)
@@ -213,16 +238,17 @@ def plot_rewards(ax_row, dataset, col, trial):
 
 def plot_multiple_trials(trial_indices, dataset):
     # Determine the number of rows needed for constraints
-    use_constraint = False and any(DataKey.constraint in dataset[trial] for trial in trial_indices)
-    use_return = any(DataKey.task_return in dataset[trial] for trial in trial_indices)
+    use_constraint = USE_CONSTRAINT and any(DataKey.constraint in dataset[trial] for trial in trial_indices)
+    use_return = USE_RETURN and any(DataKey.task_return in dataset[trial] for trial in trial_indices)
     n_rows = 1 + 1 + int(use_constraint) + int(use_return)
     height_ratios = [1] * n_rows
-    height_ratios[1] = 3  # 2nd row will be 3 times larger
+    height_ratios[1] = 2  # 2nd row will be 3 times larger
+    # height_ratios[1] = 3  # 2nd row will be 3 times larger
 
     f, axes = plt.subplots(
         n_rows, len(trial_indices),
         sharex=True, sharey='row',
-        figsize=(40, 32),
+        figsize=(12, 10),
         # figsize=(len(trial_indices) * 8, 8),
         gridspec_kw={'height_ratios': height_ratios},
     )
@@ -266,21 +292,8 @@ def plot_multiple_trials(trial_indices, dataset):
     for final_ax in axes[:, -1]:
         final_ax.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
     for i in range(axes.shape[1]):
-        axes[-1, i].set_xlabel('Time (ms)')
+        axes[-1, i].set_xlabel('Time (s)')
 
-# Usage
-trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
-trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
-# trial_indices = range(40)
-# trial_indices = np.arange(6)
-# trial_indices = np.arange(2)
-# trial_indices = np.arange(12)+12
-# trial_indices = np.arange(12)+24
-# trial_indices = np.arange(12)+24+12
-# trial_indices = np.arange(5)
-# trial_indices = np.arange(3)+24+26
-trial_indices = range(4)
-# trial_indices = range(2)
 plot_multiple_trials(trial_indices, dataset)
 
 #%%
@@ -344,9 +357,9 @@ if xlim:
 # *20 to convert xticks to ms
 xticks = ax.get_xticks()
 ax.set_xticks(xticks)
-# ax.set_xticklabels((xticks / 50).astype(int))
-ax.set_xticklabels((xticks * 20).astype(int))
-ax.set_xlabel('ms')
+ax.set_xticklabels((xticks / 50).astype(int))
+# ax.set_xticklabels((xticks * 20).astype(int))
+ax.set_xlabel('s')
 ax.set_title(f'Velocity {datapath.stem}')
 
 #%%

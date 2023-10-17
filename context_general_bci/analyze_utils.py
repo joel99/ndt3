@@ -178,6 +178,10 @@ def _prep_plt(ax=None, spine_alpha=0.3, size="small", big=False):
         # MEDIUM_SIZE = 24
         LARGE_SIZE = 26
         # LARGE_SIZE = 28
+    if size == "huge":
+        SMALL_SIZE = 22
+        MEDIUM_SIZE = 26
+        LARGE_SIZE = 30
     plt.rc('font', size=SMALL_SIZE)          # controls default text sizes
     plt.rc('axes', labelsize=LARGE_SIZE)    # fontsize of the x and y labels
     plt.rc('xtick', labelsize=MEDIUM_SIZE)    # fontsize of the tick labels
