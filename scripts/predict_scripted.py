@@ -4,6 +4,8 @@ import os
 import argparse
 from pprint import pprint
 import logging
+from datetime import datetime
+from pytz import timezone
 
 import torch
 torch.set_float32_matmul_precision('medium') # we don't care about precision really..
@@ -55,6 +57,17 @@ def main(
     cfg.model.eval.use_student = student
     cfg.model.eval.student_prob = student_prob
     cfg.model.eval.maskout_last_n = maskout_last_n
+
+    # Hotfix position: check if wandb run is older than oct 15, 10:00am
+    wandb_datetime_utc = datetime.fromisoformat(wandb_run.created_at).replace(tzinfo=timezone('UTC'))
+    est = timezone('US/Eastern')
+    wandb_datetime_est = wandb_datetime_utc.astimezone(est)
+
+    # Create a datetime object for Oct 15, 2023, 10AM EST
+    target_datetime_est = est.localize(datetime(2023, 10, 15, 10, 0, 0))
+
+    if wandb_datetime_est < target_datetime_est:
+        cfg.model.eval.offset_kin_hotfix = 1
 
     if eval_tail_s:
         if data_label not in ['robust', 'eval', 'indy', 'miller']:

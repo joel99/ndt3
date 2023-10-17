@@ -626,6 +626,8 @@ class BrainBertInterface(pl.LightningModule):
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
                 pipeline_space[i] = s + get_task_dimensionality_range(tk, self.data_attrs)[0]
+                if getattr(self.cfg.eval, 'offset_kin_hotfix', 0) and tk in ['kinematic_infill', 'return_context']:
+                    pipeline_space[i] = pipeline_space[i] + self.cfg.eval.offset_kin_hotfix
             modalities = [torch.full_like(s, filtered[i], dtype=torch.uint8) for i, s in enumerate(pipeline_space)] # track original task pipeline index
             modalities, _ = pack(modalities, 'b *')
         else:

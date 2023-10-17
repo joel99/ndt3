@@ -278,6 +278,7 @@ class EvalConfig:
     student_prob: float = 1. # If < 1, use this as a probability of using student predictions at next step, else drop. (For debugging constant predictions/train time parity)
     limit_timesteps: int = 0 # limit eval to N timesteps. In units of timebins
     student_gap: int = 0 # Timesteps since teacher to start counting predictions. Related but exclusive from maskout_last_n
+    offset_kin_hotfix: int = 0 # Offset post-spike modalities position by this much. Needed as position of post-spike dimensions are 1 lower than they used to be, quick hotfix so I can still use those checkpoitns. Break ~https://github.com/joel99/ndt3/commit/7f29a564b080864d362b43dffe06c123b82ce75d
 
 
 @dataclass
