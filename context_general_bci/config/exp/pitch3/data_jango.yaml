@@ -1,0 +1,22 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  lr_decay_steps: 5000
+dataset:
+  datasets:
+  - miller_Jango.*
+  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+train:
+  # batch_size: 24 # 40G
+  # batch_size: 56 # 80G
+  batch_size: 32 # 40G
+  # batch_size: 64 # 80G
+  patience: 50
+  effective_batch_size: 512

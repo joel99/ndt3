@@ -90,7 +90,7 @@ def main(
     )
     if data_label == "eval":
         for sub_label in ['dyer', 'indy', 'miller']: # TODO infer from eval_datasets
-            return icl_eval(src_model, cfg, sub_label, trials, batch_size, trainer)
+            icl_eval(src_model, cfg, sub_label, trials, batch_size, trainer)
     else:
         return icl_eval(src_model, cfg, data_label, trials, batch_size, trainer)
 

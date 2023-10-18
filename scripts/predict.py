@@ -40,6 +40,7 @@ DIMS = {
 
 
 query = 'data_min-jkohlswe'
+query = 'data_indy-jt456lfs'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -65,13 +66,13 @@ target = [
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_jenkins.*'
 
-    'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
+    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
 
-    # 'odoherty_rtt-Indy-20160407_02',
-    # 'odoherty_rtt-Indy-20160627_01',
-    # 'odoherty_rtt-Indy-20161005_06',
-    # 'odoherty_rtt-Indy-20161026_03',
-    # 'odoherty_rtt-Indy-20170131_02',
+    'odoherty_rtt-Indy-20160407_02',
+    'odoherty_rtt-Indy-20160627_01',
+    'odoherty_rtt-Indy-20161005_06',
+    'odoherty_rtt-Indy-20161026_03',
+    'odoherty_rtt-Indy-20170131_02',
 
     # 'odoherty_rtt-Loco-20170210_03',
     # 'odoherty_rtt-Loco-20170213_02',
@@ -175,27 +176,76 @@ camera_label = {
     'x': 'Vel X',
     'y': 'Vel Y',
     'z': 'Vel Z',
+    'EMG_FCU': 'FCU',
+    'EMG_ECRl': 'ECRl',
+    'EMG_FDP': 'FDP',
+    'EMG_FCR': 'FCR',
+    'EMG_ECRb': 'ECRb',
+    'EMG_EDCr': 'EDCr',
 }
-def plot_target_pred_overlay(target, prediction, is_student, label, ax=None, palette=palette):
+xlim = [0, 500]
+subset_cov = []
+# subset_cov = ['EMG_FCU', 'EMG_ECRl']
+
+def plot_prediction_spans(ax, is_student, prediction, color):
+    # Convert boolean tensor to numpy for easier manipulation
+    is_student_np = is_student.cpu().numpy()
+
+    # Find the changes in the boolean array
+    change_points = np.where(is_student_np[:-1] != is_student_np[1:])[0] + 1
+
+    # Include the start and end points for complete spans
+    change_points = np.concatenate(([0], change_points, [len(is_student_np)]))
+
+    # Initialize a variable to keep track of whether the first line is plotted
+    first_line = True
+
+    # Plot the lines
+    for start, end in zip(change_points[:-1], change_points[1:]):
+        if is_student_np[start]:  # Check if the span is True
+            label = 'Pred' if first_line else None  # Label only the first line
+            ax.plot(
+                np.arange(start, end),
+                prediction[start:end],
+                color=color,
+                label=label,
+                alpha=1.,
+                linestyle='-',
+                linewidth=2,
+            )
+            first_line = False  # Update the flag as the first line is plotted
+
+def plot_target_pred_overlay(
+        target, prediction, is_student, label, ax=None, palette=palette,
+        plot_xlabel=False, xlim=None,
+):
     ax = prep_plt(ax, big=True)
+    palette[0] = 'k'
 
+    if xlim:
+        target = target[xlim[0]:xlim[1]]
+        prediction = prediction[xlim[0]:xlim[1]]
+        is_student = is_student[xlim[0]:xlim[1]]
     # Plot true and predicted values
-    ax.plot(target, label=f'True', linestyle='-', alpha=0.75, color=palette[0])
+    ax.plot(target, label=f'True', linestyle='-', alpha=0.5, color=palette[0])
     # ax.plot(prediction, label=f'pred', linestyle='--', alpha=0.75)
-    ax.scatter(
-        is_student.nonzero(),
-        prediction[is_student],
-        label=f'Pred',
-        alpha=0.5,
-        color=palette[1],
-        s=5,
-    )
 
-    ax.set_xlim(0, 500)
+    # ax.scatter(
+    #     is_student.nonzero(),
+    #     prediction[is_student],
+    #     label=f'Pred',
+    #     alpha=0.5,
+    #     color=palette[1],
+    #     s=5,
+    # )
+    plot_prediction_spans(ax, is_student, prediction, palette[1])
+    if xlim is not None:
+        ax.set_xlim(xlim[0], xlim[1])
     xticks = ax.get_xticks()
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticks * cfg.dataset.bin_size_ms / 1000)
-    ax.set_xlabel('Time (s)')
+    if plot_xlabel:
+        ax.set_xlabel('Time (s)')
 
     ax.set_yticks([-1, 0, 1])
     # Set minor y-ticks
@@ -206,7 +256,7 @@ def plot_target_pred_overlay(target, prediction, is_student, label, ax=None, pal
 
     legend = ax.legend(
         loc='upper center',  # Positions the legend at the top center
-        bbox_to_anchor=(0.8, 1.05),  # Adjusts the box anchor to the top center
+        bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
         ncol=len(palette),  # Sets the number of columns equal to the length of the palette to display horizontally
         frameon=False,
         fontsize=20
@@ -216,36 +266,42 @@ def plot_target_pred_overlay(target, prediction, is_student, label, ax=None, pal
         text.set_color(color)
 
     # ax.get_legend().remove()
-    ax.annotate(
-        'True', xy=(0.15, 0.6), xytext=(0.15, 0.6),
-        xycoords='axes fraction', textcoords='axes fraction',
-        color=palette[0], fontsize=20
-    )
-    ax.annotate(
-        'Pred', xy=(0.25, 0.6), xytext=(0.25, 0.6),
-        xycoords='axes fraction', textcoords='axes fraction',
-        color=palette[1], fontsize=20
-    )
 
 labels = DIMS[data_label]
 num_dims = len(labels)
+if subset_cov:
+    subset_dims = [i for i in range(num_dims) if labels[i] in subset_cov]
+    labels = [labels[i] for i in subset_dims]
+else:
+    subset_dims = range(num_dims)
 fig, axs = plt.subplots(
-    num_dims, 1, figsize=(10, 2.5 * num_dims),
+    len(subset_dims), 1, figsize=(8, 2.5 * len(subset_dims)),
     sharex=True, sharey=True
 )
 
-for i in range(num_dims):
-    plot_target_pred_overlay(target[i::num_dims], prediction[i::num_dims], is_student[i::num_dims], label=labels[i], ax=axs[i])
+for i, dim in enumerate(subset_dims):
+    plot_target_pred_overlay(
+        target[dim::num_dims],
+        prediction[dim::num_dims],
+        is_student[dim::num_dims],
+        label=labels[i],
+        ax=axs[i],
+        plot_xlabel=i == subset_dims[-1], xlim=xlim
+    )
 
 plt.tight_layout()
 
 
 data_label_camera = {
     'odoherty': "O'Doherty",
+    'miller': 'IsoEMG',
 }
 fig.suptitle(
     f'{data_label_camera.get(data_label, data_label)} $R^2$ ($\\uparrow$): {r2_student:.2f}',
     fontsize=20,
+    # offset
+    x=0.35,
+    y=0.99,
 )
 # fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
