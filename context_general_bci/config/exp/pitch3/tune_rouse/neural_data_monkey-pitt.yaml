@@ -1,0 +1,6 @@
+# @package _global_
+
+defaults:
+  - _default
+train:
+  patience: 50

@@ -144,13 +144,9 @@ target = heldin_outputs[Output.behavior]
 is_student = heldin_outputs[Output.behavior_query_mask]
 # Compute R2
 r2 = r2_score(target, prediction)
-r2_student = r2_score(target[is_student], prediction[is_student])
-
-
+# r2_student = r2_score(target[is_student], prediction[is_student])
 is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
 valid = is_student_rolling > model.cfg.eval.student_gap
-# Compute R2
-# r2 = r2_score(target, prediction)
 mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
 r2_student = r2_score(target[valid], prediction[valid])
 
