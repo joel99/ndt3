@@ -877,7 +877,12 @@ class SpikingDataset(Dataset):
             if self.cfg.eval_split_continuous:
                 eval_keys = eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.iloc[:limit_per_eval_session])[MetaKey.unique]
             else:
-                eval_keys = eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_eval_session))[MetaKey.unique]
+                try:
+                    eval_keys = eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.sample(limit_per_eval_session))[MetaKey.unique]
+                except ValueError:
+                    print("Did not have enough data in some eval session to sample. Diagnostic:")
+                    print(eval_session_df.groupby([MetaKey.session]).apply(lambda x: x.shape[0]))
+                    raise ValueError
 
             train_session_df = self.meta_df[~self.meta_df[MetaKey.session].isin(eval_datasets)]
             if limit_per_session:

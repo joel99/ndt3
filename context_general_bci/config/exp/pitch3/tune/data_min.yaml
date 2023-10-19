@@ -3,6 +3,4 @@
 defaults:
   - _default
 train:
-  batch_size: 32 # 40G
-  # batch_size: 64 # 80G
   patience: 50

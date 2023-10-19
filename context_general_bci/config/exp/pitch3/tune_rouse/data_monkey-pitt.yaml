@@ -2,5 +2,3 @@
 
 defaults:
   - _default
-train:
-  patience: 50

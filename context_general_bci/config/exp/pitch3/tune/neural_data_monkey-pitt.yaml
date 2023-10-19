@@ -10,3 +10,5 @@ model:
     - ModelTask.constraints
     - ModelTask.return_context
     task_weights: [1.0, 1.0, 0., 0.]
+train:
+  patience: 50

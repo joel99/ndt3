@@ -212,8 +212,15 @@ def plot_prediction_spans(ax, is_student, prediction, color):
             first_line = False  # Update the flag as the first line is plotted
 
 def plot_target_pred_overlay(
-        target, prediction, is_student, label, ax=None, palette=palette,
-        plot_xlabel=False, xlim=None,
+        target,
+        prediction,
+        is_student,
+        label,
+        model_label="True",
+        ax=None,
+        palette=palette,
+        plot_xlabel=False,
+        xlim=None,
 ):
     ax = prep_plt(ax, big=True)
     palette[0] = 'k'
@@ -223,7 +230,7 @@ def plot_target_pred_overlay(
         prediction = prediction[xlim[0]:xlim[1]]
         is_student = is_student[xlim[0]:xlim[1]]
     # Plot true and predicted values
-    ax.plot(target, label=f'True', linestyle='-', alpha=0.5, color=palette[0])
+    ax.plot(target, label=f'{model_label} ({r2_student:.2f})', linestyle='-', alpha=0.5, color=palette[0])
     # ax.plot(prediction, label=f'pred', linestyle='--', alpha=0.75)
 
     # ax.scatter(
@@ -293,7 +300,7 @@ data_label_camera = {
     'miller': 'IsoEMG',
 }
 fig.suptitle(
-    f'{data_label_camera.get(data_label, data_label)} $R^2$ ($\\uparrow$): {r2_student:.2f}',
+    f'{data_label_camera.get(data_label, data_label)} 0-Shot $R^2$ ($\\uparrow$)',
     fontsize=20,
     # offset
     x=0.35,

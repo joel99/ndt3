@@ -15,8 +15,8 @@ defaults:
 model:
   arch: Architecture.flash_ndt
   lr_ramp_steps: 100
-  lr_decay_steps: 1000
-  lr_init: 1e-4
+  lr_decay_steps: 2000
+  lr_init: 1e-4 # Not rigorously, I find this better for tuning
   lr_interval: step
   lr_schedule: cosine_timm
 
@@ -26,8 +26,8 @@ model:
   kinematic_token_maskout: 0.5
   task:
     context_prompt_time_thresh: -50 # 1s
-    context_prompt_time_thresh_min: -40 # Keep it high, don't allow trivial maps
-    prefix_ratio: 1.0 # !
+    context_prompt_time_thresh_min: -5
+    prefix_ratio: 0.25
     tasks:
     - ModelTask.spike_context
     - ModelTask.kinematic_infill
@@ -70,7 +70,7 @@ dataset:
   - rouse.*
   eval_datasets:
   - rouse.*
-  scale_limit_per_eval_session: 100
+  scale_limit_per_eval_session: 20 # 100s!
   # scale_limit_per_eval_session: 32 # Evidently not harsh enough...
   eval_ratio: 0.5
   # eval_ratio: 0.8
@@ -90,4 +90,5 @@ train:
   batch_size: 16
   effective_batch_size: 64
   # effective_batch_size: 512
+  patience: 50
 inherit_exp: pitch3
