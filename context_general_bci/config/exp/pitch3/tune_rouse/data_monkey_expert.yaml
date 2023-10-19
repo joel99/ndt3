@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  scale_limit_per_eval_session: 160
+  eval_ratio: 0.25 # We don't have enough to learn anything :(
+inherit_tag: data_monkey

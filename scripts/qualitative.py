@@ -151,7 +151,6 @@ model_r2s = [
     ) for i in range(len(queries))
 ]
 #%%
-
 palette = sns.color_palette(n_colors=len(queries))
 camera_label = {
     'x': 'Vel X',
@@ -199,9 +198,9 @@ def plot_prediction_spans(ax, is_student, prediction, color, model_label):
 def plot_target_pred_overlay(
     output_payloads,
     label,
-    r2s: List[int], # TODO
+    r2s: List[int],
     cfgs: List[RootConfig],
-    model_labels=["Pred"], # TODO
+    model_labels=["Pred"],
     ax: plt.Axes | None = None,
     palette=palette,
     plot_xlabel=False,
@@ -233,7 +232,7 @@ def plot_target_pred_overlay(
     xticks = ax.get_xticks()
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticks * cfgs[0].dataset.bin_size_ms / 1000)
-    ax.set_xlim([0, xlim[1]]) # TODO fixup
+    ax.set_xlim([0 + 1e-5, xlim[1]])
     if plot_xlabel:
         ax.set_xlabel('Time (s)')
     ax.set_yticks([-1, 0, 1])
@@ -271,14 +270,14 @@ fig, axs = plt.subplots(
 )
 
 for i, dim in enumerate(subset_dims):
-    print(outputs[0][Output.behavior_pred].shape])
+    print(outputs[0][Output.behavior_pred].shape)
     reduced_outputs = [
         {
             k: v[dim::num_dims] for k, v in payload.items() if k in [Output.behavior, Output.behavior_pred, Output.behavior_query_mask]
         } for payload in outputs
     ]
     plot_target_pred_overlay(
-        outputs,
+        reduced_outputs,
         label=cov_labels[i],
         ax=axs[i],
         r2s=model_r2s,
