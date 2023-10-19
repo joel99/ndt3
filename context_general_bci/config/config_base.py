@@ -711,6 +711,7 @@ class RootConfig:
     # orchestration
     inherit_exp: str = "" # hunt wandb for the relevant experiment, presumed same tag name.
     inherit_tag: str = "" # override same tag inheritance
+    inherit_orchestrate: bool = False # Trigger some hardcoded tag lookups for sweeping etc.
     serial_run: bool = False # for launchers..
 
     cancel_if_run_exists: bool = True # since codebase is fairly stable now - if same config/tag exists on wandb, do not run.

@@ -1,9 +1,10 @@
 #%%
-# Autoregressive inference procedure, for generalist model
+# Qualitative plots for presentationas
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
+from typing import Dict, List, Any
 from datetime import datetime
 from pytz import timezone
 
@@ -16,126 +17,142 @@ import lightning.pytorch as pl
 
 from sklearn.metrics import r2_score
 
-from context_general_bci.model import transfer_model
+from context_general_bci.model import transfer_model, BrainBertInterface
 from context_general_bci.dataset import SpikingDataset
-from context_general_bci.config import RootConfig, ModelTask, Metric, Output, DataKey, MetaKey
+from context_general_bci.config import RootConfig, ModelTask, Metric, Output, DataKey, MetaKey, BatchKey
 
 from context_general_bci.utils import wandb_query_latest
 from context_general_bci.analyze_utils import (
-    stack_batch, load_wandb_run, prep_plt, rolling_time_since_student, get_dataloader, DIMS
+    stack_batch,
+    load_wandb_run,
+    prep_plt,
+    rolling_time_since_student,
+    DIMS,
+    get_dataloader,
+    data_label_to_target,
 )
 
-
-query = 'data_min-jkohlswe'
-query = 'data_indy-jt456lfs'
-
-wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
-print(wandb_run.id)
-
-src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
-# Hotfix position: check if wandb run is older than oct 15, 10:00am
-wandb_datetime_utc = datetime.fromisoformat(wandb_run.created_at).replace(tzinfo=timezone('UTC'))
-est = timezone('US/Eastern')
-wandb_datetime_est = wandb_datetime_utc.astimezone(est)
-
-# Create a datetime object for Oct 15, 2023, 10AM EST
-target_datetime_est = est.localize(datetime(2023, 10, 15, 10, 0, 0))
-
-if wandb_datetime_est < target_datetime_est:
-    cfg.model.eval.offset_kin_hotfix = 1
-
-cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
-
-target = [
-    # 'miller_Jango-Jango_20150730_001',
-    # 'dyer_co_chewie_2',
-    # 'gallego_co_Chewie_CO_20160510',
-    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
-    # 'churchland_maze_jenkins.*'
-
-    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
-
-    'odoherty_rtt-Indy-20160407_02',
-    'odoherty_rtt-Indy-20160627_01',
-    'odoherty_rtt-Indy-20161005_06',
-    'odoherty_rtt-Indy-20161026_03',
-    'odoherty_rtt-Indy-20170131_02',
-
-    # 'odoherty_rtt-Loco-20170210_03',
-    # 'odoherty_rtt-Loco-20170213_02',
-    # 'odoherty_rtt-Loco-20170214_02',
-
-    # 'odoherty_rtt-Loco-20170215_02',
-    # 'odoherty_rtt-Loco-20170216_02',
-    # 'odoherty_rtt-Loco-20170217_02'
-    # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
-    # 'pitt_broad_pitt_co_CRS02bLab_1761',
-    # 'pitt_broad_pitt_co_CRS07Home_32',
-    # 'pitt_broad_pitt_co_CRS07Home_88',
-    # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+data_label = 'indy'
+# data_label = 'miller'
+target = data_label_to_target(data_label)
+queries = [
+    'data_indy-jt456lfs',
+    'data_min-jkohlswe',
 ]
-
-# Note: This won't preserve train val split, try to make sure eval datasets were held out
-cfg.dataset.datasets = target
-cfg.dataset.exclude_datasets = []
-cfg.dataset.eval_datasets = []
-dataset = SpikingDataset(cfg.dataset)
-pl.seed_everything(0)
-print("Eval length: ", len(dataset))
-data_attrs = dataset.get_data_attrs()
-print(data_attrs)
-
-model = transfer_model(src_model, cfg.model, data_attrs)
-
-model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
-model.cfg.eval.student_gap = int(50 * 1.)
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
     precision='bf16-mixed',
 )
-dataloader = get_dataloader(dataset)
-heldin_outputs = stack_batch(trainer.predict(model, dataloader))
-data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
-print(f'Assuming: {data_label}')
 
 
+def prep_query(query):
 
+    wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
+    print(wandb_run.id)
+
+    src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
+    # Hotfix position: check if wandb run is older than oct 15, 10:00am
+    wandb_datetime_utc = datetime.fromisoformat(wandb_run.created_at).replace(tzinfo=timezone('UTC'))
+    est = timezone('US/Eastern')
+    wandb_datetime_est = wandb_datetime_utc.astimezone(est)
+
+    # Create a datetime object for Oct 15, 2023, 10AM EST
+    target_datetime_est = est.localize(datetime(2023, 10, 15, 10, 0, 0))
+
+    if wandb_datetime_est < target_datetime_est:
+        cfg.model.eval.offset_kin_hotfix = 1
+
+    cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
+    # Note: This won't preserve train val split, try to make sure eval datasets were held out
+    cfg.dataset.datasets = target
+    cfg.dataset.exclude_datasets = []
+    cfg.dataset.eval_datasets = []
+    dataset = SpikingDataset(cfg.dataset)
+    pl.seed_everything(0)
+    print("Eval length: ", len(dataset))
+    data_attrs = dataset.get_data_attrs()
+    print(data_attrs)
+
+    model = transfer_model(src_model, cfg.model, data_attrs)
+    model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
+    model.cfg.eval.student_gap = int(50 * 1.)
+
+    dataloader = get_dataloader(dataset)
+    heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+
+    return (
+        heldin_outputs,
+        model,
+        cfg,
+        dataset,
+    )
+
+MODEL_LABELS = {
+    'data_indy-jt456lfs': 'Indy',
+    'data_min-jkohlswe': 'Min',
+}
+outputs = []
+model_labels = []
+models = []
+cfgs = []
+
+for query in queries:
+    out = prep_query(query)
+    outputs.append(out[0])
+    model_labels.append(MODEL_LABELS[query])
+    models.append(out[1])
+    cfgs.append(out[2])
 
 
 #%%
-print(heldin_outputs[Output.behavior_pred].shape)
-print(heldin_outputs[Output.behavior].shape)
+def compute_r2s(
+        pred_payload: Dict[Output, torch.Tensor], model: BrainBertInterface,
+        plot=False, label=None, color=None,
+):
+    print(f'Pred points: {pred_payload[Output.behavior_pred].shape}')
+    # print(pred_payload[Output.behavior].shape)
 
-prediction = heldin_outputs[Output.behavior_pred]
-target = heldin_outputs[Output.behavior]
-is_student = heldin_outputs[Output.behavior_query_mask]
-# Compute R2
-r2 = r2_score(target, prediction)
-# r2_student = r2_score(target[is_student], prediction[is_student])
-is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-valid = is_student_rolling > model.cfg.eval.student_gap
-mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
-r2_student = r2_score(target[valid], prediction[valid])
+    prediction = pred_payload[Output.behavior_pred]
+    target = pred_payload[Output.behavior]
+    is_student = pred_payload[Output.behavior_query_mask]
 
-print(f'R2: {r2:.4f}')
-print(f'R2 Student: {r2_student:.4f}')
-print(model.cfg.eval)
-f = plt.figure(figsize=(10, 10))
-ax = prep_plt(f.gca(), big=True)
-palette = sns.color_palette(n_colors=2)
-colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
-ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
-target_student = target[is_student]
-prediction_student = prediction[is_student]
-target_student = target_student[prediction_student.abs() < 0.8]
-prediction_student = prediction_student[prediction_student.abs() < 0.8]
-robust_r2_student = r2_score(target_student, prediction_student)
-ax.set_xlabel('True')
-ax.set_ylabel('Pred')
-ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}, Robust: {robust_r2_student:.2f} ')
+    r2_net = r2_score(target, prediction)
+    is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
+    valid = is_student_rolling > model.cfg.eval.student_gap
+    # Compute R2
+    # mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
+    r2_student = r2_score(target[valid], prediction[valid])
+    # print(f'R2_net: {r2:.4f}')
+    print(f'R2 Student: {r2_student:.4f}')
+    print(model.cfg.eval)
+
+    if plot:
+        f = plt.figure(figsize=(10, 10))
+        ax = prep_plt(f.gca(), big=True)
+        palette = sns.color_palette(n_colors=2)
+        colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
+        ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
+        target_student = target[is_student]
+        prediction_student = prediction[is_student]
+        target_student = target_student[prediction_student.abs() < 0.8]
+        prediction_student = prediction_student[prediction_student.abs() < 0.8]
+        robust_r2_student = r2_score(target_student, prediction_student)
+        ax.set_xlabel('True')
+        ax.set_ylabel('Pred')
+        ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}, Robust: {robust_r2_student:.2f} ')
+    return r2_student
+
+model_r2s = [
+    compute_r2s(
+        outputs[i],
+        models[i],
+        plot=False,
+    ) for i in range(len(queries))
+]
 #%%
-palette = sns.color_palette(n_colors=2)
+
+palette = sns.color_palette(n_colors=len(queries))
 camera_label = {
     'x': 'Vel X',
     'y': 'Vel Y',
@@ -180,47 +197,45 @@ def plot_prediction_spans(ax, is_student, prediction, color, model_label):
             first_line = False  # Update the flag as the first line is plotted
 
 def plot_target_pred_overlay(
-        target,
-        prediction,
-        is_student,
-        label,
-        model_label="Pred",
-        ax=None,
-        palette=palette,
-        plot_xlabel=False,
-        xlim=None,
+    output_payloads,
+    label,
+    r2s: List[int], # TODO
+    cfgs: List[RootConfig],
+    model_labels=["Pred"], # TODO
+    ax: plt.Axes | None = None,
+    palette=palette,
+    plot_xlabel=False,
+    xlim=None,
 ):
     ax = prep_plt(ax, big=True)
-    palette[0] = 'k'
 
     if xlim:
-        target = target[xlim[0]:xlim[1]]
-        prediction = prediction[xlim[0]:xlim[1]]
-        is_student = is_student[xlim[0]:xlim[1]]
-    # Plot true and predicted values
-    ax.plot(target, label=f'True', linestyle='-', alpha=0.2, color=palette[0])
-    # ax.plot(prediction, label=f'pred', linestyle='--', alpha=0.75)
+        payloads = [{
+            k: v[xlim[0]:xlim[1]] for k, v in payload.items()
+        } for payload in output_payloads]
+    else:
+        payloads = output_payloads
 
-    # ax.scatter(
-    #     is_student.nonzero(),
-    #     prediction[is_student],
-    #     label=f'Pred',
-    #     alpha=0.5,
-    #     color=palette[1],
-    #     s=5,
-    # )
-    model_label = f'{model_label} ({r2_student:.2f})'
-    plot_prediction_spans(
-        ax, is_student, prediction, palette[1], model_label
-    )
-    if xlim is not None:
-        ax.set_xlim(xlim[0], xlim[1])
+    target = payloads[0][Output.behavior]
+    assert all([torch.allclose(target, payload[Output.behavior]) for payload in payloads])
+
+    ax.plot(target, label=f'True', linestyle='-', alpha=0.2, color='k')
+    print(model_labels, r2s)
+    for i in range(len(payloads)):
+        plot_prediction_spans(
+            ax,
+            payloads[i][Output.behavior_query_mask],
+            payloads[i][Output.behavior_pred],
+            palette[i],
+            f'{model_labels[i]} ({r2s[i]:.3f})',
+        )
+
     xticks = ax.get_xticks()
     ax.set_xticks(xticks)
-    ax.set_xticklabels(xticks * cfg.dataset.bin_size_ms / 1000)
+    ax.set_xticklabels(xticks * cfgs[0].dataset.bin_size_ms / 1000)
+    ax.set_xlim([0, xlim[1]]) # TODO fixup
     if plot_xlabel:
         ax.set_xlabel('Time (s)')
-
     ax.set_yticks([-1, 0, 1])
     # Set minor y-ticks
     ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
@@ -230,37 +245,47 @@ def plot_target_pred_overlay(
 
     legend = ax.legend(
         loc='upper center',  # Positions the legend at the top center
-        bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
-        ncol=len(palette),  # Sets the number of columns equal to the length of the palette to display horizontally
+        # bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
+        ncol=len(palette) + 1,  # Sets the number of columns equal to the length of the palette to display horizontally
         frameon=False,
-        fontsize=20
+        fontsize=16
     )
     # Make text in legend colored accordingly
-    for color, text in zip(palette, legend.get_texts()):
+    for color, text in zip(palette, legend.get_texts()[1:]):
         text.set_color(color)
 
     # ax.get_legend().remove()
 
-labels = DIMS[data_label]
-num_dims = len(labels)
+cov_labels = ['x', 'y']
+# cov_labels = DIMS[data_label]
+num_dims = len(cov_labels)
 if subset_cov:
-    subset_dims = [i for i in range(num_dims) if labels[i] in subset_cov]
-    labels = [labels[i] for i in subset_dims]
+    subset_dims = [i for i in range(num_dims) if cov_labels[i] in subset_cov]
+    labels = [cov_labels[i] for i in subset_dims]
 else:
     subset_dims = range(num_dims)
+
 fig, axs = plt.subplots(
     len(subset_dims), 1, figsize=(8, 2.5 * len(subset_dims)),
     sharex=True, sharey=True
 )
 
 for i, dim in enumerate(subset_dims):
+    print(outputs[0][Output.behavior_pred].shape])
+    reduced_outputs = [
+        {
+            k: v[dim::num_dims] for k, v in payload.items() if k in [Output.behavior, Output.behavior_pred, Output.behavior_query_mask]
+        } for payload in outputs
+    ]
     plot_target_pred_overlay(
-        target[dim::num_dims],
-        prediction[dim::num_dims],
-        is_student[dim::num_dims],
-        label=labels[i],
+        outputs,
+        label=cov_labels[i],
         ax=axs[i],
-        plot_xlabel=i == subset_dims[-1], xlim=xlim
+        r2s=model_r2s,
+        cfgs=cfgs,
+        model_labels=model_labels,
+        xlim=xlim,
+        plot_xlabel=i == subset_dims[-1],
     )
 
 plt.tight_layout()
@@ -270,13 +295,13 @@ data_label_camera = {
     'odoherty': "O'Doherty",
     'miller': 'IsoEMG',
 }
-fig.suptitle(
-    f'{data_label_camera.get(data_label, data_label)} 0-Shot $R^2$ ($\\uparrow$)',
-    fontsize=20,
-    # offset
-    x=0.35,
-    y=0.99,
-)
+# fig.suptitle(
+#     f'{data_label_camera.get(data_label, data_label)} 0-Shot $R^2$ ($\\uparrow$)',
+#     fontsize=20,
+#     # offset
+#     x=0.35,
+#     y=0.99,
+# )
 # fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
 #%%

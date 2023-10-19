@@ -10,8 +10,6 @@ from pytz import timezone
 import torch
 torch.set_float32_matmul_precision('medium') # we don't care about precision really..
 
-from matplotlib import pyplot as plt
-import seaborn as sns
 from sklearn.metrics import r2_score
 
 from torch.utils.data import DataLoader
@@ -20,10 +18,14 @@ import lightning.pytorch as pl
 from context_general_bci.model import transfer_model
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import RootConfig, ModelConfig, ModelTask, Metric, Output, DataKey, MetaKey
-from context_general_bci.contexts import context_registry
 
-from context_general_bci.analyze_utils import stack_batch, load_wandb_run, prep_plt, rolling_time_since_student
-from context_general_bci.utils import get_wandb_run, wandb_query_latest
+from context_general_bci.analyze_utils import (
+    stack_batch,
+    load_wandb_run,
+    rolling_time_since_student,
+    data_label_to_target,
+)
+from context_general_bci.utils import wandb_query_latest
 
 def main(
     student: bool,
@@ -102,55 +104,8 @@ def icl_eval(
     batch_size: int,
     trainer: pl.Trainer,
 ):
-    if data_label == 'dyer':
-        target = ['dyer_co_chewie_2']
-    elif data_label == 'gallego':
-        target = ['gallego_co_.*']
-    elif data_label == 'churchland':
-        target = ['churchland_maze_jenkins.*']
-    elif data_label == 'loco':
-        target = [
-            'odoherty_rtt-Loco-20170215_02',
-            'odoherty_rtt-Loco-20170216_02',
-            'odoherty_rtt-Loco-20170217_02',
-        ]
-    elif data_label == 'indy': # EVAL SET
-        target = [
-            'odoherty_rtt-Indy-20160407_02', # First indy session
-            'odoherty_rtt-Indy-20160627_01', # Original
-            'odoherty_rtt-Indy-20161005_06',
-            'odoherty_rtt-Indy-20161026_03',
-            'odoherty_rtt-Indy-20170131_02'
-        ]
-    elif data_label == 'miller':
-        target = [
-            'miller_Jango-Jango_20150730_001',
-            'miller_Jango-Jango_20150731_001',
-            'miller_Jango-Jango_20150801_001',
-            'miller_Jango-Jango_20150805_001'
-        ]
-    elif data_label == 'eval':
-        target = [
-            'dyer_co_chewie_2',
-            'odoherty_rtt-Indy-20160407_02', # First indy session
-            'odoherty_rtt-Indy-20160627_01', # Original
-            'odoherty_rtt-Indy-20161005_06',
-            'odoherty_rtt-Indy-20161026_03',
-            'odoherty_rtt-Indy-20170131_02',
-            'miller_Jango-Jango_20150730_001',
-            'miller_Jango-Jango_20150731_001',
-            'miller_Jango-Jango_20150801_001',
-            'miller_Jango-Jango_20150805_001'
-        ]
-    elif data_label == 'robust':
-        target = [
-            'odoherty_rtt-Indy-20160627_01'
-        ]
-    else:
-        raise ValueError(f"Unknown data label: {data_label}")
-
     # Note: This won't preserve train val split, try to make sure eval datasets were held out
-    cfg.dataset.datasets = target
+    cfg.dataset.datasets = data_label_to_target(data_label)
     dataset = SpikingDataset(cfg.dataset)
     pl.seed_everything(0)
     print(f"START Data label: {data_label}")

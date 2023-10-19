@@ -17,14 +17,18 @@ import torch
 from torch.utils.data import DataLoader
 import itertools
 from dacite import from_dict
+WandbRun = Any
+import seaborn as sns
+
 
 from context_general_bci.utils import get_best_ckpt_from_wandb_id
 from context_general_bci.model import BrainBertInterface, load_from_checkpoint
 from context_general_bci.dataset import DataAttrs, SpikingDataset
 from context_general_bci.config import RootConfig, DataKey
 
-WandbRun = Any
-import seaborn as sns
+from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
+from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS
+from context_general_bci.tasks.miller import MILLER_LABELS
 
 STYLEGUIDE = {
     "palette": sns.color_palette('colorblind', 5),
@@ -36,6 +40,75 @@ STYLEGUIDE = {
         'task': 'X',
     }
 }
+
+DIMS = {
+    'gallego': REACH_DEFAULT_KIN_LABELS,
+    'dyer': DYER_DEFAULT_KIN_LABELS,
+    'miller': MILLER_LABELS,
+    'churchland_misc': REACH_DEFAULT_3D_KIN_LABELS,
+    'churchland_maze': REACH_DEFAULT_KIN_LABELS,
+    'delay': REACH_DEFAULT_3D_KIN_LABELS,
+    'odoherty': REACH_DEFAULT_KIN_LABELS,
+    'indy': REACH_DEFAULT_KIN_LABELS,
+    'rouse': REACH_DEFAULT_KIN_LABELS,
+}
+
+def data_label_to_target(data_label: str):
+    if data_label == 'dyer':
+        target = ['dyer_co_chewie_2']
+    elif data_label == 'gallego':
+        target = ['gallego_co_.*']
+    elif data_label == 'churchland':
+        target = ['churchland_maze_jenkins.*']
+    elif data_label == 'loco':
+        target = [
+            'odoherty_rtt-Loco-20170215_02',
+            'odoherty_rtt-Loco-20170216_02',
+            'odoherty_rtt-Loco-20170217_02',
+        ]
+    elif data_label == 'indy': # EVAL SET
+        target = [
+            'odoherty_rtt-Indy-20160407_02', # First indy session
+            'odoherty_rtt-Indy-20160627_01', # Original
+            'odoherty_rtt-Indy-20161005_06',
+            'odoherty_rtt-Indy-20161026_03',
+            'odoherty_rtt-Indy-20170131_02'
+        ]
+    elif data_label == 'miller':
+        target = [
+            'miller_Jango-Jango_20150730_001',
+            'miller_Jango-Jango_20150731_001',
+            'miller_Jango-Jango_20150801_001',
+            'miller_Jango-Jango_20150805_001'
+        ]
+    elif data_label == 'eval':
+        target = [
+            'dyer_co_chewie_2',
+            'odoherty_rtt-Indy-20160407_02', # First indy session
+            'odoherty_rtt-Indy-20160627_01', # Original
+            'odoherty_rtt-Indy-20161005_06',
+            'odoherty_rtt-Indy-20161026_03',
+            'odoherty_rtt-Indy-20170131_02',
+            'miller_Jango-Jango_20150730_001',
+            'miller_Jango-Jango_20150731_001',
+            'miller_Jango-Jango_20150801_001',
+            'miller_Jango-Jango_20150805_001'
+        ]
+    elif data_label == 'robust':
+        target = [
+            'odoherty_rtt-Indy-20160627_01'
+        ]
+    else:
+        raise ValueError(f"Unknown data label: {data_label}")
+    return target
+
+def get_dataloader(dataset: SpikingDataset, batch_size=32, num_workers=1, **kwargs) -> DataLoader:
+    return DataLoader(dataset,
+        batch_size=batch_size,
+        num_workers=num_workers,
+        persistent_workers=num_workers > 0,
+        collate_fn=dataset.tokenized_collater,
+    )
 
 def rolling_time_since_student(bool_tensor):
     # bool_tensor: 1D, false is teacher, true if student. Used to identify "going off the rails"
@@ -104,14 +177,6 @@ def get_run_config(run: WandbRun, tag="val_loss"):
     cfg: RootConfig = OmegaConf.create(create_typed_cfg(run.config)) # Note, unchecked cast, but we often fiddle with irrelevant variables and don't want to get caught up
     return cfg
 
-def get_dataloader(dataset: SpikingDataset, batch_size=100, num_workers=4, **kwargs) -> DataLoader:
-    return DataLoader(dataset,
-        batch_size=batch_size,
-        num_workers=num_workers,
-        persistent_workers=num_workers > 0,
-        collate_fn=dataset.collater_factory()
-    )
-
 def stack_batch(batch_out: List[Dict[str, torch.Tensor]]):
     all_lists = defaultdict(list)
     for batch in batch_out:
@@ -153,7 +218,7 @@ def gauss_smooth(spikes, bin_size, kernel_sd=0.05):
     return smooth_spikes.reshape(b, c, t).permute(0, 2, 1)
 
 
-def prep_plt(ax=None, **kwargs):
+def prep_plt(ax=None, **kwargs) -> plt.Axes:
     if isinstance(ax, np.ndarray):
         for _ax in ax.ravel():
             _prep_plt(_ax, **kwargs)

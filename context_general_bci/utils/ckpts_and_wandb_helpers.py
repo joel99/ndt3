@@ -119,14 +119,17 @@ def get_wandb_lineage(cfg: RootConfig):
     assert cfg.inherit_exp, "Must specify experiment set to inherit from"
     api = wandb.Api()
     lineage_query = cfg.tag
-    if cfg.inherit_tag:
-        # Find the unannotated part of the tag and substitute inheritance
-        # (hardcoded)
-        lineage_pieces = lineage_query.split('-')
-        lineage_query = '-'.join([cfg.inherit_tag] + lineage_pieces[1:])
-    if 'sweep' in lineage_query:
-        # find sweep and truncate
-        lineage_query = lineage_query[:lineage_query.find('sweep')-1] # - m-dash
+    if getattr(cfg, 'inherit_orchestrate', False):
+        if cfg.inherit_tag:
+            # Find the unannotated part of the tag and substitute inheritance
+            # (hardcoded)
+            lineage_pieces = lineage_query.split('-')
+            lineage_query = '-'.join([cfg.inherit_tag] + lineage_pieces[1:])
+        if 'sweep' in lineage_query:
+            # find sweep and truncate
+            lineage_query = lineage_query[:lineage_query.find('sweep')-1] # - m-dash
+    elif cfg.inherit_tag:
+        lineage_query = cfg.inherit_tag
 
     # specific patch for any runs that need it...
     additional_filters = {}
