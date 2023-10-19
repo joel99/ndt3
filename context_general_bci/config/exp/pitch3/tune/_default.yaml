@@ -103,6 +103,7 @@ dataset:
   - DataKey.bhvr_vel
   - DataKey.task_return
 train:
+  patience: 50
   autoscale_batch_size: true
   batch_size: 16
   effective_batch_size: 64

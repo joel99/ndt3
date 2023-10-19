@@ -6,5 +6,8 @@ model:
   lr_decay_steps: 5000
   lr_init: 5e-4 # Not rigorously, I find this better for tuning
 dataset:
-  scale_limit_per_eval_session: 100 # 500s, over 24 sessions = 200 minutes of data over 24 sessions.
+  # scale_limit_per_eval_session: 100 # 500s, over 24 sessions = 200 minutes of data over 24 sessions.
+
+  scale_limit_per_eval_session: 160 # 500s, over 24 sessions = 200 minutes of data over 24 sessions.
+  eval_ratio: 0.25 # We don't have enough to learn anything :(
 inherit_exp: ""

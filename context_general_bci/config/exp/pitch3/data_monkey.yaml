@@ -14,7 +14,7 @@ dataset:
   - odoherty_rtt.*
   - delay.*
 train:
-  # batch_size: 24 # 40G
-  batch_size: 56 # 80G
+  batch_size: 28 # 40G
+  # batch_size: 56 # 80G
   patience: 50
   effective_batch_size: 8192
