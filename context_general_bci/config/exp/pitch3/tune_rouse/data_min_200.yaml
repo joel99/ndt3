@@ -1,0 +1,4 @@
+# @package _global_
+defaults:
+  - _small_200
+inherit_tag: data_min

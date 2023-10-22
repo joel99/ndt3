@@ -3,7 +3,7 @@
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 # os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-
+import copy
 from datetime import datetime
 from pytz import timezone
 
@@ -19,6 +19,7 @@ from sklearn.metrics import r2_score
 from context_general_bci.model import transfer_model
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import RootConfig, ModelTask, Metric, Output, DataKey, MetaKey
+from context_general_bci.contexts import context_registry
 
 from context_general_bci.utils import wandb_query_latest
 from context_general_bci.analyze_utils import (
@@ -28,11 +29,14 @@ from context_general_bci.analyze_utils import (
 
 query = 'data_min-jkohlswe'
 query = 'data_indy-jt456lfs'
+query = 'neural_data_monkey-pitt_800-33jazjoo'
+query = 'neural_data_monkey-pitt_800-fw6zavnd'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
-src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
+# src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
+src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_kinematic_r2')
 # Hotfix position: check if wandb run is older than oct 15, 10:00am
 wandb_datetime_utc = datetime.fromisoformat(wandb_run.created_at).replace(tzinfo=timezone('UTC'))
 est = timezone('US/Eastern')
@@ -47,7 +51,8 @@ if wandb_datetime_est < target_datetime_est:
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 target = [
-    'miller_Jango-Jango_20150730_001',
+    'rouse.*'
+    # 'miller_Jango-Jango_20150730_001',
     # 'dyer_co_chewie_2',
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
@@ -76,10 +81,25 @@ target = [
 ]
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
-cfg.dataset.datasets = target
-cfg.dataset.exclude_datasets = []
-cfg.dataset.eval_datasets = []
-dataset = SpikingDataset(cfg.dataset)
+if cfg.dataset.eval_ratio > 0:
+    dataset = SpikingDataset(cfg.dataset) # Make as original
+    dataset.subset_split(splits=['eval'], keep_index=True)
+    TARGET_DATASETS = [context_registry.query(alias=td) for td in target]
+    FLAT_TARGET_DATASETS = []
+    for td in TARGET_DATASETS:
+        if td == None:
+            continue
+        if isinstance(td, list):
+            FLAT_TARGET_DATASETS.extend(td)
+        else:
+            FLAT_TARGET_DATASETS.append(td)
+    TARGET_DATASETS = [td.id for td in FLAT_TARGET_DATASETS]
+    dataset.subset_by_key(TARGET_DATASETS, key=MetaKey.session)
+else:
+    cfg.dataset.datasets = target
+    cfg.dataset.exclude_datasets = []
+    cfg.dataset.eval_datasets = []
+    dataset = SpikingDataset(cfg.dataset)
 pl.seed_everything(0)
 print("Eval length: ", len(dataset))
 data_attrs = dataset.get_data_attrs()
@@ -98,11 +118,6 @@ dataloader = get_dataloader(dataset)
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
 print(f'Assuming: {data_label}')
-
-
-
-
-
 #%%
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
@@ -133,7 +148,7 @@ prediction_student = prediction_student[prediction_student.abs() < 0.8]
 robust_r2_student = r2_score(target_student, prediction_student)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
-ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}, Robust: {robust_r2_student:.2f} ')
+ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}')
 #%%
 palette = sns.color_palette(n_colors=2)
 camera_label = {

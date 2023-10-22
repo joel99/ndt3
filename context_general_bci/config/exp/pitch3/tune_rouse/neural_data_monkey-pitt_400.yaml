@@ -1,0 +1,13 @@
+# @package _global_
+
+defaults:
+  - _mid_400
+model:
+  task: # Fine tune like you pretrain..
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [1.0, 1.0, 0., 0.]
+inherit_tag: neural_data_monkey-pitt

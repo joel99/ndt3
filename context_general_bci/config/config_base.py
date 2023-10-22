@@ -707,6 +707,7 @@ class RootConfig:
     init_ckpt: str = "" # fallback for above, for portable runs
     load_from_id: str = "" # for resuming training. takes precedent over init_from_id
     init_tag: str = "val_loss"
+    save_r2: bool = False # save r2 ckpts
 
     # orchestration
     inherit_exp: str = "" # hunt wandb for the relevant experiment, presumed same tag name.

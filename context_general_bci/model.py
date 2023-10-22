@@ -1252,7 +1252,8 @@ class BrainBertInterface(pl.LightningModule):
         #         metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
         # if dataloader_idx == 0 and batch_idx > 0:
             # return None # debug
-        metrics = self._step(batch, use_prefix = dataloader_idx > 0)
+        metrics = self._step(batch, use_prefix = True)
+        # metrics = self._step(batch, use_prefix = dataloader_idx > 0)
         kin_labels = None #batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch and not self.cfg.compile else None
         self.common_log(
             metrics,

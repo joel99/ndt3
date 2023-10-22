@@ -271,6 +271,19 @@ def run_exp(cfg : RootConfig) -> None:
         ),
     ]
 
+    if cfg.save_r2:
+        callbacks.append(
+            ModelCheckpoint(
+            monitor='val_kinematic_r2',
+                filename='val_kinematic_r2-{epoch:02d}-{val_loss:.4f}',
+                save_top_k=1,
+                mode='max', # I'm dumb
+                every_n_epochs=1 if cfg.train.val_check_interval == 0 else None,
+                every_n_train_steps=cfg.train.val_check_interval if cfg.train.val_check_interval > 0 else None,
+                dirpath=None
+            ),
+        )
+
     if cfg.model.lr_schedule_hotfix_epoch:
         # raise NotImplementedError("Doesn't seem to work. Max LR increases, for some reason.")
         class LRSwapCallback(Callback):

@@ -82,10 +82,12 @@ dataset:
   - DataKey.bhvr_vel
   - DataKey.task_return
 train:
-  autoscale_batch_size: true
+  autoscale_batch_size: False
   # batch_size: 4 # 40G
-  batch_size: 16
-  effective_batch_size: 64
+  # batch_size: 16
+  batch_size: 64 # Single GPUs
+  # effective_batch_size: 64
   # effective_batch_size: 512
   patience: 50
 inherit_exp: pitch3
+save_r2: True # R2 doesn't track infill loss and we don't quite know why yet
