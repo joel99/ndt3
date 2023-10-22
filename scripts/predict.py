@@ -47,7 +47,7 @@ if wandb_datetime_est < target_datetime_est:
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
 target = [
-    # 'miller_Jango-Jango_20150730_001',
+    'miller_Jango-Jango_20150730_001',
     # 'dyer_co_chewie_2',
     # 'gallego_co_Chewie_CO_20160510',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
@@ -55,11 +55,11 @@ target = [
 
     # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
 
-    'odoherty_rtt-Indy-20160407_02',
-    'odoherty_rtt-Indy-20160627_01',
-    'odoherty_rtt-Indy-20161005_06',
-    'odoherty_rtt-Indy-20161026_03',
-    'odoherty_rtt-Indy-20170131_02',
+    # 'odoherty_rtt-Indy-20160407_02',
+    # 'odoherty_rtt-Indy-20160627_01',
+    # 'odoherty_rtt-Indy-20161005_06',
+    # 'odoherty_rtt-Indy-20161026_03',
+    # 'odoherty_rtt-Indy-20170131_02',
 
     # 'odoherty_rtt-Loco-20170210_03',
     # 'odoherty_rtt-Loco-20170213_02',

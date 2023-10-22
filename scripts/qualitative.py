@@ -12,7 +12,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
 from sklearn.metrics import r2_score
@@ -33,18 +32,20 @@ from context_general_bci.analyze_utils import (
 )
 
 data_label = 'indy'
-# data_label = 'miller'
+data_label = 'miller'
 target = data_label_to_target(data_label)
 queries = [
-    'data_indy-jt456lfs',
-    'data_min-jkohlswe',
+    # 'data_indy-jt456lfs',
+    'data_jango-eqkrqixy',
+    'data_min-ni4qut2z', # Wait, I thought this worked, why is this broken now
+    # 'data_monkey-kvoi7ytu',
+    # 'neural_data_monkey-pitt-i2maes5i',
 ]
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
     precision='bf16-mixed',
 )
-
 
 def prep_query(query):
 
@@ -69,7 +70,7 @@ def prep_query(query):
     cfg.dataset.exclude_datasets = []
     cfg.dataset.eval_datasets = []
     dataset = SpikingDataset(cfg.dataset)
-    pl.seed_everything(0)
+    pl.seed_everything(1) # Qualitative on 0 is just atrocious.
     print("Eval length: ", len(dataset))
     data_attrs = dataset.get_data_attrs()
     print(data_attrs)
@@ -89,8 +90,11 @@ def prep_query(query):
     )
 
 MODEL_LABELS = {
-    'data_indy-jt456lfs': 'Indy',
-    'data_min-jkohlswe': 'Min',
+    'data_indy-jt456lfs': 'Expert',
+    'data_jango-eqkrqixy': 'Expert',
+    'data_min-ni4qut2z': 'Multitask',
+    'data_monkey-kvoi7ytu': '70 Hour',
+    'neural_data_monkey-pitt-i2maes5i': '700 Hour',
 }
 outputs = []
 model_labels = []
@@ -163,9 +167,11 @@ camera_label = {
     'EMG_ECRb': 'ECRb',
     'EMG_EDCr': 'EDCr',
 }
-xlim = [0, 500]
+xlim = [0, 250]
+xlim = [1500, 2000]
 subset_cov = []
-# subset_cov = ['EMG_FCU', 'EMG_ECRl']
+if data_label == 'miller':
+    subset_cov = ['EMG_FCU', 'EMG_ECRl', 'EMG_FCR']
 
 def plot_prediction_spans(ax, is_student, prediction, color, model_label):
     # Convert boolean tensor to numpy for easier manipulation
@@ -189,7 +195,7 @@ def plot_prediction_spans(ax, is_student, prediction, color, model_label):
                 prediction[start:end],
                 color=color,
                 label=label,
-                alpha=1.,
+                alpha=0.8,
                 linestyle='-',
                 linewidth=2,
             )
@@ -226,41 +232,56 @@ def plot_target_pred_overlay(
             payloads[i][Output.behavior_query_mask],
             payloads[i][Output.behavior_pred],
             palette[i],
-            f'{model_labels[i]} ({r2s[i]:.3f})',
+            f'{model_labels[i]} ({r2s[i]:.2f})',
         )
 
     xticks = ax.get_xticks()
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticks * cfgs[0].dataset.bin_size_ms / 1000)
-    ax.set_xlim([0 + 1e-5, xlim[1]])
+    ax.set_xlim([0 + 1e-5, xlim[1] - xlim[0]])
     if plot_xlabel:
         ax.set_xlabel('Time (s)')
-    ax.set_yticks([-1, 0, 1])
-    # Set minor y-ticks
-    ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
-    # Enable minor grid lines
-    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray', alpha=0.3)
-    ax.set_ylabel(f'{camera_label.get(label, label)} (au)')
+        # legend = ax.legend(
+        #     # loc='lower center',  # Positions the legend at the top center
+        #     # bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
+        #     # ncol=len(palette) + 1,  # Sets the number of columns equal to the length of the palette to display horizontally
+        #     frameon=False,
+        #     fontsize=16
+        # )
+        # # Make text in legend colored accordingly
+        # for color, text in zip(palette, legend.get_texts()[1:]):
+        #     text.set_color(color)
 
-    legend = ax.legend(
-        loc='upper center',  # Positions the legend at the top center
-        # bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
-        ncol=len(palette) + 1,  # Sets the number of columns equal to the length of the palette to display horizontally
-        frameon=False,
-        fontsize=16
+
+    # Set minor y-ticks
+    # ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
+    # Enable minor grid lines
+    # ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray', alpha=0.3)
+
+    ax.set_yticks([]) # Y ticks distracting, kill
+    ax.spines['left'].set_visible(False)
+    # Remove y axis entirely
+    cov_text = camera_label.get(label, label)
+    # ax.set_ylabel(f'{camera_label.get(label, label)} (au)')
+    # Instead of using a ylabel, annotate
+    ax.annotate(
+        cov_text,
+        xy=(0.25, 0.8),
+        xycoords='axes fraction',
+        xytext=(-ax.yaxis.labelpad - 5, 0),
+        textcoords='offset points',
+        fontsize=24,
+        # ha='right',
+        # va='center',
     )
-    # Make text in legend colored accordingly
-    for color, text in zip(palette, legend.get_texts()[1:]):
-        text.set_color(color)
 
     # ax.get_legend().remove()
 
-cov_labels = ['x', 'y']
-# cov_labels = DIMS[data_label]
+cov_labels = DIMS[data_label]
 num_dims = len(cov_labels)
 if subset_cov:
     subset_dims = [i for i in range(num_dims) if cov_labels[i] in subset_cov]
-    labels = [cov_labels[i] for i in subset_dims]
+    cov_labels = [cov_labels[i] for i in subset_dims]
 else:
     subset_dims = range(num_dims)
 
@@ -284,7 +305,7 @@ for i, dim in enumerate(subset_dims):
         cfgs=cfgs,
         model_labels=model_labels,
         xlim=xlim,
-        plot_xlabel=i == subset_dims[-1],
+        plot_xlabel=dim == subset_dims[-1],
     )
 
 plt.tight_layout()
