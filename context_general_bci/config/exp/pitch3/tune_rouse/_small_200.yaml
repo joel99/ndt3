@@ -4,4 +4,5 @@ defaults:
 dataset:
   scale_limit_per_eval_session: 40
 train:
-  effective_batch_size: 128
+  effective_batch_size: 64 # Whoops, misinterpreted
+  # effective_batch_size: 512

@@ -4,4 +4,5 @@ defaults:
 dataset:
   scale_limit_per_eval_session: 160
 train:
-  effective_batch_size: 512
+  effective_batch_size: 64 # Whoops, misinterpreted
+  # effective_batch_size: 2048 # This is ~full batch, but we find smaller minibatches reduces perf (NLL and R2)
