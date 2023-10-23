@@ -274,7 +274,7 @@ def run_exp(cfg : RootConfig) -> None:
     if cfg.save_r2:
         callbacks.append(
             ModelCheckpoint(
-            monitor='val_kinematic_r2',
+                monitor='val_kinematic_r2',
                 filename='val_kinematic_r2-{epoch:02d}-{val_loss:.4f}',
                 save_top_k=1,
                 mode='max', # I'm dumb

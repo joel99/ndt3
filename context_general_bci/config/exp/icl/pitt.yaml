@@ -1,0 +1,21 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  lr_decay_steps: 15000
+  task:
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [1.0, 1.0, 0., 0.]
+
+dataset:
+  datasets:
+  - pitt_broad.*
+train:
+  batch_size: 32 # 40G
+  patience: 50
+  effective_batch_size: 8192

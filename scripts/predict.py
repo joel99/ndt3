@@ -1,8 +1,8 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-# os.environ['CUDA_VISIBLE_DEVICES'] = '1'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 import copy
 from datetime import datetime
 from pytz import timezone
@@ -30,7 +30,8 @@ from context_general_bci.analyze_utils import (
 query = 'data_min-jkohlswe'
 query = 'data_indy-jt456lfs'
 query = 'neural_data_monkey-pitt_800-33jazjoo'
-query = 'neural_data_monkey-pitt_800-fw6zavnd'
+
+query = 'neural_data_monkey-pitt_100-glcgd2x0'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -108,13 +109,14 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 
 model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
-model.cfg.eval.student_gap = int(50 * 1.)
+model.cfg.eval.student_gap = int(50 * 0.)
+# model.cfg.eval.student_gap = int(50 * 1.)
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
     precision='bf16-mixed',
 )
-dataloader = get_dataloader(dataset)
+dataloader = get_dataloader(dataset, batch_size=128, num_workers=16)
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
 data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
 print(f'Assuming: {data_label}')
@@ -141,11 +143,11 @@ ax = prep_plt(f.gca(), big=True)
 palette = sns.color_palette(n_colors=2)
 colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
 ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
-target_student = target[is_student]
-prediction_student = prediction[is_student]
-target_student = target_student[prediction_student.abs() < 0.8]
-prediction_student = prediction_student[prediction_student.abs() < 0.8]
-robust_r2_student = r2_score(target_student, prediction_student)
+# target_student = target[is_student]
+# prediction_student = prediction[is_student]
+# target_student = target_student[prediction_student.abs() < 0.8]
+# prediction_student = prediction_student[prediction_student.abs() < 0.8]
+# robust_r2_student = r2_score(target_student, prediction_student)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}')
