@@ -14,11 +14,11 @@ model:
 dataset:
   datasets:
   # - churchland.*
-  - gallego.*
-  # - dyer_co.*
-  - miller.*
-  - odoherty_rtt.*
-  # - delay.*
+  # - gallego.*
+  - dyer_co.*
+  # - miller.*
+  # - odoherty_rtt.*
+  - delay.*
   # - pitt_broad.*
 
   # Include eval dataset - CRS08 etc

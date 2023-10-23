@@ -12,7 +12,7 @@ setup(
     py_modules=['context_general_bci'],
 
     install_requires=[
-        'torch==2.0.1+cu117', # 2.0 onnx export doesn't work, install with --extra-index-url https://download.pytorch.org/whl/cu117
+        'torch==2.1.0+cu118', # 2.0 onnx export doesn't work, install with --extra-index-url https://download.pytorch.org/whl/cu117
         'seaborn',
         'pandas',
         'numpy',
@@ -31,6 +31,7 @@ setup(
         'mat73',
         'dacite',
         'gdown',
+        'pyrtma', # For realtime Pitt infra
         'transformers', # Flash Attn
         'packaging', # Flash Attn https://github.com/Dao-AILab/flash-attention
         'rotary-embedding-torch', # https://github.com/lucidrains/rotary-embedding-torch

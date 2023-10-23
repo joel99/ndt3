@@ -554,7 +554,9 @@ class SpikingDataset(Dataset):
             batch: list of dicts
         """
         stack_batch = defaultdict(list)
+        # TODO deprecate - don't think this even makes any sense... this is solely on the basis of neurons...
         for b in batch:
+            # ! Jenkins is being annoying...
             if len(b[DataKey.position]) == 0:
                 print("Size notes")
                 print(b[DataKey.position].size(), b[DataKey.spikes].shape, b[MetaKey.session], self.get_data_attrs().context.session[b[MetaKey.session]])

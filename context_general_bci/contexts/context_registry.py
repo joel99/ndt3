@@ -136,7 +136,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
         # *ReachingContextInfo.build_several('./data/even_chen_delay/000121/sub-JenkinsC', ExperimentalTask.delay_reach, alias_prefix='even_chen_delay_jenkins'),
         *ReachingContextInfo.build_several('./data/delay_reach/000121/sub-Reggie', ExperimentalTask.delay_reach, alias_prefix='even_chen_delay_reggie'),
 
-        *GDrivePathContextInfo.build_from_dir('./data/churchland_misc', blacklist=[]),
+        # *GDrivePathContextInfo.build_from_dir('./data/churchland_misc', blacklist=[]),
         *GDrivePathContextInfo.build_from_dir('./data/churchland_misc', blacklist=['reggie']),
 
         # *BCIContextInfo.build_from_dir('./data/pitt_co', task_map={

@@ -19,5 +19,3 @@ dataset:
   - odoherty_rtt.*
   - delay.*
   - pitt_broad.*
-train:
-  batch_size: 16

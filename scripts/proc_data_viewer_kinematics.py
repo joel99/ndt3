@@ -19,7 +19,7 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest, unflatten
 
-sample_query = "data_min-jkohlswe"
+sample_query = "pitt_monkey-a1yiwczo"
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
 
@@ -80,11 +80,11 @@ run_cfg.datasets = [
 
     # 'dyer_co.*',
     # 'gallego_.*', # Gallego
-    'odoherty_rtt-Indy-20160627_01.*',
+    # 'odoherty_rtt-Indy-20160627_01.*',
     # 'churchland_maze_jenkins.*',
+    'churchland_misc_jenkins.*',
+    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_nitschke.*',
-    # 'churchland_misc_jenkins.*',
-    # 'churchland_misc_nitschke.*',
     # 'churchland_misc_reggie-1-qq.*', # reggie covs sus
     # 'churchland_misc_reggie-1413.*',
     # 'churchland_misc_reggie-151n.*',
@@ -100,6 +100,10 @@ dataset.build_context_index()
 dataset.subset_split()
 
 print(len(dataset))
+#%%
+names = context_registry.query(alias=dataset.cfg.datasets[0])
+for n in names:
+    print(n.alias)
 #%%
 has_brain_control = {}
 dimensions = {}
@@ -118,9 +122,11 @@ for session in dataset.meta_df[MetaKey.session].unique():
     # has_brain_control[session] = (all_constraints[:, 0] < 1).any()
 from pprint import pprint
 pprint(dimensions)
+
 # for session in has_brain_control:
 #     if not has_brain_control[session]:
 #         print(session)
+
 
 #%%
 from pathlib import Path

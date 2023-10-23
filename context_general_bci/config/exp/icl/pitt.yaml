@@ -27,5 +27,3 @@ dataset:
   - miller_Jango-Jango_20150731_001
   - miller_Jango-Jango_20150801_001
   - miller_Jango-Jango_20150805_001
-train:
-  batch_size: 16

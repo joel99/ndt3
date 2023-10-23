@@ -2,8 +2,7 @@ from pathlib import Path
 import torch
 from einops import rearrange, reduce
 
-from context_general_bci.config import DataKey, DatasetConfig
-
+from context_general_bci.config import DataKey
 
 def chop_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int):
     # vec - T H
@@ -53,32 +52,41 @@ class PackToChop:
             self.flush()
 
     def flush(self):
-        if len(self.queue) == 0:
+        if len(self.queue) == 0 or self.running_length == 0:
             return
         # assert self.running_length >= self.chop_size, "Queue length should be at least chop size"
-        payload = self.queue[0]
-        for key in payload.keys():
+        payload = {}
+        crop_last = max(self.running_length - self.chop_size, 0) # This is the _excess_ - i.e. crop as tail. Max: Keep logic well behaved for manual flush calls.
+        if crop_last:
+            # split the last one
+            last = self.queue[-1]
+            include, exclude = {}, {}
+            for k in last.keys():
+                if k == DataKey.spikes:
+                    include[k] = {k2: v[:-crop_last] for k2, v in last[DataKey.spikes].items()}
+                    exclude[k] = {k2: v[-crop_last:] for k2, v in last[DataKey.spikes].items()}
+                elif k == DataKey.bhvr_vel:
+                    include[k] = last[k][:-crop_last]
+                    exclude[k] = last[k][-crop_last:]
+                else:
+                    include[k] = last[k]
+                    exclude[k] = last[k]
+            self.queue[-1] = include
+
+        for key in self.queue[0].keys():
             if key == DataKey.spikes: # Spikes need special treatment
-                payload[key] = {k: torch.cat([p[key][k] for p in self.queue]) for k in payload[key].keys()}
+                payload[key] = {}
+                for k in self.queue[0][key].keys():
+                    payload[key][k] = torch.cat([p[key][k] for p in self.queue])
             elif key == DataKey.bhvr_vel: # Also timeseries
                 payload[key] = torch.cat([p[key] for p in self.queue])
             else:
-                pass # Just keep global args
+                payload[key] = self.queue[0][key]
+        # print(payload[DataKey.bhvr_vel].shape, payload[DataKey.spikes]['Jenkins-M1'].shape)
         torch.save(payload, self.save_dir / f'{self.idx}.pth')
         self.idx += 1
-
-        self.running_length = max(self.running_length - self.chop_size, 0) # Keep logic well behaved for manual flush calls
-        if self.running_length:
-            # Cut into this
-            cropped = {}
-            last = self.queue[-1]
-            for k in payload.keys():
-                if k == DataKey.spikes:
-                    cropped[k] = {k2: v[self.running_length:] for k2, v in last[DataKey.spikes].items()}
-                elif k == DataKey.bhvr_vel:
-                    cropped[k] = last[k][self.running_length:]
-                else:
-                    cropped[k] = last[k]
-            self.queue = [cropped]
+        if crop_last:
+            self.queue = [exclude]
         else:
             self.queue = []
+        self.running_length = crop_last

@@ -1,0 +1,39 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  lr_decay_steps: 15000
+  task:
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [1.0, 1.0, 0., 0.]
+dataset:
+  datasets:
+  # - churchland_misc_jenkins.* # -data/churchland_misc/jenkins-1MmnXv.* # TODO Something annoying here
+
+  - churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI
+  - churchland_misc_jenkins-1MmnXvAMSBvt_eZ8X-CgmOWibHqnk_1vr
+
+  # - churchland_misc_jenkins-16QJZXe0xQKIVqWV5XhOPDIzPBX1V2CV4
+  # - churchland_misc_jenkins-1Uxht3GUFdJ9Y0AcyTYfCp7uhwCvX0Ujs
+  # - churchland_misc_jenkins-1hxD7xKu96YEMD8iTuHVF6mSAv-h5xlxG
+  # - churchland_misc_jenkins-1msGk3H6yPwS4GCcJwZybJFFX6JWcbvYp
+  # - churchland_misc_jenkins-1o3X-L7uFH0vVPollVaD64AmDPwc0kXkq
+  # - churchland_misc_jenkins-1pe3gnurM4xY5R9qGQ8ohMi1h2Lv-eJWf
+
+  # - churchland_misc_jenkins-10cXhCDn.*
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
+  # - miller.*
+  # - odoherty_rtt.*
+  # - delay.*
+  # - pitt_broad.*
+
+  # Include eval dataset - CRS08 etc
+
+  eval_datasets: []

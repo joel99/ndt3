@@ -15,10 +15,10 @@ dataset:
   datasets:
   - churchland.*
   # - gallego.*
-  - dyer_co.*
+  # - dyer_co.*
   # - miller.*
   # - odoherty_rtt.*
-  - delay.*
+  # - delay.*
   # - pitt_broad.*
 
   # Include eval dataset - CRS08 etc

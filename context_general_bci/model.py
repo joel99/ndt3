@@ -1198,6 +1198,8 @@ class BrainBertInterface(pl.LightningModule):
     ):
         for m in metrics:
             if 'loss' in m:
+                # if 'val' in prefix:
+                    # print(f'{prefix}_{m}', metrics[m], kwargs)
                 # print(f'{prefix}_{m}', metrics[m], kwargs)
                 self.log(f'{prefix}_{m}', metrics[m], **kwargs)
         for m in self.cfg.task.metrics:
