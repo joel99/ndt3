@@ -3,7 +3,7 @@
 defaults:
   - _default
 model:
-  lr_decay_steps: 15000
+  lr_decay_steps: 10000
   task:
     tasks:
     - ModelTask.spike_infill
@@ -15,7 +15,17 @@ model:
 dataset:
   datasets:
   - pitt_broad.*
+
+  # Eval
+  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+  - miller_Jango-Jango_20150730_001
+  - miller_Jango-Jango_20150731_001
+  - miller_Jango-Jango_20150801_001
+  - miller_Jango-Jango_20150805_001
 train:
-  batch_size: 32 # 40G
-  patience: 50
-  effective_batch_size: 8192
+  batch_size: 16

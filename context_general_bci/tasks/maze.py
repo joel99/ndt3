@@ -18,7 +18,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-
+from context_general_bci.tasks.preproc_utils import PackToChop
 
 BLACKLIST_UNITS = [1]
 @ExperimentalTaskRegistry.register
@@ -135,6 +135,8 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
 
         arrays_to_use = context_arrays
         assert len(spike_times) == 192, "Expected 192 units"
+        if cfg.pack_dense:
+            packer = PackToChop(cfg.churchland_maze.chop_size_ms // cfg.bin_size_ms, cache_root)
         for t in range(len(move_begins)):
             # if not is_valid[t]:
             #     continue # we subset now
@@ -173,7 +175,13 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
                 DataKey.bhvr_vel: preproc_vel(trial_vel, global_args),
                 **global_args,
             }
-            single_path = cache_root / f'{t}.pth'
-            meta_payload['path'].append(single_path)
-            torch.save(single_payload, single_path)
+            if cfg.pack_dense:
+                packer.pack(single_payload)
+            else:
+                single_path = cache_root / f'{t}.pth'
+                meta_payload['path'].append(single_path)
+                torch.save(single_payload, single_path)
+        if cfg.pack_dense:
+            packer.flush()
+            meta_payload['path'] = packer.get_paths()
         return pd.DataFrame(meta_payload)

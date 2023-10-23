@@ -216,6 +216,7 @@ class SpikingDataset(Dataset):
             return True
         with open(version_path, 'r') as f:
             cached_preproc_version = json.load(f)
+        # breakpoint()
         # ! patch - don't compare arrays
         current = self.preproc_version(task)
         cached_preproc_version.pop('arrays', None)

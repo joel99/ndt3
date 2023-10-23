@@ -22,10 +22,10 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload, SubjectName
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.tasks.preproc_utils import PackToChop
 
 
-
-# Note these comrpise a bunch of different tasks, perhaps worth denoting/splitting them
+# Note these comprise a bunch of different tasks, perhaps worth denoting/splitting them
 gdown_ids = {
     # Jenkins, milestone 1 9/2015 -> 1/2016 (vs all in 2009 for DANDI)
     'jenkins': {
@@ -78,10 +78,6 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
     r"""
     Churchland/Kaufman reaching data, from gdrive. Assorted extra sessions that don't overlap with DANDI release.
     # ! Actually, the Jenkins/Reggie data here corresponds to Even-Chen's study on structure of delay in PMd. (Nitschke data unaccounted for)
-
-    List of IDs
-    # - register, make task etc
-
     """
 
     @classmethod
@@ -101,14 +97,19 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
+        if cfg.pack_dense:
+            packer = PackToChop(cfg.churchland_misc.chop_size_ms // cfg.bin_size_ms, cache_root)
         def save_raster(trial_spikes: torch.Tensor, trial_id: int, other_args: dict = {}):
             single_payload = {
                 DataKey.spikes: create_spike_payload(trial_spikes, arrays_to_use, cfg=cfg),
                 **other_args
             }
-            single_path = cache_root / f'{trial_id}.pth'
-            meta_payload['path'].append(single_path)
-            torch.save(single_payload, single_path)
+            if cfg.pack_dense:
+                single_payload = packer.pack(single_payload)
+            else:
+                single_path = cache_root / f'{trial_id}.pth'
+                meta_payload['path'].append(single_path)
+                torch.save(single_payload, single_path)
         # Ok, some are hdf5, some are mat (all masquerade with .mat endings)
         def get_global_args(hand_vels: List[np.ndarray]): # each T x 3
             global_args = {}
@@ -173,6 +174,9 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                         **global_args
                     }
                     save_raster(spike_raster, i, other_args)
+                if cfg.pack_dense:
+                    packer.flush()
+                    meta_payload['path'] = packer.get_paths()
                 return pd.DataFrame(meta_payload)
         except Exception as e:
             # print(e)
@@ -234,4 +238,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                     DataKey.bhvr_vel: trial_vel,
                     **global_args
                 })
+        if cfg.pack_dense:
+            packer.flush()
+            meta_payload['path'] = packer.get_paths()
         return pd.DataFrame(meta_payload)

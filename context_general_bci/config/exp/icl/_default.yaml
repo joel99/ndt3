@@ -15,7 +15,7 @@ defaults:
 model:
   arch: Architecture.flash_ndt
   lr_ramp_steps: 500 # Note these will be auto-adjusted based on accumulation. About 25 epochs.
-  lr_decay_steps: 4000 # Note these will be auto-adjusted based on accumulation. About 200 epochs.
+  lr_decay_steps: 10000
   lr_interval: step
   lr_schedule: cosine_timm
 
@@ -53,8 +53,9 @@ model:
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
 dataset:
+  pack_dense: True
   max_length_ms: 15000
-  max_trial_length: 1500
+  max_trial_length: 1500 # 30s at 50Hz
   odoherty_rtt:
     chop_size_ms: 15000
   pitt_co:
@@ -100,4 +101,6 @@ dataset:
   - DataKey.task_return
 train:
   autoscale_batch_size: true
-  batch_size: 4 # 40G
+  batch_size: 8 # 40G # Just my guess for batch size
+  effective_batch_size: 4096
+  patience: 50

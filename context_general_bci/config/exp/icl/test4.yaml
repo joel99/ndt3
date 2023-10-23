@@ -3,6 +3,7 @@
 defaults:
   - _default
 model:
+  lr_decay_steps: 15000
   task:
     tasks:
     - ModelTask.spike_infill
@@ -12,12 +13,17 @@ model:
     task_weights: [1.0, 1.0, 0., 0.]
 dataset:
   datasets:
-  - churchland.*
-  - gallego.*
-  - dyer_co.*
-  - miller.*
-  - odoherty_rtt.*
-  - delay.*
-  - pitt_broad.*
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
+  # - miller.*
+  # - odoherty_rtt.*
+  # - delay.*
+  - pitt_broad_pitt_co_CRS02bLab.*
+
+  # Include eval dataset - CRS08 etc
+
+  eval_datasets: []
 train:
-  batch_size: 16
+  batch_size: 32 # 40G
+  patience: 50

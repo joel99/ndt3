@@ -36,7 +36,7 @@ from scipy.signal import decimate
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-
+from context_general_bci.tasks.preproc_utils import PackToChop
 
 @ExperimentalTaskRegistry.register
 class GallegoCOLoader(ExperimentalTaskLoader):
@@ -55,20 +55,20 @@ class GallegoCOLoader(ExperimentalTaskLoader):
     ):
         df: pd.DataFrame = pyaldata.mat2dataframe(datapath, shift_idx_fields=True)
         assert cfg.bin_size_ms % (df.bin_size[0] * 1000) == 0, "bin_size_ms must divide bin_size in the data"
-        chop_bins = int(cfg.bin_size_ms / (df.bin_size[0] * 1000))
+        bin_samples = int(cfg.bin_size_ms / (df.bin_size[0] * 1000))
 
         def compress_spikes(spikes):
             # make sure we divide evenly
-            if spikes.shape[0] % chop_bins != 0:
-                spikes = spikes[(spikes.shape[0] % chop_bins):]
-            return reduce(spikes, '(t b) h -> t h 1', 'sum', b=chop_bins)
+            if spikes.shape[0] % bin_samples != 0:
+                spikes = spikes[(spikes.shape[0] % bin_samples):]
+            return reduce(spikes, '(t b) h -> t h 1', 'sum', b=bin_samples)
 
         def compress_vel(vel):
             # vel = vel / 100 # cm/s -> m/s -> replaced by min max normalization
             # Technically we just really need an actual data-based normalizer...
-            if vel.shape[0] % chop_bins != 0:
-                vel = vel[(vel.shape[0] % chop_bins):]
-            vel = torch.tensor(decimate(vel, chop_bins, axis=0).copy(), dtype=torch.float)
+            if vel.shape[0] % bin_samples != 0:
+                vel = vel[(vel.shape[0] % bin_samples):]
+            vel = torch.tensor(decimate(vel, bin_samples, axis=0).copy(), dtype=torch.float)
             if vel.isnan().any():
                 logging.warning(f'{vel.isnan().sum()} nan values found in velocity')
                 breakpoint()
@@ -93,6 +93,8 @@ class GallegoCOLoader(ExperimentalTaskLoader):
             rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
         arrays_to_use = context_arrays
         print(f"Global args: {global_args}")
+        if cfg.pack_dense:
+            packer = PackToChop(cfg.gallego_co.chop_size_ms // cfg.bin_size_ms, cache_root)
         for trial_id in range(len(df)):
             spike_payload = {}
             for array in arrays_to_use:
@@ -102,18 +104,22 @@ class GallegoCOLoader(ExperimentalTaskLoader):
             vel = df.vel[trial_id]
             if trial_id == len(df) - 1:
                 vel[-1] = vel[-2] # last value is nan, but not easy to crop at same resolution as spikes, so we just roll
-                # for array in arrays_to_use:
-                    # spike_payload[array] = spike_payload[array][:-1]
             vel = compress_vel(df.vel[trial_id])
             if cfg.gallego_co.minmax:
                 vel = (vel - global_args['cov_mean']) / rescale
                 vel = torch.clamp(vel, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
             single_payload = {
-                DataKey.spikes: spike_payload,
+                DataKey.spikes: spike_payload, # T x H x 1? IIRC?
                 DataKey.bhvr_vel: vel, # T x H
                 **global_args,
             }
-            single_path = cache_root / f'{trial_id}.pth'
-            meta_payload['path'].append(single_path)
-            torch.save(single_payload, single_path)
+            if cfg.pack_dense:
+                packer.pack(single_payload)
+            else:
+                single_path = cache_root / f'{trial_id}.pth'
+                meta_payload['path'].append(single_path)
+                torch.save(single_payload, single_path)
+        if cfg.pack_dense:
+            packer.flush()
+            meta_payload['path'] = packer.get_paths()
         return pd.DataFrame(meta_payload)

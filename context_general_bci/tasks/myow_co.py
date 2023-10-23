@@ -19,7 +19,7 @@ from context_general_bci.utils import loadmat
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-
+from context_general_bci.tasks.preproc_utils import PackToChop
 
 import logging
 
@@ -71,6 +71,9 @@ class DyerCOLoader(ExperimentalTaskLoader):
         arrays_to_use = context_arrays
         # data_list = {'firing_rates': [], 'position': [], 'velocity': [], 'acceleration': [],
                     #  'force': [], 'labels': [], 'sequence': []}
+
+        if cfg.pack_dense:
+            packer = PackToChop(cfg.dyer_co.chop_size_ms // cfg.bin_size_ms, cache_root)
         for trial_id in range(num_trials):
             min_T = trialtable[trial_id, 9]
             max_T = trialtable[trial_id, 12]
@@ -125,7 +128,13 @@ class DyerCOLoader(ExperimentalTaskLoader):
                 # DataKey.bhvr_acc: torch.tensor(acc_binned[mask]),
                 # DataKey.bhvr_force: torch.tensor(force_binned[mask]),
             }
-            single_path = cache_root / f'{trial_id}.pth'
-            meta_payload['path'].append(single_path)
-            torch.save(single_payload, single_path)
+            if cfg.pack_dense:
+                packer.pack(single_payload)
+            else:
+                single_path = cache_root / f'{trial_id}.pth'
+                meta_payload['path'].append(single_path)
+                torch.save(single_payload, single_path)
+        if cfg.pack_dense:
+            packer.flush()
+            meta_payload['path'] = packer.get_paths()
         return pd.DataFrame(meta_payload)

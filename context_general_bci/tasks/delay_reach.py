@@ -18,7 +18,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
+from context_general_bci.tasks.preproc_utils import PackToChop
 
 @ExperimentalTaskRegistry.register
 class DelayReachLoader(ExperimentalTaskLoader):
@@ -133,6 +133,8 @@ class DelayReachLoader(ExperimentalTaskLoader):
             # trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=0)
             # trial_vel = torch.from_numpy(trial_vel).float() # Min max already occurred at global level
             # return trial_vel
+        if cfg.pack_dense:
+            packer = PackToChop(cfg.delay_reach.chop_size_ms // cfg.bin_size_ms, cache_root)
         for t in range(len(trial_info)):
             t_start, t_end = starts[t], ends[t]
             trial_spikes = spike_dense[t_start - min_obs:t_end - min_obs]
@@ -191,9 +193,15 @@ class DelayReachLoader(ExperimentalTaskLoader):
                 **global_args
             }
             assert list(trial_spikes.values())[0].shape[0] == trial_vel.shape[0], "Spike and velocity lengths do not match"
-            single_path = cache_root / f'{t}.pth'
-            meta_payload['path'].append(single_path)
-            torch.save(single_payload, single_path)
+            if cfg.pack_dense:
+                packer.pack(single_payload)
+            else:
+                single_path = cache_root / f'{t}.pth'
+                meta_payload['path'].append(single_path)
+                torch.save(single_payload, single_path)
+        if cfg.pack_dense:
+            packer.flush()
+            meta_payload['path'] = packer.get_paths()
         return pd.DataFrame(meta_payload)
 #%%
 # if __name__ == '__main__':
