@@ -1,5 +1,5 @@
 # @package _global_
-# ICL to 15s, and then 45s at 60ms bins. Intended to capture all of 2D calibration in context, and test additional context utility.
+# Updated with low-hanging infrastructural updates. Remove a few norms, add rotary, add SwiGLU, Flash 2, QK norm
 defaults:
   - /model:
     - flat_enc_dec
@@ -14,8 +14,9 @@ defaults:
     - largescale # for the main runs, not debuggin runs
 model:
   arch: Architecture.flash_ndt
-  lr_ramp_steps: 500 # Note these will be auto-adjusted based on accumulation. About 25 epochs.
-  lr_decay_steps: 10000
+  lr_ramp_steps: 100
+  lr_decay_steps: 2000
+  lr_init: 1e-4 # Not rigorously, I find this better for tuning
   lr_interval: step
   lr_schedule: cosine_timm
 
@@ -53,9 +54,9 @@ model:
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
 dataset:
-  pack_dense: True
   max_length_ms: 15000
-  max_trial_length: 1500 # 30s at 50Hz
+  max_trial_length: 1500
+  pack_dense: True
   odoherty_rtt:
     chop_size_ms: 15000
   pitt_co:
@@ -74,34 +75,31 @@ dataset:
     chop_size_ms: 15000
   churchland_maze:
     chop_size_ms: 15000
-  max_channels: 320
+  max_channels: 288 # Whoops.. need to increase this in future
   max_arrays: 2
-
+  datasets:
+  - rouse.*
   eval_datasets:
-  - CRS08.* # Pitt eval - held out subject.
-  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
-  - odoherty_rtt-Indy-20160407_02 # First indy session
-  - odoherty_rtt-Indy-20160627_01 # Original
-  - odoherty_rtt-Indy-20161005_06
-  - odoherty_rtt-Indy-20161026_03
-  - odoherty_rtt-Indy-20170131_02
-  - miller_Jango-Jango_20150730_001
-  - miller_Jango-Jango_20150731_001
-  - miller_Jango-Jango_20150801_001
-  - miller_Jango-Jango_20150805_001
+  - rouse.*
+  # scale_limit_per_eval_session: 20 # 100s!
+  scale_limit_per_eval_session: 4 # 60s
+  eval_ratio: 0.25
 
   tokenize_covariates: True
   sparse_constraints: True
   behavior_dim: 10 # Force is here, include +1 for padding, etc.
-  datasets: [] # To be overridden
   data_keys:
   - DataKey.spikes
   - DataKey.constraint
   - DataKey.bhvr_vel
   - DataKey.task_return
 train:
-  autoscale_batch_size: true
-  batch_size: 10 # 40G # Just my guess for batch size
-  # batch_size: 8 # 40G # Just my guess for batch size
-  effective_batch_size: 4096
+  autoscale_batch_size: False
+  # batch_size: 4 # 40G
+  # batch_size: 16
+  batch_size: 16 # Single GPUs
+  # effective_batch_size: 64
+  # effective_batch_size: 512
   patience: 50
+inherit_exp: icl
+save_r2: True # R2 doesn't track infill loss and we don't quite know why yet

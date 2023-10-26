@@ -27,27 +27,20 @@ from context_general_bci.analyze_utils import (
 )
 
 
-query = 'data_min-jkohlswe'
-query = 'data_indy-jt456lfs'
-query = 'neural_data_monkey-pitt_800-33jazjoo'
+# query = 'data_min-jkohlswe'
+# query = 'data_indy-jt456lfs'
+# query = 'neural_data_monkey-pitt_800-33jazjoo'
 
-query = 'neural_data_monkey-pitt_100-glcgd2x0'
+# query = 'neural_data_monkey-pitt_100-glcgd2x0'
+query = 'pitt_monkey-92bj8iw0'
+# query = 'pitt_monkey_16k-4rm2fxnq'
+# query = 'pitt-rku9o9ve'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
-# src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
-src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_kinematic_r2')
-# Hotfix position: check if wandb run is older than oct 15, 10:00am
-wandb_datetime_utc = datetime.fromisoformat(wandb_run.created_at).replace(tzinfo=timezone('UTC'))
-est = timezone('US/Eastern')
-wandb_datetime_est = wandb_datetime_utc.astimezone(est)
-
-# Create a datetime object for Oct 15, 2023, 10AM EST
-target_datetime_est = est.localize(datetime(2023, 10, 15, 10, 0, 0))
-
-if wandb_datetime_est < target_datetime_est:
-    cfg.model.eval.offset_kin_hotfix = 1
+src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
+# src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_kinematic_r2')
 
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
@@ -80,9 +73,12 @@ target = [
     # 'pitt_broad_pitt_co_CRS07Home_88',
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
 ]
+# data_label ='indy'
+
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
-if cfg.dataset.eval_ratio > 0:
+if cfg.dataset.eval_ratio > 0 and cfg.dataset.eval_ratio < 1: # i.e. brand new dataset, not monitored during training
+    # Not super robust... we probably want to make this more like... expand datasets and compute whether overlapped
     dataset = SpikingDataset(cfg.dataset) # Make as original
     dataset.subset_split(splits=['eval'], keep_index=True)
     TARGET_DATASETS = [context_registry.query(alias=td) for td in target]
@@ -108,16 +104,22 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
+# model.cfg.eval.teacher_timesteps = int(50 * 13.) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 10.) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 5.) # 0.5s
 model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
-model.cfg.eval.student_gap = int(50 * 0.)
-# model.cfg.eval.student_gap = int(50 * 1.)
+# model.cfg.eval.student_gap = int(50 * 0.)
+model.cfg.eval.student_gap = int(50 * 1.)
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
     precision='bf16-mixed',
 )
-dataloader = get_dataloader(dataset, batch_size=128, num_workers=16)
+dataloader = get_dataloader(dataset, batch_size=16, num_workers=16)
+# dataloader = get_dataloader(dataset, batch_size=128, num_workers=16)
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+#%%
+# data_label = 'indy'
 data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
 print(f'Assuming: {data_label}')
 #%%
@@ -164,7 +166,7 @@ camera_label = {
     'EMG_ECRb': 'ECRb',
     'EMG_EDCr': 'EDCr',
 }
-xlim = [0, 500]
+xlim = [0, 1000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
 
