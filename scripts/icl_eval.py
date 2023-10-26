@@ -20,7 +20,8 @@ from context_general_bci.analyze_utils import prep_plt
 from context_general_bci.utils import get_wandb_run, wandb_query_latest
 
 # Exactly matched to training
-CONTEXT_S_SUITE = [0, 1, 2, 3]
+# CONTEXT_S_SUITE = [0, 1, 2, 3]
+CONTEXT_S_SUITE = [1, 4, 9, 13]
 BINS_PER_S = 50
 
 data_label ='indy'
@@ -64,6 +65,21 @@ results = {
         0.6321,
         0.6432
     ] # Produced by running for i in {0,1,2,3};do python scripts/predict_scripted.py -i <variant> -d indy -c $i;done
+}
+results = {
+    'Model': [
+        '700 hr',
+        '700 hr',
+        '700 hr',
+        '700 hr',
+    ],
+    'context_s': [1, 4, 9, 13],
+    'icl': [
+        0.6144,
+        0.6103,
+        0.6018,
+        0.6255,
+    ]
 }
 results = pd.DataFrame(results)
 f = plt.figure(figsize=(6, 6))

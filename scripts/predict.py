@@ -34,6 +34,7 @@ from context_general_bci.analyze_utils import (
 # query = 'neural_data_monkey-pitt_100-glcgd2x0'
 query = 'pitt_monkey-92bj8iw0'
 # query = 'pitt_monkey_16k-4rm2fxnq'
+query = 'pitt_monkey_16k-sq9jr9d0'
 # query = 'pitt-rku9o9ve'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
