@@ -98,6 +98,15 @@ def data_label_to_target(data_label: str):
         target = [
             'odoherty_rtt-Indy-20160627_01'
         ]
+    elif data_label == 'crs08_grasp':
+        # manual sampling https://pitt-my.sharepoint.com/:x:/r/personal/ghb14_pitt_edu/_layouts/15/Doc.aspx?sourcedoc=%7BEFCBDF63-B37B-4C60-A578-0A51AEE4157B%7D&file=U01%20Testing%20Dates.xlsx&action=default&mobileredirect=true
+        target = [
+            'pitt_broad_pitt_co_CRS08Lab_9_.*',
+            'pitt_broad_pitt_co_CRS08Lab_10_.*',
+            'pitt_broad_pitt_co_CRS08Lab_13_.*',
+            'pitt_broad_pitt_co_CRS08Lab_14_.*',
+            'pitt_broad_pitt_co_CRS08Lab_36_.*',
+        ]
     else:
         raise ValueError(f"Unknown data label: {data_label}")
     return target

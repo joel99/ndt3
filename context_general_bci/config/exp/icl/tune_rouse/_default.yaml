@@ -29,11 +29,11 @@ model:
     context_prompt_time_thresh_min: -5
     prefix_ratio: 0.25
     tasks:
-    - ModelTask.spike_context
+    - ModelTask.spike_infill
     - ModelTask.kinematic_infill
     - ModelTask.constraints
     - ModelTask.return_context
-    task_weights: [0., 1.0, 0., 0.]
+    task_weights: [1.0, 1.0, 0., 0.]
     metrics:
     - Metric.kinematic_r2
     - Metric.kinematic_acc
@@ -75,13 +75,12 @@ dataset:
     chop_size_ms: 15000
   churchland_maze:
     chop_size_ms: 15000
-  max_channels: 288 # Whoops.. need to increase this in future
+  max_channels: 320
   max_arrays: 2
   datasets:
   - rouse.*
   eval_datasets:
   - rouse.*
-  # scale_limit_per_eval_session: 20 # 100s!
   scale_limit_per_eval_session: 4 # 60s
   eval_ratio: 0.25
 

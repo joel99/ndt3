@@ -37,8 +37,14 @@ query = 'pitt_monkey-92bj8iw0'
 query = 'pitt_monkey_16k-sq9jr9d0'
 # query = 'pitt-rku9o9ve'
 
+
 # Rouse tuned
-query = 'pitt_monkey_160-qj087lns'
+# query = 'pitt_monkey_160-qj087lns'
+
+# CRS08 tuned
+query = 'pitt_monkey-hedfeq5w'
+query = 'pitt_monkey-yv2du2y1'
+
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)

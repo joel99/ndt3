@@ -29,11 +29,11 @@ model:
     context_prompt_time_thresh_min: -5
     prefix_ratio: 0.25
     tasks:
-    - ModelTask.spike_context
+    - ModelTask.spike_infill
     - ModelTask.kinematic_infill
     - ModelTask.constraints
     - ModelTask.return_context
-    task_weights: [0., 1.0, 0., 0.]
+    task_weights: [1.0, 1.0, 0., 0.]
     metrics:
     - Metric.kinematic_r2
     - Metric.kinematic_acc
