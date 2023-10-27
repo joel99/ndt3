@@ -25,7 +25,7 @@ setup(
         'argparse',
         'wandb',
         'einops',
-        'pytorch-lightning',
+        'lightning',
         'scikit-learn',
         'ordered-enum',
         'mat73',

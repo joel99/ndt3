@@ -37,6 +37,9 @@ query = 'pitt_monkey-92bj8iw0'
 query = 'pitt_monkey_16k-sq9jr9d0'
 # query = 'pitt-rku9o9ve'
 
+# Rouse tuned
+query = 'pitt_monkey_160-qj087lns'
+
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -108,7 +111,8 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 # model.cfg.eval.teacher_timesteps = int(50 * 13.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 10.) # 0.5s
 # model.cfg.eval.teacher_timesteps = int(50 * 5.) # 0.5s
-model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
+model.cfg.eval.teacher_timesteps = int(50 * 3.) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 # model.cfg.eval.student_gap = int(50 * 0.)
 model.cfg.eval.student_gap = int(50 * 1.)
 

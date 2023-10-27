@@ -66,21 +66,21 @@ results = {
         0.6432
     ] # Produced by running for i in {0,1,2,3};do python scripts/predict_scripted.py -i <variant> -d indy -c $i;done
 }
-results = {
-    'Model': [
-        '700 hr',
-        '700 hr',
-        '700 hr',
-        '700 hr',
-    ],
-    'context_s': [1, 4, 9, 13],
-    'icl': [
-        0.6144,
-        0.6103,
-        0.6018,
-        0.6255,
-    ]
-}
+# results = {
+#     'Model': [
+#         '700 hr',
+#         '700 hr',
+#         '700 hr',
+#         '700 hr',
+#     ],
+#     'context_s': [1, 4, 9, 13],
+#     'icl': [
+#         0.6144,
+#         0.6103,
+#         0.6018,
+#         0.6255,
+#     ]
+# }
 results = pd.DataFrame(results)
 f = plt.figure(figsize=(6, 6))
 ax = prep_plt(f.gca(), big=True)

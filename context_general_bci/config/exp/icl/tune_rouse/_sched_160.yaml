@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+model:
+  lr_schedule: linear_warmup
+dataset:
+  scale_limit_per_eval_session: 50 # I have no idea why I call this 160, this is clearly 750s and 50 trials.
+train:
+  effective_batch_size: 16 # Whoops, misinterpreted
+  # effective_batch_size: 2048 # This is ~full batch, but we find smaller minibatches reduces perf (NLL and R2)

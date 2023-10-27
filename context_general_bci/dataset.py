@@ -555,12 +555,13 @@ class SpikingDataset(Dataset):
         """
         stack_batch = defaultdict(list)
         # TODO deprecate - don't think this even makes any sense... this is solely on the basis of neurons...
-        for b in batch:
-            # ! Jenkins is being annoying...
-            if len(b[DataKey.position]) == 0:
-                print("Size notes")
-                print(b[DataKey.position].size(), b[DataKey.spikes].shape, b[MetaKey.session], self.get_data_attrs().context.session[b[MetaKey.session]])
-        space_lengths = torch.tensor([b[DataKey.position].max() + 1 for b in batch]) # unique space (guaranteed to be asending range)
+        # for b in batch:
+        #     # ! Jenkins is being annoying...
+        #     if len(b[DataKey.position]) == 0:
+        #         print("Size notes")
+        #         print(b[DataKey.position].size(), b[DataKey.spikes].shape, b[MetaKey.session], self.get_data_attrs().context.session[b[MetaKey.session]])
+        # space_lengths = torch.tensor([b[DataKey.position].max() + 1 for b in batch]) # unique space (guaranteed to be asending range)
+        space_lengths = torch.tensor([len(b[DataKey.position].unique()) + len(b[DataKey.covariate_space].unique()) for b in batch])
         time_budget = (self.cfg.max_tokens // space_lengths)
         if self.max_bins:
             time_budget = time_budget.min(torch.tensor(self.max_bins))
