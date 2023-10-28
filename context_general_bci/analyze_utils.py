@@ -51,6 +51,8 @@ DIMS = {
     'odoherty': REACH_DEFAULT_KIN_LABELS,
     'indy': REACH_DEFAULT_KIN_LABELS,
     'rouse': REACH_DEFAULT_KIN_LABELS,
+    'crs08_grasp': ['x', 'y', 'z', 'gx'], # Get with proc_data_viewer_kinematics
+    'grasp': ['x', 'gx'], # Get with proc_data_viewer_kinematics
 }
 
 def data_label_to_target(data_label: str):

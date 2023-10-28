@@ -23,7 +23,8 @@ from context_general_bci.contexts import context_registry
 
 from context_general_bci.utils import wandb_query_latest
 from context_general_bci.analyze_utils import (
-    stack_batch, load_wandb_run, prep_plt, rolling_time_since_student, get_dataloader, DIMS
+    stack_batch, load_wandb_run, prep_plt, rolling_time_since_student, get_dataloader, DIMS,
+    data_label_to_target
 )
 
 
@@ -42,8 +43,8 @@ query = 'pitt_monkey_16k-sq9jr9d0'
 # query = 'pitt_monkey_160-qj087lns'
 
 # CRS08 tuned
+# query = 'pitt_monkey-yv2du2y1'
 query = 'pitt_monkey-hedfeq5w'
-query = 'pitt_monkey-yv2du2y1'
 
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -54,39 +55,52 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 
 cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
 
-target = [
-    'rouse.*'
-    # 'miller_Jango-Jango_20150730_001',
-    # 'dyer_co_chewie_2',
-    # 'gallego_co_Chewie_CO_20160510',
-    # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
-    # 'churchland_maze_jenkins.*'
 
-    # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
-
-    # 'odoherty_rtt-Indy-20160407_02',
-    # 'odoherty_rtt-Indy-20160627_01',
-    # 'odoherty_rtt-Indy-20161005_06',
-    # 'odoherty_rtt-Indy-20161026_03',
-    # 'odoherty_rtt-Indy-20170131_02',
-
-    # 'odoherty_rtt-Loco-20170210_03',
-    # 'odoherty_rtt-Loco-20170213_02',
-    # 'odoherty_rtt-Loco-20170214_02',
-
-    # 'odoherty_rtt-Loco-20170215_02',
-    # 'odoherty_rtt-Loco-20170216_02',
-    # 'odoherty_rtt-Loco-20170217_02'
-    # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
-    # 'pitt_broad_pitt_co_CRS02bLab_1761',
-    # 'pitt_broad_pitt_co_CRS07Home_32',
-    # 'pitt_broad_pitt_co_CRS07Home_88',
-    # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
-]
 # data_label ='indy'
+data_label = ''
+data_label = 'crs08_grasp'
+data_label = ''
+if data_label:
+    target = data_label_to_target(data_label)
+else:
+    target = [
+        # 'rouse.*',
+        'pitt_broad_pitt_co_CRS07Home_108_.*',
+        # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
 
+        # 'miller_Jango-Jango_20150730_001',
+        # 'dyer_co_chewie_2',
+        # 'gallego_co_Chewie_CO_20160510',
+        # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
+        # 'churchland_maze_jenkins.*'
+
+        # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
+
+        # 'odoherty_rtt-Indy-20160407_02',
+        # 'odoherty_rtt-Indy-20160627_01',
+        # 'odoherty_rtt-Indy-20161005_06',
+        # 'odoherty_rtt-Indy-20161026_03',
+        # 'odoherty_rtt-Indy-20170131_02',
+
+        # 'odoherty_rtt-Loco-20170210_03',
+        # 'odoherty_rtt-Loco-20170213_02',
+        # 'odoherty_rtt-Loco-20170214_02',
+
+        # 'odoherty_rtt-Loco-20170215_02',
+        # 'odoherty_rtt-Loco-20170216_02',
+        # 'odoherty_rtt-Loco-20170217_02'
+        # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
+        # 'pitt_broad_pitt_co_CRS02bLab_1761',
+        # 'pitt_broad_pitt_co_CRS07Home_32',
+        # 'pitt_broad_pitt_co_CRS07Home_88',
+        # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
+    ]
+    # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
+    data_label = 'grasp'
+    print(f'Assuming: {data_label}')
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
+print(cfg.dataset.eval_ratio)
 if cfg.dataset.eval_ratio > 0 and cfg.dataset.eval_ratio < 1: # i.e. brand new dataset, not monitored during training
     # Not super robust... we probably want to make this more like... expand datasets and compute whether overlapped
     dataset = SpikingDataset(cfg.dataset) # Make as original
@@ -115,10 +129,9 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 
 # model.cfg.eval.teacher_timesteps = int(50 * 13.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 10.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 5.) # 0.5s
-model.cfg.eval.teacher_timesteps = int(50 * 3.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
+# model.cfg.eval.teacher_timesteps = int(50 * 9.)
+# model.cfg.eval.teacher_timesteps = int(50 * 4.) # 0.5s
+model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
 # model.cfg.eval.student_gap = int(50 * 0.)
 model.cfg.eval.student_gap = int(50 * 1.)
 
@@ -129,10 +142,6 @@ trainer = pl.Trainer(
 dataloader = get_dataloader(dataset, batch_size=16, num_workers=16)
 # dataloader = get_dataloader(dataset, batch_size=128, num_workers=16)
 heldin_outputs = stack_batch(trainer.predict(model, dataloader))
-#%%
-# data_label = 'indy'
-data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
-print(f'Assuming: {data_label}')
 #%%
 print(heldin_outputs[Output.behavior_pred].shape)
 print(heldin_outputs[Output.behavior].shape)
@@ -177,7 +186,8 @@ camera_label = {
     'EMG_ECRb': 'ECRb',
     'EMG_EDCr': 'EDCr',
 }
-xlim = [0, 1000]
+# xlim = [0, 1000]
+xlim = [0, 5000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
 
@@ -244,7 +254,7 @@ def plot_target_pred_overlay(
         ax, is_student, prediction, palette[1], model_label
     )
     if xlim is not None:
-        ax.set_xlim(xlim[0], xlim[1])
+        ax.set_xlim(0, xlim[1] - xlim[0])
     xticks = ax.get_xticks()
     ax.set_xticks(xticks)
     ax.set_xticklabels(xticks * cfg.dataset.bin_size_ms / 1000)

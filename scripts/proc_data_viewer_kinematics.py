@@ -20,6 +20,8 @@ from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest, unflatten
 
 sample_query = "pitt_monkey-a1yiwczo"
+sample_query = 'pitt_monkey_16k-sq9jr9d0'
+
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
 
@@ -77,12 +79,15 @@ run_cfg.datasets = [
 
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
+    # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
+    'pitt_broad_pitt_co_CRS07Home_108_.*',
+
 
     # 'dyer_co.*',
     # 'gallego_.*', # Gallego
     # 'odoherty_rtt-Indy-20160627_01.*',
     # 'churchland_maze_jenkins.*',
-    'churchland_misc_jenkins.*',
+    # 'churchland_misc_jenkins.*',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_nitschke.*',
     # 'churchland_misc_reggie-1-qq.*', # reggie covs sus
