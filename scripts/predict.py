@@ -35,7 +35,7 @@ query = 'pitt_monkey-92bj8iw0'
 
 # CRS08 tuned
 # query = 'pitt_monkey-yv2du2y1'
-# query = 'pitt_monkey-hedfeq5w'
+query = 'pitt_monkey-hedfeq5w'
 
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -62,7 +62,8 @@ else:
         # 'rouse.*',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
         'pitt_broad_pitt_co_CRS07Home_108_.*',
-        # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
+        # 'pitt_broad_pitt_co_CRS08Lab_36_.*',
+        # 'pitt_broad_pitt_co_CRS08Lab_10_.*',
 
         # 'miller_Jango-Jango_20150730_001',
         # 'dyer_co_chewie_2',
@@ -127,7 +128,7 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 CUE_LENGTH_S = 1
 CUE_LENGTH_S = 4
 CUE_LENGTH_S = 9
-CUE_LENGTH_S = 13
+# CUE_LENGTH_S = 13
 
 EVAL_GAP_S = 1
 model.cfg.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
@@ -144,6 +145,7 @@ dataloader = get_dataloader(dataset, batch_size=16, num_workers=16)
 outputs = stack_batch(trainer.predict(model, dataloader))#%%
 print(outputs[Output.behavior_pred].shape)
 print(outputs[Output.behavior].shape)
+print(outputs[DataKey.covariate_labels.name])
 #%%
 prediction = outputs[Output.behavior_pred]
 target = outputs[Output.behavior]
@@ -186,8 +188,11 @@ camera_label = {
     'EMG_EDCr': 'EDCr',
 }
 xlim = [0, 1000]
+# xlim = [0, 2000]
+xlim = [0, 3000]
 # xlim = [0, 500]
 # xlim = [0, 5000]
+# xlim = [3000, 4000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
 
