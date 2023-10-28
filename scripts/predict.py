@@ -60,8 +60,8 @@ if data_label:
 else:
     target = [
         # 'rouse.*',
-        'pitt_broad_pitt_co_CRS02bLab_1942_1',
-        # 'pitt_broad_pitt_co_CRS07Home_108_.*',
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
+        'pitt_broad_pitt_co_CRS07Home_108_.*',
         # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
 
         # 'miller_Jango-Jango_20150730_001',
@@ -124,12 +124,16 @@ print(data_attrs)
 
 model = transfer_model(src_model, cfg.model, data_attrs)
 
-# model.cfg.eval.teacher_timesteps = int(50 * 13.) # 0.5s
-# model.cfg.eval.teacher_timesteps = int(50 * 9.)
-# model.cfg.eval.teacher_timesteps = int(50 * 4.) # 0.5s
-model.cfg.eval.teacher_timesteps = int(50 * 1.) # 0.5s
-# model.cfg.eval.student_gap = int(50 * 0.)
-model.cfg.eval.student_gap = int(50 * 1.)
+CUE_LENGTH_S = 1
+CUE_LENGTH_S = 4
+CUE_LENGTH_S = 9
+CUE_LENGTH_S = 13
+
+EVAL_GAP_S = 1
+model.cfg.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
+model.cfg.eval.student_gap = int(EVAL_GAP_S * 1000 / cfg.dataset.bin_size_ms)
+model.cfg.eval.use_student = True
+model.cfg.eval.use_student = False
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
@@ -140,8 +144,6 @@ dataloader = get_dataloader(dataset, batch_size=16, num_workers=16)
 outputs = stack_batch(trainer.predict(model, dataloader))#%%
 print(outputs[Output.behavior_pred].shape)
 print(outputs[Output.behavior].shape)
-#%%
-print(outputs[DataKey.covariate_labels.name])
 #%%
 prediction = outputs[Output.behavior_pred]
 target = outputs[Output.behavior]
@@ -184,7 +186,7 @@ camera_label = {
     'EMG_EDCr': 'EDCr',
 }
 xlim = [0, 1000]
-xlim = [0, 500]
+# xlim = [0, 500]
 # xlim = [0, 5000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
@@ -211,8 +213,8 @@ def plot_prediction_spans(ax, is_student, prediction, color, model_label):
                 prediction[start:end],
                 color=color,
                 label=label,
-                alpha=1.,
-                linestyle='-.',
+                alpha=.8,
+                linestyle='-',
                 linewidth=2,
             )
             first_line = False  # Update the flag as the first line is plotted
@@ -221,6 +223,7 @@ def plot_target_pred_overlay(
         target,
         prediction,
         is_student,
+        valid_pred,
         label,
         model_label="Pred",
         ax=None,
@@ -230,13 +233,13 @@ def plot_target_pred_overlay(
 ):
     ax = prep_plt(ax, big=True)
     palette[0] = 'k'
-
+    r2_subset = r2_score(target[valid_pred], prediction[valid_pred])
     if xlim:
         target = target[xlim[0]:xlim[1]]
         prediction = prediction[xlim[0]:xlim[1]]
         is_student = is_student[xlim[0]:xlim[1]]
     # Plot true and predicted values
-    ax.plot(target, label=f'True', linestyle='-', alpha=0.2, color=palette[0])
+    ax.plot(target, label=f'True', linestyle='-', alpha=0.5, color=palette[0])
     # ax.plot(prediction, label=f'pred', linestyle='--', alpha=0.75)
 
     # ax.scatter(
@@ -247,7 +250,7 @@ def plot_target_pred_overlay(
     #     color=palette[1],
     #     s=5,
     # )
-    model_label = f'{model_label} ({r2_student:.2f})'
+    model_label = f'{model_label} ({r2_subset:.2f})'
     plot_prediction_spans(
         ax, is_student, prediction, palette[1], model_label
     )
@@ -296,6 +299,7 @@ for i, dim in enumerate(subset_dims):
         target[dim::num_dims],
         prediction[dim::num_dims],
         is_student[dim::num_dims],
+        valid[dim::num_dims],
         label=labels[i],
         ax=axs[i],
         plot_xlabel=i == subset_dims[-1], xlim=xlim
