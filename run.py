@@ -9,7 +9,6 @@ import socket
 
 from typing import Dict, Any
 
-from pprint import pformat
 import logging # we use top level logging since most actual diagnostic info is in libs
 import hydra
 from omegaconf import OmegaConf
@@ -17,7 +16,6 @@ import dataclasses
 
 import torch
 import lightning as pl
-# import lightning.pytorch as pl
 from lightning import seed_everything
 from lightning.pytorch.callbacks import (
     ModelCheckpoint,

@@ -878,6 +878,9 @@ class BrainBertInterface(pl.LightningModule):
             Note: kind of annoying to change keywords here manually (no args can be passed in)
             batch should provide info needed by model. (responsibility of user)
             Output is always batched (for now)
+
+            Out:
+            - if using NDT3, we will flatten all items in a batch, assuming dims are equivalent
         """
         assert self.data_attrs.serve_tokens_flat, "Not implemented"
         # there are data keys and meta keys, that might be coming in unbatched
@@ -916,7 +919,7 @@ class BrainBertInterface(pl.LightningModule):
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
         batch_out: Dict[str | DataKey | MetaKey | Output, torch.Tensor] = {}
         # auto-debug
-        for k in [MetaKey.session, MetaKey.subject, MetaKey.task]:
+        for k in [MetaKey.session, MetaKey.subject, MetaKey.task, DataKey.covariate_labels.name]:
             if k in batch:
                 batch_out[k] = batch[k]
         if Output.spikes in self.cfg.task.outputs:
@@ -1072,6 +1075,13 @@ class BrainBertInterface(pl.LightningModule):
                 Output.behavior: target_stream[stream_mask],
                 Output.behavior_query_mask: cue_mask[stream_mask],
             }
+            # Check covariate labels all the same
+            if DataKey.covariate_labels.name in batch:
+                first_dims = batch[DataKey.covariate_labels.name][0]
+                if all(i == first_dims for i in batch[DataKey.covariate_labels.name]):
+                    batch_out[DataKey.covariate_labels.name] = first_dims
+                else:
+                    logger.warning("Making predictions over batch with mismatched covariate labels, labels not returned.")
         else:
             features, times, space, padding, modalities = self(batch)
             for i, task in enumerate(self.cfg.task.tasks):

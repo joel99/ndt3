@@ -3,9 +3,6 @@
 import os
 # os.environ['CUDA_VISIBLE_DEVICES'] = '3'
 os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-import copy
-from datetime import datetime
-from pytz import timezone
 
 from matplotlib import pyplot as plt
 import numpy as np
@@ -28,14 +25,8 @@ from context_general_bci.analyze_utils import (
 )
 
 
-# query = 'data_min-jkohlswe'
-# query = 'data_indy-jt456lfs'
-# query = 'neural_data_monkey-pitt_800-33jazjoo'
-
-# query = 'neural_data_monkey-pitt_100-glcgd2x0'
 query = 'pitt_monkey-92bj8iw0'
-# query = 'pitt_monkey_16k-4rm2fxnq'
-query = 'pitt_monkey_16k-sq9jr9d0'
+# query = 'pitt_monkey_16k-sq9jr9d0'
 # query = 'pitt-rku9o9ve'
 
 
@@ -44,7 +35,7 @@ query = 'pitt_monkey_16k-sq9jr9d0'
 
 # CRS08 tuned
 # query = 'pitt_monkey-yv2du2y1'
-query = 'pitt_monkey-hedfeq5w'
+# query = 'pitt_monkey-hedfeq5w'
 
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -53,7 +44,11 @@ print(wandb_run.id)
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 # src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_kinematic_r2')
 
-cfg.model.task.outputs = [Output.behavior, Output.behavior_pred]
+cfg.model.task.outputs = [
+    Output.behavior,
+    Output.behavior_pred,
+    # Output.
+]
 
 
 # data_label ='indy'
@@ -65,7 +60,8 @@ if data_label:
 else:
     target = [
         # 'rouse.*',
-        'pitt_broad_pitt_co_CRS07Home_108_.*',
+        'pitt_broad_pitt_co_CRS02bLab_1942_1',
+        # 'pitt_broad_pitt_co_CRS07Home_108_.*',
         # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
 
         # 'miller_Jango-Jango_20150730_001',
@@ -141,14 +137,15 @@ trainer = pl.Trainer(
 )
 dataloader = get_dataloader(dataset, batch_size=16, num_workers=16)
 # dataloader = get_dataloader(dataset, batch_size=128, num_workers=16)
-heldin_outputs = stack_batch(trainer.predict(model, dataloader))
+outputs = stack_batch(trainer.predict(model, dataloader))#%%
+print(outputs[Output.behavior_pred].shape)
+print(outputs[Output.behavior].shape)
 #%%
-print(heldin_outputs[Output.behavior_pred].shape)
-print(heldin_outputs[Output.behavior].shape)
-
-prediction = heldin_outputs[Output.behavior_pred]
-target = heldin_outputs[Output.behavior]
-is_student = heldin_outputs[Output.behavior_query_mask]
+print(outputs[DataKey.covariate_labels.name])
+#%%
+prediction = outputs[Output.behavior_pred]
+target = outputs[Output.behavior]
+is_student = outputs[Output.behavior_query_mask]
 # Compute R2
 r2 = r2_score(target, prediction)
 # r2_student = r2_score(target[is_student], prediction[is_student])
@@ -186,8 +183,9 @@ camera_label = {
     'EMG_ECRb': 'ECRb',
     'EMG_EDCr': 'EDCr',
 }
-# xlim = [0, 1000]
-xlim = [0, 5000]
+xlim = [0, 1000]
+xlim = [0, 500]
+# xlim = [0, 5000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
 
@@ -214,7 +212,7 @@ def plot_prediction_spans(ax, is_student, prediction, color, model_label):
                 color=color,
                 label=label,
                 alpha=1.,
-                linestyle='-',
+                linestyle='-.',
                 linewidth=2,
             )
             first_line = False  # Update the flag as the first line is plotted
@@ -281,7 +279,7 @@ def plot_target_pred_overlay(
 
     # ax.get_legend().remove()
 
-labels = DIMS[data_label]
+labels = outputs[DataKey.covariate_labels.name]
 num_dims = len(labels)
 if subset_cov:
     subset_dims = [i for i in range(num_dims) if labels[i] in subset_cov]
@@ -325,10 +323,10 @@ fig.suptitle(
 # ICL_CROP = 0
 
 # from context_general_bci.config import DEFAULT_KIN_LABELS
-# pred = heldin_outputs[Output.behavior_pred]
-# true = heldin_outputs[Output.behavior]
-# positions = heldin_outputs[f'{DataKey.covariate_space}_target']
-# padding = heldin_outputs[f'covariate_{DataKey.padding}_target']
+# pred = outputs[Output.behavior_pred]
+# true = outputs[Output.behavior]
+# positions = outputs[f'{DataKey.covariate_space}_target']
+# padding = outputs[f'covariate_{DataKey.padding}_target']
 
 # if ICL_CROP:
 #     if isinstance(pred, torch.Tensor):
@@ -344,8 +342,8 @@ fig.suptitle(
 #         positions = [p[-ICL_CROP:] for p in positions]
 #         padding = [p[-ICL_CROP:] for p in padding]
 
-# # print(heldin_outputs[f'{DataKey.covariate_space}_target'].unique())
-# # print(heldin_outputs[DataKey.covariate_labels])
+# # print(outputs[f'{DataKey.covariate_space}_target'].unique())
+# # print(outputs[DataKey.covariate_labels])
 
 # def flatten(arr):
 #     return np.concatenate(arr) if isinstance(arr, list) else arr.flatten()
@@ -358,7 +356,7 @@ fig.suptitle(
 # else:
 #     # remap position to global space
 #     coords = []
-#     labels = heldin_outputs[DataKey.covariate_labels]
+#     labels = outputs[DataKey.covariate_labels]
 #     for i, trial_position in enumerate(positions):
 #         coords.extend(np.array(labels[i])[trial_position])
 #     coords = np.array(coords)
@@ -386,17 +384,17 @@ fig.suptitle(
 # ax = prep_plt(f.gca(), big=True)
 # trials = 4
 # trials = 1
-# trials = min(trials, len(heldin_outputs[Output.behavior_pred]))
+# trials = min(trials, len(outputs[Output.behavior_pred]))
 # trials = range(trials)
 
 # colors = sns.color_palette('colorblind', df.coord.nunique())
 # label_unique = list(df.coord.unique())
 # # print(label_unique)
 # def plot_trial(trial, ax, color, label=False):
-#     vel_true = heldin_outputs[Output.behavior][trial]
-#     vel_pred = heldin_outputs[Output.behavior_pred][trial]
-#     dims = heldin_outputs[f'{DataKey.covariate_space}_target'][trial]
-#     pad = heldin_outputs[f'covariate_{DataKey.padding}_target'][trial]
+#     vel_true = outputs[Output.behavior][trial]
+#     vel_pred = outputs[Output.behavior_pred][trial]
+#     dims = outputs[f'{DataKey.covariate_space}_target'][trial]
+#     pad = outputs[f'covariate_{DataKey.padding}_target'][trial]
 #     vel_true = vel_true[~pad]
 #     vel_pred = vel_pred[~pad]
 #     dims = dims[~pad]
@@ -404,7 +402,7 @@ fig.suptitle(
 #         dim_mask = dims == dim
 #         true_dim = vel_true[dim_mask]
 #         pred_dim = vel_pred[dim_mask]
-#         dim_label = DEFAULT_KIN_LABELS[dim] if model.data_attrs.semantic_covariates else heldin_outputs[DataKey.covariate_labels][trial][dim]
+#         dim_label = DEFAULT_KIN_LABELS[dim] if model.data_attrs.semantic_covariates else outputs[DataKey.covariate_labels][trial][dim]
 #         if dim_label != 'f':
 #             true_dim = true_dim.cumsum(0)
 #             pred_dim = pred_dim.cumsum(0)

@@ -26,10 +26,6 @@ from context_general_bci.model import BrainBertInterface, load_from_checkpoint
 from context_general_bci.dataset import DataAttrs, SpikingDataset
 from context_general_bci.config import RootConfig, DataKey
 
-from context_general_bci.config import REACH_DEFAULT_KIN_LABELS, REACH_DEFAULT_3D_KIN_LABELS
-from context_general_bci.tasks.myow_co import DYER_DEFAULT_KIN_LABELS
-from context_general_bci.tasks.miller import MILLER_LABELS
-
 STYLEGUIDE = {
     "palette": sns.color_palette('colorblind', 5),
     "hue_order": ['single', 'session', 'subject', 'task'],
@@ -39,20 +35,6 @@ STYLEGUIDE = {
         'subject': 's',
         'task': 'X',
     }
-}
-
-DIMS = {
-    'gallego': REACH_DEFAULT_KIN_LABELS,
-    'dyer': DYER_DEFAULT_KIN_LABELS,
-    'miller': MILLER_LABELS,
-    'churchland_misc': REACH_DEFAULT_3D_KIN_LABELS,
-    'churchland_maze': REACH_DEFAULT_KIN_LABELS,
-    'delay': REACH_DEFAULT_3D_KIN_LABELS,
-    'odoherty': REACH_DEFAULT_KIN_LABELS,
-    'indy': REACH_DEFAULT_KIN_LABELS,
-    'rouse': REACH_DEFAULT_KIN_LABELS,
-    'crs08_grasp': ['x', 'y', 'z', 'gx'], # Get with proc_data_viewer_kinematics
-    'grasp': ['x', 'gx'], # Get with proc_data_viewer_kinematics
 }
 
 def data_label_to_target(data_label: str):
@@ -188,13 +170,27 @@ def get_run_config(run: WandbRun, tag="val_loss"):
     cfg: RootConfig = OmegaConf.create(create_typed_cfg(run.config)) # Note, unchecked cast, but we often fiddle with irrelevant variables and don't want to get caught up
     return cfg
 
-def stack_batch(batch_out: List[Dict[str, torch.Tensor]]):
+def stack_batch(batch_out: List[Dict[str, torch.Tensor | List[str]]], try_collapse_labels=True):
     all_lists = defaultdict(list)
+
+    cov_labels = None
+    collapsing_cov = try_collapse_labels
+    breakpoint()
     for batch in batch_out:
         for k, v in batch.items():
             if isinstance(v, float) or isinstance(v, int):
                 v = [v]
+            if k == DataKey.covariate_labels.name and collapsing_cov:
+                if cov_labels is None:
+                    cov_labels = v
+                else:
+                    if cov_labels != v:
+                        collapsing_cov = False
             all_lists[k].extend(v)
+    if try_collapse_labels and not collapsing_cov:
+        print("Warning: could not collapse kinematic labels, return full list")
+    if collapsing_cov and cov_labels is not None:
+        all_lists[DataKey.covariate_labels.name] = cov_labels
     out = {}
     for k, v in all_lists.items():
         if isinstance(v[0], torch.Tensor):
@@ -203,12 +199,11 @@ def stack_batch(batch_out: List[Dict[str, torch.Tensor]]):
                 out[k] = torch.stack(v)
             else:
                 out[k] = v
-        elif k in [DataKey.covariate_labels]:
+        elif k in [DataKey.covariate_labels.name]:
             out[k] = v # Don't stack, return as list of lists
         else:
             out[k] = torch.tensor(v).mean() # some metric
     return out
-
 
 # Compute Gauss window and std with respect to bins
 def gauss_smooth(spikes, bin_size, kernel_sd=0.05):

@@ -39,12 +39,11 @@ run_cfg.datasets = [
 
     # Helicopter session
     # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
+    'pitt_broad_pitt_co_CRS02bLab_1942_1',
+    'pitt_broad_pitt_co_CRS02bLab_1942_2',
+    'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
+    'pitt_broad_pitt_co_CRS02bLab_1942_6',
     # Force
     # 'pitt_test_pitt_co_CRS07Home_108_1',
     # 'pitt_test_pitt_co_CRS07Lab_95_6',
@@ -80,7 +79,7 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
     # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
-    'pitt_broad_pitt_co_CRS07Home_108_.*',
+    # 'pitt_broad_pitt_co_CRS07Home_108_.*',
 
 
     # 'dyer_co.*',
@@ -105,10 +104,12 @@ dataset.build_context_index()
 dataset.subset_split()
 
 print(len(dataset))
-#%%
 names = context_registry.query(alias=dataset.cfg.datasets[0])
-for n in names:
-    print(n.alias)
+if isinstance(names, list):
+    for n in names:
+        print(n.alias)
+else:
+    print(names.alias)
 #%%
 has_brain_control = {}
 dimensions = {}
