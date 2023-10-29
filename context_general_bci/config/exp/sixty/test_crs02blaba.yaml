@@ -3,13 +3,6 @@
 defaults:
   - _default
 model:
-  task:
-    tasks:
-    - ModelTask.spike_infill
-    - ModelTask.kinematic_infill
-    - ModelTask.constraints
-    - ModelTask.return_context
-    task_weights: [1.0, 1.0, 0., 0.]
 dataset:
   max_tokens: 4092 # For subsequent curricula
   datasets:
@@ -19,6 +12,6 @@ dataset:
   # - miller.*
   # - odoherty_rtt.*
   # - delay.*
-  - pitt_broad_pitt_co_CRS02bLab.*
+  - pitt_broad_pitt_co_CRS02bLab_1.*
 train:
   batch_size: 32

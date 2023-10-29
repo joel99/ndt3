@@ -21,4 +21,4 @@ dataset:
   - delay.*
   - pitt_broad.*
 train:
-  batch_size: 32
+  batch_size: 16 # 40G, 20-32 OOM for some reason

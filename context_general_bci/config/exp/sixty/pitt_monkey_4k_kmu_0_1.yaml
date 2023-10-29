@@ -10,15 +10,16 @@ model:
     - ModelTask.constraints
     - ModelTask.return_context
     task_weights: [1.0, 1.0, 0., 0.]
+  kinematic_token_maskout: 0.0
 dataset:
   max_tokens: 4092 # For subsequent curricula
   datasets:
-  # - churchland.*
-  # - gallego.*
-  # - dyer_co.*
-  # - miller.*
-  # - odoherty_rtt.*
-  # - delay.*
-  - pitt_broad_pitt_co_CRS02bLab.*
+  - churchland.*
+  - gallego.*
+  - dyer_co.*
+  - miller.*
+  - odoherty_rtt.*
+  - delay.*
+  - pitt_broad.*
 train:
-  batch_size: 32
+  batch_size: 16 # 40G, 20-32 OOM for some reason
