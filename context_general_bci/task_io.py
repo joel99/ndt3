@@ -1326,14 +1326,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 decode_time = torch.cat([backbone_times, decode_time], dim=1)
                 decode_space = torch.cat([backbone_space, decode_space], dim=1)
                 other_kwargs = {}
-            # print('Src stream: ', decode_tokens.shape, decode_padding.shape, decode_time.shape, decode_space.shape)
-            # print('Cross stream:', other_kwargs['memory'].shape, other_kwargs['memory_padding_mask'].shape, other_kwargs['memory_times'].shape)
-            # if decode_tokens.size(1) == 0:
-                # breakpoint() # Wat is this data...
-            # print(decode_time.max(), backbone_space.max(), decode_space.max())
-            # if decode_time.max() > 1500: # debug
-            # if decode_time.max() > self.cfg.task.max_trial_length:
-                # raise ValueError(f'Decode Trial length {decode_time.max()} exceeds max trial length {self.cfg.max_trial_length}')
             backbone_features: torch.Tensor = self.decoder(
                 decode_tokens,
                 padding_mask=decode_padding,

@@ -283,9 +283,10 @@ class PittCOLoader(ExperimentalTaskLoader):
             spikes = payload['spikes']
             # elements = spikes.nelement()
             unique, counts = np.unique(spikes, return_counts=True)
-            for u, c in zip(unique, counts):
-                if u >= CLAMP_MAX:
-                    spikes[spikes == u] = CLAMP_MAX # clip
+            # ! Removing clip, we clip on embed. Avoids dataset, preproc specific clip
+            # for u, c in zip(unique, counts):
+                # if u >= CLAMP_MAX:
+                    # spikes[spikes == u] = CLAMP_MAX # clip
 
             # Iterate by trial, assumes continuity so we grab velocity outside
             exp_task_cfg: PittConfig = getattr(cfg, task.value)
