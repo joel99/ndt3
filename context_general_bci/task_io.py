@@ -1749,6 +1749,8 @@ class CovariateInfill(ClassificationMixin):
             loss_mask = ~backbone_padding
         if not loss_mask.any():
             loss = torch.zeros_like(loss).mean()
+            print(bhvr.shape, bhvr_tgt.shape, loss_mask.shape)
+            breakpoint()
         else:
             loss = loss[loss_mask].mean()
         batch_out['loss'] = loss

@@ -696,11 +696,16 @@ class BrainBertInterface(pl.LightningModule):
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         mask = mask & (times_from_end >= sample_thresh)
+                    if not mask.any():
+                        breakpoint()
                     mask = is_kinematic_input & mask
+                    if not mask.any():
+                        breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
         if self.cfg.next_step_prediction and self.cfg.fit_to_max_length:
+            # ! Cropping will probably be a failure point for prefix loss mode; we may crop out the final concluding tokens that we actually compute loss on reaching the kinematic task
             # Cropping feature is broken while we don't have a unified stream. This is because targets will be longer than expected.
             if pipeline_context.size(1) >= self.cfg.fit_to_max_length:
                 pipeline_context = pipeline_context[:, :self.cfg.fit_to_max_length]

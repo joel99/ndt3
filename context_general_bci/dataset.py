@@ -517,6 +517,7 @@ class SpikingDataset(Dataset):
                         # data_items[DataKey.task_return_time] = torch.tensor([self.cfg.max_trial_length], dtype=int)
                     else:
                         # Not sure this is legitimate
+                        # breakpoint()
                         if self.cfg.sparse_rewards:
                             return_dense = payload[k]
                             change_steps = torch.cat([torch.tensor([0]), (return_dense[1:] != return_dense[:-1]).any(1).nonzero().squeeze(1) + 1])
@@ -532,10 +533,6 @@ class SpikingDataset(Dataset):
                         # +1 since 0 is reserved for padding. Note that since this is a dataloader-level offset... um...
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
-                    # if (data_items[DataKey.task_return]).any() < 0:
-                    #     breakpoint()
-                    # if (data_items[DataKey.task_reward]).any() < 0:
-                    #     breakpoint()
                 else:
                     data_items[k] = payload[k]
         out = {
@@ -599,6 +596,8 @@ class SpikingDataset(Dataset):
                     elif k in [DataKey.constraint_time, DataKey.constraint_space]:
                         continue # treated above
                     elif k == DataKey.task_return:
+                        # if b[k].shape[0] > 1:
+                        #     breakpoint()
                         task_return = b[k]
                         task_reward = b[DataKey.task_reward]
                         task_return_time = b[DataKey.task_return_time]
