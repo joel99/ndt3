@@ -27,7 +27,7 @@ model:
   kinematic_token_maskout: 0.5
   task:
     context_prompt_time_thresh: -50 # 1s
-    context_prompt_time_thresh_min: -1 # The fewer HPs the better
+    context_prompt_time_thresh_min: -2 # The fewer HPs the better.
     prefix_ratio: 0.25
     tasks:
     - ModelTask.spike_infill

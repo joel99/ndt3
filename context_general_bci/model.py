@@ -685,7 +685,7 @@ class BrainBertInterface(pl.LightningModule):
                         # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
                     elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
                         # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
-                        # print(times.shape)
+                        # ! Note this should be >= 1 step, so prompt_time_thresh_min must be < -1 - -1 itself, inclusive, means that we might make all steps illegal
                         sample_thresh = torch.randint(
                             self.cfg.task.context_prompt_time_thresh,
                             self.cfg.task.context_prompt_time_thresh_min,

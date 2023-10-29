@@ -1742,7 +1742,7 @@ class CovariateInfill(ClassificationMixin):
             return batch_out
 
         # Compute loss
-        loss = self.compute_loss(bhvr, bhvr_tgt)
+        loss = self.compute_loss(bhvr, bhvr_tgt) # We don't _have_ to predict this for non-padding or at all if there's no targets, but it's convenient.
         if loss_mask is not None:
             loss_mask = loss_mask & ~backbone_padding
         else:
