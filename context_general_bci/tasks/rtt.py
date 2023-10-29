@@ -45,12 +45,9 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
             time_span = int((orig_timestamps[-1] - orig_timestamps[0]) * cfg.odoherty_rtt.sampling_rate)
             if cfg.odoherty_rtt.load_covariates:
                 def resample(data): # Updated 9/10/23: Previous resample produces an undesirable strong artifact at timestep 0. This hopefully removes that and thus also removes outliers.
-                    covariate_rate = cfg.odoherty_rtt.covariate_sampling_rate
-                    base_rate = int(1000 / cfg.bin_size_ms)
-                    # print(base_rate, covariate_rate, base_rate / covariate_rate)
+                    covariate_rate = cfg.odoherty_rtt.covariate_sampling_rate # in Hz
                     return torch.tensor(
-                        # signal.resample(data, int(len(data) / cfg.dataset.odoherty_rtt.covariate_sampling_rate / (cfg.dataset.bin_size_ms / 1000))) # This produces an edge artifact
-                        signal.resample_poly(data, base_rate, covariate_rate, padtype='line')
+                        signal.resample_poly(data, int(1000 / covariate_rate), cfg.bin_size_ms, padtype='line')
                     )
                 bhvr_vars = {}
                 finger_pos = h5file['finger_pos'][()].T / 100 # into meters
