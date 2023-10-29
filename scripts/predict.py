@@ -20,7 +20,7 @@ from context_general_bci.contexts import context_registry
 
 from context_general_bci.utils import wandb_query_latest
 from context_general_bci.analyze_utils import (
-    stack_batch, load_wandb_run, prep_plt, rolling_time_since_student, get_dataloader, DIMS,
+    stack_batch, load_wandb_run, prep_plt, rolling_time_since_student, get_dataloader,
     data_label_to_target
 )
 
@@ -35,7 +35,7 @@ query = 'pitt_monkey-92bj8iw0'
 
 # CRS08 tuned
 # query = 'pitt_monkey-yv2du2y1'
-query = 'pitt_monkey-hedfeq5w'
+# query = 'pitt_monkey-hedfeq5w'
 
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
@@ -127,7 +127,7 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 
 CUE_LENGTH_S = 1
 CUE_LENGTH_S = 4
-CUE_LENGTH_S = 9
+# CUE_LENGTH_S = 9
 # CUE_LENGTH_S = 13
 
 EVAL_GAP_S = 1
@@ -189,9 +189,9 @@ camera_label = {
 }
 xlim = [0, 1000]
 # xlim = [0, 2000]
-xlim = [0, 3000]
+# xlim = [0, 3000]
 # xlim = [0, 500]
-# xlim = [0, 5000]
+xlim = [0, 5000]
 # xlim = [3000, 4000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
