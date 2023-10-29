@@ -25,8 +25,8 @@ from context_general_bci.utils import wandb_query_latest
 # print(wandb_run)
 # _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss')
 cfg = ScaleHistoryDatasetConfig()
-cfg.datasets = ['pitt_full_pitt_co_CRS02bLab_1965_1*']
-print(context_registry.query(alias='pitt_full_pitt_co_CRS02bLab_1965')[0].alias)
+cfg.datasets = ['pitt_broad_pitt_co_CRS02bLab_1965_1*']
+print(context_registry.query(alias='pitt_broad_pitt_co_CRS02bLab_1965')[0].alias)
 
 # cfg.dataset.datasets = ['observation_CRS07Lab_session_82_set_1']
 # default_cfg: DatasetConfig = OmegaConf.create(DatasetConfig())

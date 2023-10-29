@@ -2,7 +2,6 @@
 
 defaults:
   - _default
-model:
 dataset:
   max_tokens: 4092 # For subsequent curricula
   datasets:

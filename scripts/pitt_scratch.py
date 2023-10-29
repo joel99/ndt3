@@ -24,12 +24,12 @@ import torch
 data_dir = Path("./data/pitt_co/")
 session = 173 # pursuit
 
-data_dir = Path('./data/pitt_misc/mat')
+data_dir = Path('./data/pitt_broad/')
 session = 16
 # session = 1407 # co
 
 # session_dir = data_dir / f'CRS02bHome.data.{session:05d}'
-session_dir = data_dir.glob(f'*{session}*fbc.mat').__next__()
+session_dir = data_dir.glob(f'*{session}*.mat').__next__()
 if not session_dir.exists():
     print(f'Session {session_dir} not found; Run `prep_all` on the QL .bin files.')
 print(session_dir)
@@ -177,8 +177,6 @@ def plot_trials(trial_times, ax=None):
 # plot_behavior(payload['position'], ax=ax)
 
 from context_general_bci.tasks.pitt_co import PittCOLoader
-vel = PittCOLoader.get_velocity(payload['position'])
-refit_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
 
 import torch.distributions as dists
 def refit_mock(positions, goals, thresh=0.001, lag_bins=0, oracle_blend=.25):
@@ -221,57 +219,65 @@ def refit_mock(positions, goals, thresh=0.001, lag_bins=0, oracle_blend=.25):
 
     new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
     return new_velocities
-refit_vel = refit_mock(payload['position'], payload['target'])
-refit_vel_lag = refit_mock(payload['position'], payload['target'], lag_bins=10)
+# refit_vel = refit_mock(payload['position'], payload['target'])
+# refit_vel_lag = refit_mock(payload['position'], payload['target'], lag_bins=10)
 
 # plot cumulative trajectories
 fig, ax = plt.subplots(figsize=(20, 10))
-ax = prep_plt(ax)
+# ax = prep_plt(ax)
 time_limit = 500
 step = 5
 # Scatter a gradient of points to track time progression
-ax.scatter(payload['position'][:time_limit:step,0], payload['position'][:time_limit:step,1], c=np.arange(0, time_limit, step), cmap='viridis', s=200)
-ax.scatter(payload['target'][:time_limit:step,0], payload['target'][:time_limit:step,1], c=np.arange(0, time_limit, step), cmap='viridis', marker='x', s=2000)
-for i in range(0, time_limit, step):
-    # plot the direction of the velocity
-    ax.arrow(
-        payload['position'][i,0], payload['position'][i,1],
-        vel[i,0], vel[i,1],
-        color='r',
-        alpha=0.2,
-        width=0.001
-    )
-    ax.arrow(
-        payload['position'][i,0], payload['position'][i,1],
-        refit_vel[i,0], refit_vel[i,1],
-        color='b',
-        alpha=0.2,
-        width=0.001
-    )
+# ax.scatter(payload['position'][:time_limit:step,0], payload['position'][:time_limit:step,1], c=np.arange(0, time_limit, step), cmap='viridis', s=200)
+# # ax.scatter(payload['target'][:time_limit:step,0], payload['target'][:time_limit:step,1], c=np.arange(0, time_limit, step), cmap='viridis', marker='x', s=2000)
+# for i in range(0, time_limit, step):
+#     # plot the direction of the velocity
+#     ax.arrow(
+#         payload['position'][i,0], payload['position'][i,1],
+#         vel[i,0], vel[i,1],
+#         color='r',
+#         alpha=0.2,
+#         width=0.001
+#     )
+    # ax.arrow(
+    #     payload['position'][i,0], payload['position'][i,1],
+    #     refit_vel[i,0], refit_vel[i,1],
+    #     color='b',
+    #     alpha=0.2,
+    #     width=0.001
+    # )
 
 # ax.plot(payload['position'][:time_limit,0], payload['position'][:time_limit,1], alpha=0.4)
 # ax.plot(payload['target'][:time_limit,0], payload['target'][:time_limit,1], alpha=0.4)
-print(refit_vel.shape)
+# print(refit_vel.shape)
 # ax.plot(refit_vel[:,0], refit_vel[:,1], alpha=0.1)
 
-#%%
 # refit_vel = payload['target']
 
 # plot the times when payload['target'].any(-1) is nan
 # print(payload['target'].isnan())
 # for nan_time in payload['target'].isnan().any(-1).nonzero():
     # ax.axvline(nan_time, color='r', alpha=0.1)
+kernel = np.ones((int(180 / 20), 1))/ (180 / 20)
+vel = PittCOLoader.get_velocity(payload['position'][:1000])
+# Make causal
+kernel = np.ones((int(300 / 20), 1))/ (300 / 20)
+kernel[int(300 / 20 / 2):] = 0
+vel_causal = PittCOLoader.get_velocity(payload['position'][:1000], kernel=kernel)
+# vel = PittCOLoader.get_velocity(payload['position'][:1000], kernel=np.ones((int(20 / 20), 1))/ (20 / 20))
+# refit_vel = PittCOLoader.ReFIT(payload['position'], payload['target'])
 
-# plot_behavior(vel, ax=axes[0])
-plot_behavior(refit_vel, ax=axes[0])
+plot_behavior(vel, ax=axes[0])
+plot_behavior(vel_causal, ax=axes[1])
+# plot_behavior(refit_vel, ax=axes[0])
 # plot_behavior(payload['position'], ax=axes[0])
-plot_trials(payload['trial_num'], ax=axes[0])
+# plot_trials(payload['trial_num'], ax=axes[0])
 
-plot_behavior(refit_vel_lag, ax=axes[1])
+# plot_behavior(refit_vel_lag, ax=axes[1])
 # plot_behavior(payload['target'], ax=axes[1])
+# plot_behavior(payload['position'][:1000], ax=axes[1])
 # plot_behavior(payload['position'], ax=axes[1])
-# plot_behavior(payload['position'], ax=axes[1])
-plot_trials(payload['trial_num'], ax=axes[1])
+# plot_trials(payload['trial_num'], ax=axes[1])
 
 # OK, let's articulate...
 # Symptom: Discontinuous ReFIT velocities, when I expect ReFIT velocity outputs to be identical to regular velocities.

@@ -13,8 +13,6 @@ from scipy.ndimage import gaussian_filter1d
 import scipy.signal as signal
 
 from einops import rearrange, reduce
-from nlb_tools.make_tensors import PARAMS, _prep_mask, make_stacked_array
-from nlb_tools.nwb_interface import NWBDataset
 
 import numpy as np
 import pandas as pd
@@ -38,13 +36,13 @@ context = context_registry.query(alias=dataset_name)
 datapath = context.datapath
 # Use modes to alternate through a few different codepaths
 mode = 'rtt'
-# mode = 'pitt'
+mode = 'pitt'
 if mode == 'rtt':
     ctxs = context_registry.query(task=ExperimentalTask.odoherty_rtt)
 else:
     # ctxs = context_registry.query(task=ExperimentalTask.observation)
-    ctxs = context_registry.query(task=ExperimentalTask.ortho)
-    ctxs = context_registry.query(task=ExperimentalTask.fbc)
+    # ctxs = context_registry.query(task=ExperimentalTask.ortho)
+    ctxs = context_registry.query(task=ExperimentalTask.pitt_co)
 session_paths = [ctx.datapath for ctx in ctxs]
 print(f'Found {len(session_paths)} sessions.')
 

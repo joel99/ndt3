@@ -171,7 +171,8 @@ class PittCOLoader(ExperimentalTaskLoader):
 
     # We have a basic 180ms boxcar smooth to deal with visual noise in rendering. Not really that excessive, still preserves high frequency control characteristics in the data. At lower values, observation targets becomes jagged and unrealistic.
     @staticmethod
-    def smooth(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
+    def smooth(position, kernel):
+        # kernel: np.ndarray, e.g. =np.ones((int(180 / 20), 1))/ (180 / 20)
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
@@ -185,8 +186,8 @@ class PittCOLoader(ExperimentalTaskLoader):
         return F.conv1d(position.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1))[:,0].T
 
     @staticmethod
-    def get_velocity(position, kernel=np.ones((int(180 / 20), 1))/ (180 / 20)):
-    # def get_velocity(position, kernel=np.ones((int(500 / 20), 1))/ (500 / 20)):
+    def get_velocity(position, kernel):
+        # kernel: np.ndarray, e.g. =np.ones((int(180 / 20), 1))/ (180 / 20)
         # Apply boxcar filter of 500ms - this is simply for Parity with Pitt decoding
         # This is necessary since 1. our data reports are effector position, not effector command; this is a better target since serious effector failure should reflect in intent
         # and 2. effector positions can be jagged, but intent is (presumably) not, even though intent hopefully reflects command, and 3. we're trying to report intent.
@@ -198,6 +199,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         # positions, goals: Time x Hidden.
         # weight: don't do a full refit correction, weight with original
         # defaults for lag experimented in `pitt_scratch`
+        raise NotImplementedError("Deprecated")
         lag_bins = reaction_lag_ms // bin_ms
         empirical = PittCOLoader.get_velocity(positions)
         oracle = goals.roll(lag_bins, dims=0) - positions
@@ -250,7 +252,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         dataset_alias: str,
         task: ExperimentalTask,
     ):
-        assert cfg.bin_size_ms == 20, 'code not prepped for different resolutions'
+        # assert cfg.bin_size_ms == 20, 'code not prepped for different resolutions'
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
@@ -282,7 +284,7 @@ class PittCOLoader(ExperimentalTaskLoader):
             # Sanitize / renormalize
             spikes = payload['spikes']
             # elements = spikes.nelement()
-            unique, counts = np.unique(spikes, return_counts=True)
+            # unique, counts = np.unique(spikes, return_counts=True)
             # ! Removing clip, we clip on embed. Avoids dataset, preproc specific clip
             # for u, c in zip(unique, counts):
                 # if u >= CLAMP_MAX:
@@ -292,6 +294,8 @@ class PittCOLoader(ExperimentalTaskLoader):
             exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
             # * Kinematics (labeled 'vel' as we take derivative of reported position)
+            kernel = np.ones((int(exp_task_cfg.causal_smooth_ms / cfg.bin_size_ms), 1)) / (exp_task_cfg.causal_smooth_ms / cfg.bin_size_ms)
+            kernel[-kernel.shape[0] // 2:] = 0 # causal, including current timestep
             if (
                 'position' in payload # and \
                 # task in [ExperimentalTask.observation, ExperimentalTask.ortho, ExperimentalTask.fbc, ExperimentalTask.unstructured] # and \ # Unstructured kinematics may be fake, mock data.
@@ -300,7 +304,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                     # breakpoint()
                     covariates = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                 else:
-                    covariates = PittCOLoader.get_velocity(payload['position'])
+                    covariates = PittCOLoader.get_velocity(payload['position'], kernel=kernel)
             else:
                 covariates = None
 
@@ -312,7 +316,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # clamp
                 covariate_force[covariate_force > NORMATIVE_MAX_FORCE] = NORMATIVE_MAX_FORCE
                 covariate_force[covariate_force < NORMATIVE_MIN_FORCE] = NORMATIVE_MIN_FORCE
-                covariate_force = PittCOLoader.smooth(covariate_force) # Gary doesn't compute velocity, just absolute. We follow suit.
+                covariate_force = PittCOLoader.smooth(covariate_force, kernel=kernel) # Gary doesn't compute velocity, just absolute. We follow suit.
                 covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
 
                 # These are mostly Gary's data - skip the initial 1s, which has the hand adjust but the participant isn't really paying attn
@@ -458,6 +462,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 save_trial_spikes(trial_spikes, i, other_args_trial)
 
         else: # folder style, preproc-ed on mind
+            raise NotImplementedError("Deprecated")
             for i, fname in enumerate(datapath.glob("*.mat")):
                 if fname.stem.startswith('QL.Task'):
                     payload = load_trial(fname)

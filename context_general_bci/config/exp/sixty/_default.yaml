@@ -95,7 +95,7 @@ dataset:
 
   tokenize_covariates: True
   sparse_constraints: True
-  # sparse_rewards: True
+  sparse_rewards: True
   behavior_dim: 10 # Force is here, include +1 for padding, etc.
   datasets: [] # To be overridden
   data_keys:

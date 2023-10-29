@@ -500,6 +500,7 @@ class PittConfig(ExperimentalConfig):
     respect_trial_boundaries: bool = False # keep this off for simplicity
     closed_loop_intention_estimation: str = ""
     limit_kin_dims: int = 8 # First 8 dims are taken (historically idx 6 is grasp velocity, 7 is grasp force)
+    causal_smooth_ms: int = 300 # Visually prototyped in `pitt_scratch`, seems good enough to reduce aberrant visual feedback
     # clip_kinematics: float = 10.0 # we don't expect values outside this range. Something abberant is happening if we do, clip these.
 
 
