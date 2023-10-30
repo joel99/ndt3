@@ -696,11 +696,7 @@ class BrainBertInterface(pl.LightningModule):
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         mask = mask & (times_from_end >= sample_thresh)
-                    if not mask.any():
-                        breakpoint()
                     mask = is_kinematic_input & mask
-                    if not mask.any():
-                        breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
@@ -1232,15 +1228,15 @@ class BrainBertInterface(pl.LightningModule):
     def training_step(self, batch, batch_idx):
         # if batch_idx > 2:
         #     return None # Override, debug
-        # if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
-        #     self.token_proc_approx += batch[DataKey.spikes].size(0) * batch[DataKey.spikes].size(1)
-        #     self.token_seen_approx += (batch[LENGTH_KEY].sum() * (1 - self.cfg.task.mask_ratio)).item()
+        if (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
+            self.token_proc_approx += batch[DataKey.spikes].size(0) * batch[DataKey.spikes].size(1)
+            # self.token_seen_approx += (batch[LENGTH_KEY].sum() * (1 - self.cfg.task.mask_ratio)).item()
         metrics = self._step(batch)
-        # if [ModelTask.shuffle_infill in self.cfg.task.tasks] and (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
-        #     if self.trainer.is_global_zero:
-        #         if self.cfg.log_token_proc_throughput:
-        #             token_proc_approx = self.all_gather(self.token_proc_approx).sum()
-        #             self.log('token_proc', token_proc_approx, rank_zero_only=True)
+        if (self.cfg.log_token_proc_throughput or self.cfg.log_token_seen_throughput):
+            if self.trainer.is_global_zero:
+                if self.cfg.log_token_proc_throughput:
+                    token_proc_approx = self.all_gather(self.token_proc_approx).sum()
+                    self.log('token_proc', token_proc_approx, rank_zero_only=True)
         #         if self.cfg.log_token_seen_throughput:
         #             token_count_approx = self.all_gather(self.token_seen_approx).sum()
         #             self.log('token_seen', token_count_approx, rank_zero_only=True)

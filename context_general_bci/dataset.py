@@ -549,16 +549,16 @@ class SpikingDataset(Dataset):
     def tokenized_collater(self, batch):
         r"""
             batch: list of dicts
+
+            # ! Note - cropping calculation ensures that the tokens allocated per batch is roughly limited,
+            # ! However, since dimensions are not consistent across the batch, uneven padding will still bring total tokens per trial above the limit
+            # ! This can only be resolved if we lower the assembly to here (not sure how we would), or use nested tensors or something like that.
+            # TODO take a look.
+            # For now, not a huge deal - order of error will be maybe 20-30%.
         """
         stack_batch = defaultdict(list)
-        # TODO deprecate - don't think this even makes any sense... this is solely on the basis of neurons...
-        # for b in batch:
-        #     # ! Jenkins is being annoying...
-        #     if len(b[DataKey.position]) == 0:
-        #         print("Size notes")
-        #         print(b[DataKey.position].size(), b[DataKey.spikes].shape, b[MetaKey.session], self.get_data_attrs().context.session[b[MetaKey.session]])
-        # space_lengths = torch.tensor([b[DataKey.position].max() + 1 for b in batch]) # unique space (guaranteed to be asending range)
         space_lengths = torch.tensor([len(b[DataKey.position].unique()) + len(b[DataKey.covariate_space].unique()) for b in batch])
+        # We only check spike + covariate for cropping since return and constraints should be sparse and add negligible tokens
         time_budget = (self.cfg.max_tokens // space_lengths)
         if self.max_bins:
             time_budget = time_budget.min(torch.tensor(self.max_bins))
@@ -615,10 +615,6 @@ class SpikingDataset(Dataset):
                         stack_batch[DataKey.task_return_time].append(task_return_time)
                         stack_batch[k].append(task_return)
                         stack_batch[DataKey.task_reward].append(task_reward)
-                        # if (task_return < 0).any():
-                        #     breakpoint()
-                        # if (task_reward < 0).any():
-                        #     breakpoint()
                     elif k in [DataKey.task_return_time, DataKey.task_reward]:
                         continue # treated above
                     elif k == DataKey.bhvr_vel:
@@ -874,7 +870,6 @@ class SpikingDataset(Dataset):
             eval_datasets = [ctx.id for ctx in self.list_alias_to_contexts(self.cfg.eval_datasets)]
 
             eval_session_df = self.meta_df[self.meta_df[MetaKey.session].isin(eval_datasets)]
-            # breakpoint()
             if not limit_per_eval_session:
                 limit_per_eval_session = limit_per_session # default is to obey regular limit
             if self.cfg.eval_split_continuous:

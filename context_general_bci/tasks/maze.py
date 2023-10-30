@@ -54,7 +54,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             # trial_vel: (time, 3)
             # Mirror spike downsample logic - if uneven, crop beginning
             trial_vel = trial_vel[trial_vel.shape[0] % cfg.bin_size_ms:, ]
-            trial_vel = resample_poly(trial_vel, (1000 / cfg.bin_size_ms), 1000, padtype='line', axis=0)
+            trial_vel = resample_poly(trial_vel, 1, cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if task_cfg.minmax:
                 trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
