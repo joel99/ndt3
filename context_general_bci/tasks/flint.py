@@ -43,6 +43,7 @@ estimated and added in.
 
 Data format:
 - Spike times, covariates at 100Hz
+- Some EMG available, nahh
 """
 
 from typing import List
@@ -85,69 +86,73 @@ class FlintLoader(ExperimentalTaskLoader):
         **kwargs,
     ):
         r"""
-            We are currently assuming that the start of covariate data is the same as time=0 for trial SpikeTimes
-            TODO do we want a <break> token between trials? For now no.
+            Unique to Flint:
+            - Single day, multiple sortings. Classic. Process separate-ish.
+            - They have a different number of Trials, indicating it's not multiple arrays or anything like that
         """
         exp_task_cfg: ExperimentalConfig = getattr(cfg, task.value)
         payload = loadmat(datapath)
         subject_payload = payload['Subject']
         if isinstance(subject_payload, dict):
-            trial_datas = subject_payload['Trial']
+            trial_datas = [subject_payload['Trial']]
         else:
-            trial_datas = [f.Trial for f in subject_payload] # some matlab structs in some files
-        all_vels = []
-        all_spikes = []
-        for trial_data in trial_datas:
-            trial_times = trial_data['Time'] # in seconds
-            trial_vel = np.array(trial_data['HandVel'])[:,:2] # Last dim is empty
-            trial_vel = torch.tensor(
-                signal.resample_poly(trial_vel, 10, cfg.bin_size_ms, padtype='line', axis=0), # Default 100Hz
-                dtype=torch.float32
-            ) # Time x Dim
-            spike_times = [(np.array(t['Spike']) - trial_times[0]) * 1000 for t in trial_data['Neuron']] # List of channel spike times, in ms from trial start
-
-            dense_spikes = spike_times_to_dense(spike_times, cfg.bin_size_ms, time_end=int((trial_times[-1] - trial_times[0]) * 1000) + 10) # Timebins x Channel x 1, at bin res
-            # Crop trailing bin if needed - which is what we do for spikes
-            if trial_vel.size(0) == dense_spikes.size(0) + 1:
-                trial_vel = trial_vel[:-1]
-            elif trial_vel.size(0) != dense_spikes.size(0):
-                raise ValueError(f"Mismatched spike and velocity lengths: {trial_vel.size(0)} vs {dense_spikes.size(0)}")
-            all_vels.append(trial_vel)
-            all_spikes.append(dense_spikes)
-        global_vel = torch.cat(all_vels) # Time x Dim, at bins
-        global_spikes = torch.cat(all_spikes) # Timebins x Channel x 1, at bin res
-
+            trial_datas = [f.Trial for f in subject_payload]
         if cfg.pack_dense:
             packer = PackToChop(exp_task_cfg.chop_size_ms // cfg.bin_size_ms, cache_root)
-
         meta_payload = {}
         meta_payload['path'] = []
-        global_args = {}
-        if cfg.tokenize_covariates:
-            global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
 
-        if exp_task_cfg.minmax:
-            global_vel, norm_dict = get_minmax_norm(global_vel)
-            global_args.update(norm_dict)
-        # Hm... hard to use packer individually since we normalize in external function
+        def proc_trial_data(chunk_data, prefix=''):
+            all_vels = []
+            all_spikes = []
+            for trial_data in chunk_data: # trial_data may be dict or unconverted matlab struct
+                trial_times = getattr(trial_data, 'Time') # in seconds
+                trial_vel = np.array(getattr(trial_data, 'HandVel'))[:,:2] # Last dim is empty
+                trial_vel = torch.tensor(
+                    signal.resample_poly(trial_vel, 10, cfg.bin_size_ms, padtype='line', axis=0), # Default 100Hz
+                    dtype=torch.float32
+                ) # Time x Dim
+                spike_times = [(np.array(getattr(t, 'Spike')) - trial_times[0]) * 1000 for t in getattr(trial_data, 'Neuron')] # List of channel spike times, in ms from trial start
 
-        # Directly chop trialized data as though continuous - borrowing from LM convention
-        global_vel = chop_vector(global_vel, exp_task_cfg.chop_size_ms, cfg.bin_size_ms) # T x H
-        global_spikes = chop_vector(global_spikes[..., 0], exp_task_cfg.chop_size_ms, cfg.bin_size_ms).unsqueeze(-1)
-        assert global_spikes.size(0) == global_vel.size(0), "Chop size mismatch"
-        for t in range(global_spikes.size(0)):
-            single_payload = {
-                DataKey.spikes: create_spike_payload(global_spikes[t], context_arrays),
-                DataKey.bhvr_vel: global_vel[t].clone(), # T x H
-                **global_args,
-            }
+                dense_spikes = spike_times_to_dense(spike_times, cfg.bin_size_ms, time_end=int((trial_times[-1] - trial_times[0]) * 1000) + 10) # Timebins x Channel x 1, at bin res
+                # Crop trailing bin if needed - which is what we do for spikes
+                if trial_vel.size(0) == dense_spikes.size(0) + 1:
+                    trial_vel = trial_vel[:-1]
+                elif trial_vel.size(0) != dense_spikes.size(0):
+                    raise ValueError(f"Mismatched spike and velocity lengths: {trial_vel.size(0)} vs {dense_spikes.size(0)}")
+                all_vels.append(trial_vel)
+                all_spikes.append(dense_spikes)
+            global_vel = torch.cat(all_vels) # Time x Dim, at bins
+            global_spikes = torch.cat(all_spikes) # Timebins x Channel x 1, at bin res
+            global_args = {}
+            if cfg.tokenize_covariates:
+                global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
+
+            if exp_task_cfg.minmax:
+                global_vel, norm_dict = get_minmax_norm(global_vel)
+                global_args.update(norm_dict)
+            # Hm... hard to use packer individually since we normalize in external function
+
+            # Directly chop trialized data as though continuous - borrowing from LM convention
+            global_vel = chop_vector(global_vel, exp_task_cfg.chop_size_ms, cfg.bin_size_ms) # T x H
+            global_spikes = chop_vector(global_spikes[..., 0], exp_task_cfg.chop_size_ms, cfg.bin_size_ms).unsqueeze(-1)
+            assert global_spikes.size(0) == global_vel.size(0), "Chop size mismatch"
+            for t in range(global_spikes.size(0)):
+                single_payload = {
+                    DataKey.spikes: create_spike_payload(global_spikes[t], context_arrays),
+                    DataKey.bhvr_vel: global_vel[t].clone(), # T x H
+                    **global_args,
+                }
+                if cfg.pack_dense:
+                    packer.prefix = prefix
+                    packer.pack(single_payload)
+                else:
+                    single_path = cache_root / f'{prefix}{t}.pth'
+                    meta_payload['path'].append(single_path)
+                    torch.save(single_payload, single_path)
             if cfg.pack_dense:
-                packer.pack(single_payload)
-            else:
-                single_path = cache_root / f'{t}.pth'
-                meta_payload['path'].append(single_path)
-                torch.save(single_payload, single_path)
-        if cfg.pack_dense:
-            packer.flush()
-            meta_payload['path'] = packer.get_paths()
+                packer.flush()
+                meta_payload['path'].extend(packer.get_paths())
+        for i, chunk_data in enumerate(trial_datas):
+            proc_trial_data(chunk_data, prefix=f'{i}_')
         return pd.DataFrame(meta_payload)

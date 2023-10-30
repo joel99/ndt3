@@ -20,8 +20,10 @@ print(data.keys())
 #%%
 subject = data['Subject']
 print(len(subject[0].Trial))
-print(len(subject[1].Trial))
-print(subject[1]._fieldnames)
+print(subject[0].Trial[0].Time)
+print(subject[1].Trial[0].Time)
+print(subject[1].Trial[0]._fieldnames)
+# print(subject[1]._fieldnames)
 #%%
 equipment = data['Equipment']
 task = data['Task']

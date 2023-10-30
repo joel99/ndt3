@@ -108,6 +108,7 @@ class PackToChop:
         self.paths = []
         self.save_dir = save_dir
         self.idx = 0
+        self.prefix = ""
 
     def get_paths(self):
         return [
@@ -152,7 +153,7 @@ class PackToChop:
             else:
                 payload[key] = self.queue[0][key]
         # print(payload[DataKey.bhvr_vel].shape, payload[DataKey.spikes]['Jenkins-M1'].shape)
-        torch.save(payload, self.save_dir / f'{self.idx}.pth')
+        torch.save(payload, self.save_dir / f'{self.prefix}{self.idx}.pth')
         self.idx += 1
         if crop_last:
             self.queue = [exclude]

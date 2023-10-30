@@ -57,7 +57,7 @@ class Mihi(SubjectInfo):
 class Chewie(SubjectInfo):
     name = SubjectName.chewie
     _arrays = {
-        'main': SortedArrayInfo(_max_channels=196), # single-session (Dyer and Flint)
+        'main': SortedArrayInfo(_max_channels=241), # single-session (Dyer and Flint)
         'M1': SortedArrayInfo(_max_channels=96), # left hemisphere
         # 'M1': SortedArrayInfo(_max_channels=88), # left hemisphere
         'PMd': SortedArrayInfo(_max_channels=211), # left hemisphere
