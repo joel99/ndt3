@@ -658,7 +658,7 @@ class BrainBertInterface(pl.LightningModule):
             pipeline_padding, _ = sort_A_by_B(pipeline_padding, order, indices)
             # breakpoint()
             # assert (pipeline_padding.diff(1).sum(1) <= 1).all(), "Padding should be contiguous and at end of trial..."
-            modalities, _ = sort_A_by_B(modalities, order, indices)
+            modalities, _ = sort_A_by_B(modalities, order, indices) # Tail of modalities will be all padding, but padding is still sorted according to the "source modality" e.g. padding from return seqs ends most trials in canonical order, during current late assembly paradigm.
 
             # breakpoint()
             # As _input_, we provide the previous step (teacher-forcing).
@@ -703,10 +703,10 @@ class BrainBertInterface(pl.LightningModule):
                         #     breakpoint()
                         mask = mask & (times_from_end >= sample_thresh)
                         # if not mask.any():
-                            # breakpoint()
+                        #     breakpoint()
                     mask = is_kinematic_input & mask
                     # if not mask.any():
-                        # breakpoint()
+                    #     breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
@@ -821,10 +821,11 @@ class BrainBertInterface(pl.LightningModule):
             if self.cfg.task.prefix_ratio > 0:
                 use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
                 prefix_loss = use_prefix
+                kin_maskout = 1.0 # Never include kinematic input in suffix
             else:
                 use_prefix = True # feel free to use if available
                 prefix_loss = False
-            kin_maskout = self.kin_maskout
+                kin_maskout = self.kin_maskout
         # breakpoint()
         features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix, kin_maskout=kin_maskout) # B T H
         if self.cfg.log_backbone_norm:
@@ -848,8 +849,10 @@ class BrainBertInterface(pl.LightningModule):
                 # was_modality_input[:, 0] = False # Nope, keep this for even batches downstream. Probably the source of an insiduous bug, but should wash out.
                 # If this token will be masked, it is strong indication we have reached the ICL-suffix (zero mask is only returned/used in suffix mode), so it is sufficient
                 if zero_mask is not None and 'kinematic' in task.value:
+                    # Restrict loss to only compute on tokens that will mask out. This is a heuristic for tokens that themselves, aren't receiving kinematic input. Only valid if we mask continuous spans, as in ICL.
+                    # TBH I doubt this masking is necessary - the masking and increased difficulty will upweight the loss naturally.
                     target_will_mask = zero_mask.roll(-1, dims=1)
-                    target_will_mask[:, -1] = True # Last token is always a kinematic one, turn it on # ! PER
+                    # target_will_mask[:, -1] = True # Last token is always a kinematic one, turn it on # ! This is clearly a bug
                     sub_loss_mask = target_will_mask[modalities == i]
                 else:
                     sub_loss_mask = None

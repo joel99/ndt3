@@ -12,3 +12,4 @@ dataset:
   exclude_datasets: []
 train:
   batch_size: 24 # 40G
+  effective_batch_size: 64

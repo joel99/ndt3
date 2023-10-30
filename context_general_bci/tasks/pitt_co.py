@@ -251,14 +251,14 @@ class PittCOLoader(ExperimentalTaskLoader):
         context_arrays: List[str],
         dataset_alias: str,
         task: ExperimentalTask,
-        sample_bin_ms=20
     ):
+        exp_task_cfg: PittConfig = getattr(cfg, task.value)
+        sample_bin_ms = exp_task_cfg.native_resolution_ms
         downsample = cfg.bin_size_ms / sample_bin_ms
         # assert cfg.bin_size_ms == 20, 'code not prepped for different resolutions'
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
-        exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
         def save_trial_spikes(spikes, i, other_data={}):
             single_payload = {

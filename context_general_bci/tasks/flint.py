@@ -91,20 +91,25 @@ class FlintLoader(ExperimentalTaskLoader):
         exp_task_cfg: ExperimentalConfig = getattr(cfg, task.value)
         payload = loadmat(datapath)
         payload = payload['Subject']['Trial']
-        breakpoint()
         all_vels = []
         all_spikes = []
         for trial_data in payload:
             trial_times = trial_data['Time'] # in seconds
             trial_vel = np.array(trial_data['HandVel'])[:,:2] # Last dim is empty
             trial_vel = torch.tensor(
-                signal.resample_poly(trial_vel, 10, cfg.bin_size_ms, padtype='line', axis=1), # Default 100Hz
+                signal.resample_poly(trial_vel, 10, cfg.bin_size_ms, padtype='line', axis=0), # Default 100Hz
                 dtype=torch.float32
             ) # Time x Dim
-            all_vels.append(trial_vel)
-            spike_times = [(np.array(t['Spikes']) - trial_times[0]) * 1000 for t in trial_data['Neuron']] # List of channel spike times, in ms from trial start
+            spike_times = [(np.array(t['Spike']) - trial_times[0]) * 1000 for t in trial_data['Neuron']] # List of channel spike times, in ms from trial start
 
-            all_spikes.append(spike_times_to_dense(spike_times, cfg.bin_size_ms, time_end=int(trial_times[-1] * 1000) + 10)) # Timebins x Channel x 1, at bin res
+            dense_spikes = spike_times_to_dense(spike_times, cfg.bin_size_ms, time_end=int((trial_times[-1] - trial_times[0]) * 1000) + 10) # Timebins x Channel x 1, at bin res
+            # Crop trailing bin if needed - which is what we do for spikes
+            if trial_vel.size(0) == dense_spikes.size(0) + 1:
+                trial_vel = trial_vel[:-1]
+            elif trial_vel.size(0) != dense_spikes.size(0):
+                raise ValueError(f"Mismatched spike and velocity lengths: {trial_vel.size(0)} vs {dense_spikes.size(0)}")
+            all_vels.append(trial_vel)
+            all_spikes.append(dense_spikes)
         global_vel = torch.cat(all_vels) # Time x Dim, at bins
         global_spikes = torch.cat(all_spikes) # Timebins x Channel x 1, at bin res
 

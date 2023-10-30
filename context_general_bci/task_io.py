@@ -653,7 +653,6 @@ class SpikeBase(SpikeContext, RatePrediction):
         else:
             loss_mask = ~backbone_padding.unsqueeze(-1) # B -> B x 1
         channel_mask = (comparison < batch[CHANNEL_KEY].flatten().unsqueeze(-1))
-        # breakpoint()
         loss_mask = loss_mask & channel_mask
         loss = loss[loss_mask].mean()
         return { 'loss': loss }
@@ -1158,7 +1157,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
 
     def crop_batch(self, mask_ratio: float, batch: Dict[BatchKey, torch.Tensor], eval_mode=False, shuffle=True):
         covariates = batch[self.cfg.behavior_target.name] # B (T Cov_Dims) 1 if tokenized, else  B x T x Cov_Dims,
-        # breakpoint()
         if DataKey.covariate_time.name not in batch:
             cov_time = torch.arange(covariates.size(1), device=covariates.device)
             if self.cfg.decode_tokenize_dims:
@@ -1196,7 +1194,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 shuffle = torch.randperm(covariates.size(1), device=covariates.device)
             else:
                 shuffle = torch.arange(covariates.size(1), device=covariates.device)
-            # breakpoint()
             if self.cfg.context_prompt_time_thresh:
                 shuffle_func = apply_shuffle_2d
                 nonprompt_time = (batch[DataKey.covariate_time.name] >= self.cfg.context_prompt_time_thresh) # B x T mask
@@ -1233,8 +1230,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     shuffle_key(key)
             splits = [encoder_frac, covariates.size(1) - encoder_frac]
             enc, target = torch.split(shuffle_func(covariates, shuffle), splits, dim=1)
-            # if target.size(1) == 0:
-                # breakpoint() # Wat
             batch.update({
                 self.cfg.behavior_target.name: enc,
                 f'{self.handle}_target': target,
@@ -1251,9 +1246,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         if self.cfg.encode_constraints and not self.inject_constraint_tokens:
             constraint = self.encode_constraint(batch[DataKey.constraint.name]) # B T H Bhvr_Dim. Straight up not sure how to collapse non-losslessly - we just mean pool for now.
             enc = enc + constraint
-        # if batch[DataKey.covariate_space].max() > 7:
-            # print(f'Space range: [{batch[DataKey.covariate_space].min()}, {batch[DataKey.covariate_space].max()}]')
-            # breakpoint()
         return (
             enc,
             batch[DataKey.covariate_time.name],
@@ -1278,7 +1270,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         r"""
             returns: flat seq of predictions, B T' H' (H' is readout dim, regression) or B C T' (classification)
         """
-        # breakpoint()
         if self.cfg.decode_separate:
             if self.cfg.decode_time_pool: # B T H -> B T H
                 assert False, "Deprecated, currently would pool across modalities... but time is available if you still wanna try"
@@ -1369,7 +1360,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
         temperature=0.,
     ) -> torch.Tensor:
         batch_out = {}
-        # breakpoint()
         bhvr = self.get_cov_pred(
             batch,
             backbone_features,
@@ -1437,7 +1427,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 if loss[loss_mask].mean().isnan().any():
                     breakpoint()
                 if len(self.covariate_blacklist_dims) > 0:
-                    # breakpoint()
                     if self.cfg.decode_tokenize_dims:
                         positions = batch[f'{DataKey.covariate_space.name}_target']
                         loss_mask = loss_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
@@ -1459,7 +1448,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                 assert self.cfg.decode_tokenize_dims, "blacklist dims not implemented for non tokenized R2"
                 positions: torch.Tensor = batch[f'{DataKey.covariate_space.name}_target']
                 r2_mask = r2_mask & ~torch.isin(positions, self.covariate_blacklist_dims.to(device=positions.device))
-            # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[r2_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[r2_mask].float().detach().cpu()
             if self.served_tokenized_covariates and not self.served_semantic_covariates: # If semantic, we don't need to reorganize
@@ -1477,7 +1465,6 @@ class CovariateReadout(DataPipeline, ConstraintPipeline):
                     unique_indices = torch.as_tensor(range_reference[label_indices == i])
                     submask = torch.isin(batch_shifted_positions, unique_indices)
                     if not submask.any(): # Unlucky, shouldn't occur if we predict more.
-                        # breakpoint()
                         r2_scores.append(0)
                         continue
                     r2_scores.append(r2_score(valid_tgt[submask], valid_bhvr[submask]))
@@ -1628,8 +1615,6 @@ class ClassificationMixin(QuantizeBehavior):
 
     def encode_cov(self, covariate: torch.Tensor):
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
-        # print(covariate.min(), covariate.max())
-        # breakpoint()
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1, which is true in tokenized serving)
         # covariate = self.inp_norm(covariate)
@@ -1724,7 +1709,7 @@ class CovariateInfill(ClassificationMixin):
         backbone_times: torch.Tensor,
         backbone_space: torch.Tensor,
         backbone_padding: torch.Tensor,
-        loss_mask: torch.Tensor | None = None,
+        loss_mask: torch.Tensor | None = None, # subset loss if provided
         compute_metrics=True,
         eval_mode=False,
         temperature=0.,
@@ -1748,6 +1733,7 @@ class CovariateInfill(ClassificationMixin):
         else:
             loss_mask = ~backbone_padding
         if not loss_mask.any(): # ! This really shouldn't trigger and will cause unused parameters for DDP.
+            breakpoint()
             # ! We take care to have a concluding kinematic padding token in each sequence in worst case
             loss = torch.zeros_like(loss).mean()
         else:
@@ -1756,7 +1742,6 @@ class CovariateInfill(ClassificationMixin):
 
         if Metric.kinematic_r2 in self.cfg.metrics:
             valid_bhvr = bhvr
-            # breakpoint()
             valid_bhvr = self.simplify_logits_to_prediction(valid_bhvr)[loss_mask].float().detach().cpu()
             valid_tgt = bhvr_tgt[loss_mask].float().detach().cpu()
             # check for empty comparison
@@ -1764,7 +1749,6 @@ class CovariateInfill(ClassificationMixin):
                 batch_out[Metric.kinematic_r2.value] = np.array([0.])
             else:
                 batch_out[Metric.kinematic_r2.value] = np.array([r2_score(valid_tgt, valid_bhvr)])
-            # breakpoint() # Something is wildly wrong...
             if batch_out[Metric.kinematic_r2.value].mean() < -10000:
                 # zero it out - this is a bug that occurs when the target has minimal variance (i.e. a dull batch with tiny batch size)
                 # Occurs only because we can't easily full batch R2, i.e. uninteresting.

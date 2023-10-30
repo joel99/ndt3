@@ -879,8 +879,9 @@ class StreamlinedTransformer(nn.Module):
         residual = None
         mixer_kwargs = {}
         if getattr(self.cfg, "rotary_position_torch", False):
-            times[times == self.cfg.max_trial_length] = 0 # Zero out padding TODO migrate upward
-            mixer_kwargs["position"] = times
+            time_copy = times.clone()
+            time_copy[time_copy == self.cfg.max_trial_length] = 0 # Zero out padding TODO migrate upward
+            mixer_kwargs["position"] = time_copy # clone to remove debugging confusion and possible dependence on time vec, at extra overhead
         if inference_params is not None:
             mixer_kwargs["inference_params"] = inference_params
         for layer in self.layers:

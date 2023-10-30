@@ -64,6 +64,8 @@ def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, comp
             return full_vec[..., -1:]
         return full_vec[..., -1]
     else:
+        if vec.shape[0] % (bin_size_ms // sample_bin_ms) != 0:
+            vec = vec[:-(vec.shape[0] % (bin_size_ms // sample_bin_ms))]
         vec = rearrange(vec, '(time bin) c -> time c bin', bin=bin_size_ms // sample_bin_ms)
         if compression != 'last':
             out_str = 'time c 1' if keep_dim else 'time c'
@@ -77,7 +79,6 @@ def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, comp
 def spike_times_to_dense(spike_times_ms: List[np.ndarray], bin_size_ms: int, time_start=0, time_end=0) -> torch.Tensor:
     # spike_times_ms: List[Channel] of spike times, in ms from trial start
     # return: Time x Channel x 1, at bin resolution
-    breakpoint()
     # Create at ms resolution
     if time_end != 0:
         spike_times_ms = [s[s < time_end] if s is not None else s for s in spike_times_ms]
@@ -91,7 +92,7 @@ def spike_times_to_dense(spike_times_ms: List[np.ndarray], bin_size_ms: int, tim
     for channel, channel_spikes_ms in enumerate(spike_times_ms):
         if channel_spikes_ms is None:
             continue
-        trial_spikes_dense[channel] = torch.bincount(torch.as_tensor(channel_spikes_ms), minlength=trial_spikes_dense.shape[1])
+        trial_spikes_dense[channel] = torch.bincount(torch.as_tensor(np.round(channel_spikes_ms), dtype=torch.int), minlength=trial_spikes_dense.shape[1])
     trial_spikes_dense = trial_spikes_dense.T # Time x Channel
     return compress_vector(trial_spikes_dense, 0, bin_size_ms)
 

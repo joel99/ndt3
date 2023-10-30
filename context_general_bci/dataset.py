@@ -216,7 +216,6 @@ class SpikingDataset(Dataset):
             return True
         with open(version_path, 'r') as f:
             cached_preproc_version = json.load(f)
-        # breakpoint()
         # ! patch - don't compare arrays
         current = self.preproc_version(task)
         cached_preproc_version.pop('arrays', None)
@@ -225,6 +224,11 @@ class SpikingDataset(Dataset):
             cached_preproc_version.pop('heldout_neurons')
         if 'heldout_neurons' in current:
             current.pop('heldout_neurons')
+        # Quick patch - don't bother with BMI01 diff
+        if 'native_resolution_ms' in cached_preproc_version:
+            cached_preproc_version.pop('native_resolution_ms')
+        if 'native_resolution_ms' in current:
+            current.pop('native_resolution_ms')
         return current != cached_preproc_version
 
     @staticmethod
