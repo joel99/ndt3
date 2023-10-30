@@ -9,7 +9,7 @@ import pandas as pd
 from scipy.interpolate import interp1d
 from scipy.io import loadmat
 from scipy.ndimage import gaussian_filter1d
-# from scipy.signal import convolve
+from scipy.signal import resample_poly
 import torch.nn.functional as F
 from einops import rearrange, reduce, repeat
 
@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
 
-
-CLAMP_MAX = 15
+# CLAMP_MAX = 15
 NORMATIVE_MAX_FORCE = 25 # Our prior on the full Pitt dataset. Some FBC data reports exponentially large force
 NORMATIVE_MIN_FORCE = 0 # according to mujoco system; some decoders report negative force, which is nonsensical
 # which is not useful to rescale by.
@@ -258,17 +258,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
-        def chop_vector(vec: torch.Tensor | None): # T x C
-            # vec - already at target sampling resolution, just needs chopping
-            if vec is None:
-                return None
-            if vec.size(0) < cfg.pitt_co.chop_size_ms / cfg.bin_size_ms:
-                return vec.unsqueeze(0)
-            chop_size = round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
-            return rearrange(
-                vec.unfold(0, chop_size, chop_size),
-                'trial hidden time -> trial time hidden'
-             ) # Trial x chop_size x hidden
+        exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
         def save_trial_spikes(spikes, i, other_data={}):
             single_payload = {
@@ -282,18 +272,18 @@ class PittCOLoader(ExperimentalTaskLoader):
             torch.save(single_payload, single_path)
 
         if not datapath.is_dir() and datapath.suffix == '.mat': # payload style, preproc-ed/binned elsewhere
-            payload = load_trial(datapath, key='thin_data', limit_dims=cfg.pitt_co.limit_kin_dims)
-            # Sanitize / renormalize
+            payload = load_trial(datapath, key='thin_data', limit_dims=exp_task_cfg.limit_kin_dims)
             spikes = payload['spikes']
+
+            # Sanitize / renormalize
+            # ! Removing clip, we clip on embed. Avoids dataset, preproc specific clip
             # elements = spikes.nelement()
             # unique, counts = np.unique(spikes, return_counts=True)
-            # ! Removing clip, we clip on embed. Avoids dataset, preproc specific clip
             # for u, c in zip(unique, counts):
                 # if u >= CLAMP_MAX:
                     # spikes[spikes == u] = CLAMP_MAX # clip
 
             # Iterate by trial, assumes continuity so we grab velocity outside
-            exp_task_cfg: PittConfig = getattr(cfg, task.value)
 
             # * Kinematics (labeled 'vel' as we take derivative of reported position)
             kernel = np.ones((int(exp_task_cfg.causal_smooth_ms / cfg.bin_size_ms), 1)) / (exp_task_cfg.causal_smooth_ms / cfg.bin_size_ms)
@@ -342,6 +332,11 @@ class PittCOLoader(ExperimentalTaskLoader):
                 payload['cov_min'] = None
                 payload['cov_max'] = None
 
+            # Ideally this should be done before, but I feel a bit jittery downsample before our noise suppression
+            breakpoint()
+            if downsample > 1:
+                covariates = resample_poly(covariates, 1, downsample, axis=0)
+
             if exp_task_cfg.minmax and covariates is not None: # T x C
                 rescale = payload['cov_max'] - payload['cov_min']
                 rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
@@ -370,14 +365,14 @@ class PittCOLoader(ExperimentalTaskLoader):
             for each dimension.
             """
             # clamp each constraint to 0 and 1 - otherwise nonsensical
-            if brain_control is not None:
-                brain_control = brain_control.int().clamp(0, 1).half()
-            if active_assist is not None:
-                active_assist = active_assist.int().clamp(0, 1).half()
-            if passive_assist is not None:
-                passive_assist = passive_assist.int().clamp(0, 1).half()
-            if override_assist is not None:
-                override_assist = override_assist.int().clamp(0, 1).half()
+            def cast_constraint(vec: torch.Tensor | None):
+                if vec is None:
+                    return None
+                return vec.int().clamp(0, 1).half()
+            brain_control = cast_constraint(brain_control)
+            active_assist = cast_constraint(active_assist)
+            passive_assist = cast_constraint(passive_assist)
+            override_assist = cast_constraint(override_assist)
 
             # * Reward and return!
             passed = payload.get('passed', None)
@@ -403,28 +398,31 @@ class PittCOLoader(ExperimentalTaskLoader):
                 reward_dense = None
                 return_dense = None
 
-            spikes = chop_vector(spikes)
+            spikes = compress_vector(spikes, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms)
             # breakpoint()
             if brain_control is None or covariates is None:
                 chopped_constraints = None
             else:
                 # Chop first bc chop is only implemented for 3d
                 chopped_constraints = torch.stack([
-                    chop_vector(1 - brain_control), # return complement, such that native control is the "0" condition, no constraint
-                    chop_vector(active_assist),
-                    chop_vector(passive_assist),
+                    compress_vector(1 - brain_control, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms), # return complement, such that native control is the "0" condition, no constraint
+                    compress_vector(active_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms),
+                    compress_vector(passive_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms),
                 ], 2)
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
                 # ! If we ever extend beyond 9 dims, the other force dimensions all belong to the grasp domain: src - Jeff Weiss
                 if override_assist is not None:
                     # breakpoint() # assuming override dimension is Trial T (domain 3) after chop
-                    chopped_override = chop_vector(override_assist)
+                    chopped_override = compress_vector(override_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms)
                     chopped_constraints[..., 0, :] = torch.maximum(chopped_constraints[..., 0, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, brain control is off, which means FBC constraint is 1
                     chopped_constraints[..., 1, :] = torch.maximum(chopped_constraints[..., 1, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, active assist is on, which means active assist constraint is 1
 
             if reward_dense is not None:
-                reward_dense = chop_vector(reward_dense)
-                return_dense = chop_vector(return_dense)
+                # Reward should be _summed_ over compression bins
+                reward_dense = compress_vector(reward_dense, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms)
+                # Return _to go_ should reflect the final return to go in compression, so take final point
+                unfold_return = return_dense.unfold(0, exp_task_cfg.chop_size_ms // sample_bin_ms, exp_task_cfg.chop_size_ms // sample_bin_ms) # PseudoTrial x C x chop_size
+                return_dense = rearrange(unfold_return, 'b c (time bin) -> b time c bin', bin=cfg.bin_size_ms // sample_bin_ms)[..., -1] # T x 1 (reward dim
 
             # Expecting up to 9D vector (T x 9), 8D from kinematics, 1D from force
             if cfg.tokenize_covariates:
@@ -443,7 +441,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 chopped_constraints = torch.stack(constraints_reduced, -1) if constraints_reduced else None # T x 3 (constriant dim) x B
 
             other_args = {
-                DataKey.bhvr_vel: chop_vector(covariates),
+                DataKey.bhvr_vel: chop_vector(covariates, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms),
                 DataKey.constraint: chopped_constraints,
                 DataKey.task_reward: reward_dense,
                 DataKey.task_return: return_dense,

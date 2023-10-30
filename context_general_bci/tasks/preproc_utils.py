@@ -1,29 +1,39 @@
+from typing import TypeVar
 from pathlib import Path
 import torch
 from einops import rearrange, reduce
 
 from context_general_bci.config import DataKey
 
-def chop_vector(vec: torch.Tensor | None, chop_size_ms: int, bin_size_ms: int):
+T = TypeVar('T', torch.Tensor, None)
+
+def chop_vector(vec: T, chop_size_ms: int, bin_size_ms: int) -> T:
     # vec - T H
-    # vec - already at target resolution, just needs chopping
+    # vec - already at target resolution, just needs chopping. e.g. useful for covariates that have been externally downsampled
+    if vec is None:
+        return None
     chops = round(chop_size_ms / bin_size_ms)
+    if chops == 0:
+        return vec.unsqueeze(0)
     return rearrange(
         vec.unfold(0, chops, chops),
         'trial hidden time -> trial time hidden'
         ) # Trial x C x chop_size (time)
 
-def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, compression='sum'):
-    # vec: at sampling resolution of 1ms, T C
+def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, compression='sum', sample_bin_ms=1):
+    # vec: at sampling resolution of 1ms, T C. Useful for things that don't have complicated downsampling e.g. spikes.
+    # chop_size_ms: chop size in ms
+    # bin_size_ms: bin size in ms - target bin size, after comnpression
+    # sample_bin_ms: native res of vec
     if chop_size_ms:
-        full_vec = vec.unfold(0, chop_size_ms, chop_size_ms) # Trial x C x chop_size (time)
+        full_vec = vec.unfold(0, chop_size_ms // sampling_res_ms, chop_size_ms // sampling_res_ms) # Trial x C x chop_size (time)
         return reduce(
-            rearrange(full_vec, 'b c (time bin) -> b time c bin', bin=bin_size_ms),
+            rearrange(full_vec, 'b c (time bin) -> b time c bin', bin=bin_size_ms // sample_bin_ms),
             'b time c bin -> b time c 1', compression
         )
     else:
         return reduce(
-            rearrange(vec, '(time bin) c -> time c bin', bin=bin_size_ms),
+            rearrange(vec, '(time bin) c -> time c bin', bin=bin_size_ms // sample_bin_ms),
             'time c bin -> time c 1', compression
         )
 
