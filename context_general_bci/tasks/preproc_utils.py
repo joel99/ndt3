@@ -20,21 +20,23 @@ def chop_vector(vec: T, chop_size_ms: int, bin_size_ms: int) -> T:
         'trial hidden time -> trial time hidden'
         ) # Trial x C x chop_size (time)
 
-def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, compression='sum', sample_bin_ms=1):
+def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, compression='sum', sample_bin_ms=1, keep_dim=True):
     # vec: at sampling resolution of 1ms, T C. Useful for things that don't have complicated downsampling e.g. spikes.
     # chop_size_ms: chop size in ms
     # bin_size_ms: bin size in ms - target bin size, after comnpression
     # sample_bin_ms: native res of vec
     if chop_size_ms:
-        full_vec = vec.unfold(0, chop_size_ms // sampling_res_ms, chop_size_ms // sampling_res_ms) # Trial x C x chop_size (time)
+        full_vec = vec.unfold(0, chop_size_ms // sample_bin_ms, chop_size_ms // sample_bin_ms) # Trial x C x chop_size (time)
+        out_str = 'b time c 1' if keep_dim else 'b time c'
         return reduce(
             rearrange(full_vec, 'b c (time bin) -> b time c bin', bin=bin_size_ms // sample_bin_ms),
-            'b time c bin -> b time c 1', compression
+            f'b time c bin -> {out_str}', compression
         )
     else:
+        out_str = 'time c 1' if keep_dim else 'time c'
         return reduce(
             rearrange(vec, '(time bin) c -> time c bin', bin=bin_size_ms // sample_bin_ms),
-            'time c bin -> time c 1', compression
+            f'time c bin -> {out_str}', compression
         )
 
 class PackToChop:

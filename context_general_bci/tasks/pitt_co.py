@@ -333,7 +333,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                 payload['cov_max'] = None
 
             # Ideally this should be done before, but I feel a bit jittery downsample before our noise suppression
-            breakpoint()
             if downsample > 1:
                 covariates = resample_poly(covariates, 1, downsample, axis=0)
 
@@ -352,10 +351,6 @@ class PittCOLoader(ExperimentalTaskLoader):
                         break
 
             # * Constraints
-            brain_control: torch.Tensor | None = payload.get('brain_control', None)
-            active_assist: torch.Tensor | None = payload.get('active_assist', None)
-            passive_assist: torch.Tensor | None = payload.get('passive_assist', None)
-            override_assist: torch.Tensor | None = payload.get('override_assist', None) # Override is sub-domain specific active assist, used for partial domain control e.g. in robot tasks
             """
             Quoting JW:
             ActiveAssist expands the active_assist weight from
@@ -365,14 +360,15 @@ class PittCOLoader(ExperimentalTaskLoader):
             for each dimension.
             """
             # clamp each constraint to 0 and 1 - otherwise nonsensical
-            def cast_constraint(vec: torch.Tensor | None):
+            def cast_constraint(key: str) -> torch.Tensor | None:
+                vec: torch.Tensor | None = payload.get(key, None)
                 if vec is None:
                     return None
                 return vec.int().clamp(0, 1).half()
-            brain_control = cast_constraint(brain_control)
-            active_assist = cast_constraint(active_assist)
-            passive_assist = cast_constraint(passive_assist)
-            override_assist = cast_constraint(override_assist)
+            brain_control = cast_constraint('brain_control')
+            active_assist = cast_constraint('active_assist')
+            passive_assist = cast_constraint('passive_assist')
+            override_assist = cast_constraint('override_assist') # Override is sub-domain specific active assist, used for partial domain control e.g. in robot tasks
 
             # * Reward and return!
             passed = payload.get('passed', None)
@@ -398,28 +394,30 @@ class PittCOLoader(ExperimentalTaskLoader):
                 reward_dense = None
                 return_dense = None
 
-            spikes = compress_vector(spikes, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms)
+            # breakpoint()
+            spikes = compress_vector(spikes, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms, keep_dim=False)
             # breakpoint()
             if brain_control is None or covariates is None:
                 chopped_constraints = None
             else:
                 # Chop first bc chop is only implemented for 3d
+                # We should possibly use consistent, last timestep like return, over max.
                 chopped_constraints = torch.stack([
-                    compress_vector(1 - brain_control, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms), # return complement, such that native control is the "0" condition, no constraint
-                    compress_vector(active_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms),
-                    compress_vector(passive_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms),
+                    compress_vector(1 - brain_control, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False), # return complement, such that native control is the "0" condition, no constraint
+                    compress_vector(active_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False),
+                    compress_vector(passive_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False),
                 ], 2)
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
                 # ! If we ever extend beyond 9 dims, the other force dimensions all belong to the grasp domain: src - Jeff Weiss
                 if override_assist is not None:
                     # breakpoint() # assuming override dimension is Trial T (domain 3) after chop
-                    chopped_override = compress_vector(override_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms)
+                    chopped_override = compress_vector(override_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False)
                     chopped_constraints[..., 0, :] = torch.maximum(chopped_constraints[..., 0, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, brain control is off, which means FBC constraint is 1
                     chopped_constraints[..., 1, :] = torch.maximum(chopped_constraints[..., 1, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, active assist is on, which means active assist constraint is 1
 
             if reward_dense is not None:
                 # Reward should be _summed_ over compression bins
-                reward_dense = compress_vector(reward_dense, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms)
+                reward_dense = compress_vector(reward_dense, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms, keep_dim=False)
                 # Return _to go_ should reflect the final return to go in compression, so take final point
                 unfold_return = return_dense.unfold(0, exp_task_cfg.chop_size_ms // sample_bin_ms, exp_task_cfg.chop_size_ms // sample_bin_ms) # PseudoTrial x C x chop_size
                 return_dense = rearrange(unfold_return, 'b c (time bin) -> b time c bin', bin=cfg.bin_size_ms // sample_bin_ms)[..., -1] # T x 1 (reward dim
