@@ -53,6 +53,7 @@ CONSTRAINTS = 1
 SPIKE = 2
 RETURN = 3
 COVARIATE = 4
+# ! Code logic around zero maskin assumes that COVARIATE is highest
 
 MAX_KINEMATIC_DIMS = 10
 def get_modality_dimensonality(
@@ -644,8 +645,8 @@ class BrainBertInterface(pl.LightningModule):
 
         if self.cfg.next_step_prediction:
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
-
-            # breakpoint()
+            # print(times.unique(), pipeline_context.shape)
+            breakpoint()
             # TODO this op may be redundant - we may be able to address it directly in data loader
             times[pipeline_padding] = self.cfg.transformer.max_trial_length # Assumes dataloader currently doesn't serve pad time especially
             space[pipeline_padding] = self.cfg.max_spatial_position # Assumes dataloader currently doesn't serve pad space especially
@@ -699,14 +700,14 @@ class BrainBertInterface(pl.LightningModule):
                         non_pad_times = times.clone()
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
-                        if not mask.any():
-                            breakpoint()
+                        # if not mask.any():
+                        #     breakpoint()
                         mask = mask & (times_from_end >= sample_thresh)
-                        if not mask.any():
-                            breakpoint()
+                        # if not mask.any():
+                            # breakpoint()
                     mask = is_kinematic_input & mask
-                    if not mask.any():
-                        breakpoint()
+                    # if not mask.any():
+                        # breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
@@ -846,9 +847,10 @@ class BrainBertInterface(pl.LightningModule):
                 # ! Beware off by 1 - include features that didn't receive kinematic input by virtue of receiving non-kinematic input, not just zero-masked.
                 # was_modality_input = (modalities == i).roll(1, dims=1)
                 # was_modality_input[:, 0] = False # Nope, keep this for even batches downstream. Probably the source of an insiduous bug, but should wash out.
+                # If this token will be masked, it is strong indication we have reached the ICL-suffix (zero mask is only returned/used in suffix mode), so it is sufficient
                 if zero_mask is not None and 'kinematic' in task.value:
                     target_will_mask = zero_mask.roll(-1, dims=1)
-                    target_will_mask[:, -1] = False
+                    target_will_mask[:, -1] = True # Last token is always a kinematic one, turn it on # ! PER
                     sub_loss_mask = target_will_mask[modalities == i]
                 else:
                     sub_loss_mask = None
