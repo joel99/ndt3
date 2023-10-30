@@ -167,6 +167,7 @@ class SpikingDataset(Dataset):
             self.meta_df = None
         self.context_index = None
         self.subsetted = False
+        breakpoint()
         self.max_bins = round(self.cfg.max_length_ms / self.cfg.bin_size_ms)
         self.mark_eval_split_if_exists()
         self.cache = {}

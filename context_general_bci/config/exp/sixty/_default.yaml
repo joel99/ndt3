@@ -105,6 +105,6 @@ dataset:
   - DataKey.task_return
 train:
   autoscale_batch_size: true
-  batch_size: 4 # 8 OOM for some reason
+  batch_size: 8
   effective_batch_size: 4096
   patience: 50

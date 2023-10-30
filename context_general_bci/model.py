@@ -670,6 +670,10 @@ class BrainBertInterface(pl.LightningModule):
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
                 elif self.do_kin_maskout:
+                    # We want to make sure we always have at least one kin token on, even if it's padding, so that we can get loss computed on our readout
+                    # However, the padding is automatically put at the very last token, and kin is last modality - so that token is never used as input.
+                    # It's the token that will get rolled and cancelled immediately below.
+                    # Symmetric to this special case, however, is the notion that the first kinematic token is always valid, we have no prior that makes it trivial.
                     is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kinematic_input[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < kin_maskout
@@ -695,8 +699,14 @@ class BrainBertInterface(pl.LightningModule):
                         non_pad_times = times.clone()
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
+                        if not mask.any():
+                            breakpoint()
                         mask = mask & (times_from_end >= sample_thresh)
+                        if not mask.any():
+                            breakpoint()
                     mask = is_kinematic_input & mask
+                    if not mask.any():
+                        breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 

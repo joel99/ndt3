@@ -57,9 +57,8 @@ class RouseLoader(ExperimentalTaskLoader):
         # spikes = [flatten_single(channel, trial_starts) for channel in trial_spikes]
         pos = payload['JoystickPos_disp'] # Trial x Time x Dim
         vel = np.gradient(pos, axis=1)
-        base_rate = int(1000 / cfg.bin_size_ms)
         vel = torch.tensor(
-            signal.resample_poly(vel, base_rate, 100, padtype='line', axis=1), # Default 100Hz
+            signal.resample_poly(vel, 10, cfg.bin_size_ms, padtype='line', axis=1), # Default 100Hz
             dtype=torch.float32
         ) # Trial x Time x Dim
         # Note this introduces NaNs at the start of trial, which we just accept for simplicity
