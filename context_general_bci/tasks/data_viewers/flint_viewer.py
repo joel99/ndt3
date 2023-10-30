@@ -20,9 +20,14 @@ print(data.keys())
 subject = data['Subject']
 equipment = data['Equipment']
 task = data['Task']
+print(task)
 print(subject.keys())
 print(subject['Trial'][0].keys())
-print(len(subject['Trial'][0]['HandVel']))
+print(subject['Trial'][0]['HandPos'][0]) # 496 timesteps
+print(subject['Trial'][0]['HandVel'][0]) # 496 timesteps
+print(subject['Trial'][10]['HandVel'][0]) # 496 timesteps
+# print(len(subject['Trial'][0]['HandVel'])) # 496 timesteps
+#%%
 print(subject['Trial'][0]['Time']) # looks like 100Hz again
 print(subject['Trial'][0]['Time'][-1] - subject['Trial'][0]['Time'][0]) # ~5 seconds
 print(subject['Trial'][0]['Neuron'][0])

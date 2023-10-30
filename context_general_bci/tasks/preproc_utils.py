@@ -1,5 +1,7 @@
-from typing import TypeVar
+from typing import List, Tuple, Dict, TypeVar
 from pathlib import Path
+import math
+import numpy as np
 import torch
 from einops import rearrange, reduce
 
@@ -7,37 +9,91 @@ from context_general_bci.config import DataKey
 
 T = TypeVar('T', torch.Tensor, None)
 
+def get_minmax_norm(covariates: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+    r"""
+        Get min/max normalization for covariates
+        covariates: ... H  trailing dim is covariate dim
+    """
+    original_shape = covariates.shape
+    covariates = covariates.flatten(start_dim=0, end_dim=-2)
+    norm = {}
+    norm['cov_mean'] = covariates.mean(dim=0)
+    norm['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
+    norm['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
+    rescale = norm['cov_max'] - norm['cov_min']
+    rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+    covariates = (covariates - norm['cov_mean']) / rescale
+    covariates = torch.clamp(covariates, -1, 1)
+    return covariates.reshape(original_shape), norm
+
 def chop_vector(vec: T, chop_size_ms: int, bin_size_ms: int) -> T:
     # vec - T H
     # vec - already at target resolution, just needs chopping. e.g. useful for covariates that have been externally downsampled
     if vec is None:
         return None
     chops = round(chop_size_ms / bin_size_ms)
-    if chops == 0:
-        return vec.unsqueeze(0)
-    return rearrange(
-        vec.unfold(0, chops, chops),
-        'trial hidden time -> trial time hidden'
-        ) # Trial x C x chop_size (time)
+    if vec.size(0) <= chops:
+        return rearrange(vec, 'time hidden -> 1 time hidden')
+    else:
+        return rearrange(
+            vec.unfold(0, chops, chops),
+            'trial hidden time -> trial time hidden'
+            ) # Trial x C x chop_size (time)
 
 def compress_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int, compression='sum', sample_bin_ms=1, keep_dim=True):
     # vec: at sampling resolution of 1ms, T C. Useful for things that don't have complicated downsampling e.g. spikes.
     # chop_size_ms: chop size in ms
     # bin_size_ms: bin size in ms - target bin size, after comnpression
     # sample_bin_ms: native res of vec
+
     if chop_size_ms:
-        full_vec = vec.unfold(0, chop_size_ms // sample_bin_ms, chop_size_ms // sample_bin_ms) # Trial x C x chop_size (time)
-        out_str = 'b time c 1' if keep_dim else 'b time c'
-        return reduce(
-            rearrange(full_vec, 'b c (time bin) -> b time c bin', bin=bin_size_ms // sample_bin_ms),
-            f'b time c bin -> {out_str}', compression
-        )
+        if vec.size(0) < chop_size_ms // sample_bin_ms:
+            # No extra chop needed, just directly compress
+            full_vec = vec.unsqueeze(0)
+            # If not divisible by subsequent bin, crop
+            if full_vec.shape[1] % (bin_size_ms // sample_bin_ms) != 0:
+                full_vec = full_vec[:, :-(full_vec.shape[1] % (bin_size_ms // sample_bin_ms)), :]
+            full_vec = rearrange(full_vec, 'b time c -> b c time')
+        else:
+            full_vec = vec.unfold(0, chop_size_ms // sample_bin_ms, chop_size_ms // sample_bin_ms) # Trial x C x chop_size (time)
+        full_vec = rearrange(full_vec, 'b c (time bin) -> b time c bin', bin=bin_size_ms // sample_bin_ms)
+        if compression != 'last':
+            out_str = 'b time c 1' if keep_dim else 'b time c'
+            return reduce(full_vec, f'b time c bin -> {out_str}', compression)
+        if keep_dim:
+            return full_vec[..., -1:]
+        return full_vec[..., -1]
     else:
-        out_str = 'time c 1' if keep_dim else 'time c'
-        return reduce(
-            rearrange(vec, '(time bin) c -> time c bin', bin=bin_size_ms // sample_bin_ms),
-            f'time c bin -> {out_str}', compression
-        )
+        vec = rearrange(vec, '(time bin) c -> time c bin', bin=bin_size_ms // sample_bin_ms)
+        if compression != 'last':
+            out_str = 'time c 1' if keep_dim else 'time c'
+            return reduce(vec, f'time c bin -> {out_str}', compression)
+        if keep_dim:
+            return vec[..., -1:]
+        return vec[..., -1]
+
+
+
+def spike_times_to_dense(spike_times_ms: List[np.ndarray], bin_size_ms: int, time_start=0, time_end=0) -> torch.Tensor:
+    # spike_times_ms: List[Channel] of spike times, in ms from trial start
+    # return: Time x Channel x 1, at bin resolution
+    breakpoint()
+    # Create at ms resolution
+    if time_end != 0:
+        spike_times_ms = [s[s < time_end] if s is not None else s for s in spike_times_ms]
+    else:
+        time_end = max([s[-1] if s is not None else s for s in spike_times_ms])
+    dense_bin_count = math.ceil(time_end - time_start)
+    if time_start != 0:
+        spike_times_ms = [s[s >= time_start] - time_start if s is not None else s for s in spike_times_ms]
+
+    trial_spikes_dense = torch.zeros(len(spike_times_ms), dense_bin_count, dtype=torch.uint8)
+    for channel, channel_spikes_ms in enumerate(spike_times_ms):
+        if channel_spikes_ms is None:
+            continue
+        trial_spikes_dense[channel] = torch.bincount(torch.as_tensor(channel_spikes_ms), minlength=trial_spikes_dense.shape[1])
+    trial_spikes_dense = trial_spikes_dense.T # Time x Channel
+    return compress_vector(trial_spikes_dense, 0, bin_size_ms)
 
 class PackToChop:
     r"""

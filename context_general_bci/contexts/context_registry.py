@@ -20,7 +20,8 @@ from .context_info import (
     BCIContextInfo,
     BatistaContextInfo,
     MillerContextInfo,
-    RouseContextInfo
+    RouseContextInfo,
+    FlintContextInfo,
 )
 
 from context_general_bci.tasks import ExperimentalTask
@@ -47,7 +48,8 @@ r"""
     To support a new task
     - Add a new enum value to ExperimentalTask
     - Add experimental config to DatasetConfig
-    - Subclass ContextInfo and implement the abstract methods
+    - Implement a loader (see examples in tasks/)
+    - Subclass ContextInfo and implement the abstract methods (register the datapaths)
 """
 
 class ContextRegistry:
@@ -190,6 +192,8 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
 
         *RouseContextInfo.build_from_dir('./data/rouse_precision/monk_p/COT_SpikesCombined', task=ExperimentalTask.rouse),
         *RouseContextInfo.build_from_dir('./data/rouse_precision/monk_q/COT_SpikesCombined', task=ExperimentalTask.rouse),
+
+        *FlintContextInfo.build_from_dir('./data/flint/', task=ExperimentalTask.flint),
 
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_isometric_force', task=ExperimentalTask.marino_batista_mp_iso_force),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/earl_multi_posture_bci', task=ExperimentalTask.marino_batista_mp_bci),

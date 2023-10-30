@@ -6,5 +6,9 @@ model:
   kinematic_token_maskout: 0.0
 dataset:
   max_tokens: 4092 # For subsequent curricula
+  datasets:
+  - flint.*
+  eval_datasets: []
+  exclude_datasets: []
 train:
   batch_size: 24 # 40G

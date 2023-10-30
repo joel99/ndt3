@@ -333,7 +333,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 payload['cov_max'] = None
 
             # Ideally this should be done before, but I feel a bit jittery downsample before our noise suppression
-            if downsample > 1:
+            if downsample > 1 and covariates is not None:
                 covariates = resample_poly(covariates, 1, downsample, axis=0)
 
             if exp_task_cfg.minmax and covariates is not None: # T x C
@@ -419,8 +419,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 # Reward should be _summed_ over compression bins
                 reward_dense = compress_vector(reward_dense, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='sum', sample_bin_ms=sample_bin_ms, keep_dim=False)
                 # Return _to go_ should reflect the final return to go in compression, so take final point
-                unfold_return = return_dense.unfold(0, exp_task_cfg.chop_size_ms // sample_bin_ms, exp_task_cfg.chop_size_ms // sample_bin_ms) # PseudoTrial x C x chop_size
-                return_dense = rearrange(unfold_return, 'b c (time bin) -> b time c bin', bin=cfg.bin_size_ms // sample_bin_ms)[..., -1] # T x 1 (reward dim
+                return_dense = compress_vector(return_dense, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='last', sample_bin_ms=sample_bin_ms, keep_dim=False)
 
             # Expecting up to 9D vector (T x 9), 8D from kinematics, 1D from force
             if cfg.tokenize_covariates:

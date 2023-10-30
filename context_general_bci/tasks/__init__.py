@@ -28,6 +28,7 @@ class ExperimentalTask(OrderedEnum):
     marino_batista_mp_iso_force = "marino_batista_mp_iso_force"
     miller = "miller"
     rouse = "rouse"
+    flint = "flint"
 
 from .task_registry import ExperimentalTaskRegistry, ExperimentalTaskLoader
 # Exports
@@ -42,3 +43,4 @@ from .delay_reach import DelayReachLoader
 from .marino_batista import MarinoBatistaLoader
 from .miller import MillerLoader
 from .rouse import RouseLoader
+from .flint import FlintLoader

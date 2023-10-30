@@ -5,4 +5,4 @@ defaults:
 dataset:
   max_tokens: 4092 # For subsequent curricula
 train:
-  batch_size: 32 # 40G
+  batch_size: 24 # 40G

@@ -579,6 +579,33 @@ class RouseContextInfo(ContextInfo):
         infos = map(make_info, root.glob("*.mat"))
         return filter(lambda x: x is not None, infos)
 
+@dataclass
+class FlintContextInfo(ContextInfo):
+    def _id(self):
+        return self.alias
+
+    @classmethod
+    def build_from_dir(cls, root: str, task: ExperimentalTask, arrays=["main"]):
+        root = Path(root)
+        if not root.exists():
+            logger.warning(f"Datapath folder {root} does not exist. Skipping.")
+            return []
+        def make_info(path: Path):
+            # Format: Flint_2012_e1.mat
+            _, year, id_no = path.stem.split("_")
+            subject = f'chewie' # inferred monkey c from miller lab in 2010s as chewie
+            subject = SubjectArrayRegistry.query_by_subject(subject)
+            return FlintContextInfo(
+                subject=subject,
+                task=task,
+                _arrays=arrays,
+                alias=f"flint_{subject.name.value}-{id_no}",
+                datapath=path,
+            )
+        infos = map(make_info, root.glob("*.mat"))
+        return filter(lambda x: x is not None, infos)
+
+
 # ====
 # Archive
 
