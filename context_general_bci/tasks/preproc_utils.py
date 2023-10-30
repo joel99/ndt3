@@ -109,11 +109,12 @@ class PackToChop:
         self.save_dir = save_dir
         self.idx = 0
         self.prefix = ""
+        # Remove all files directory
+        for p in self.save_dir.glob("*.pth"):
+            p.unlink()
 
     def get_paths(self):
-        return [
-            self.save_dir / f'{i}.pth' for i in range(self.idx)
-        ]
+        return list(self.save_dir.glob("*.pth"))
 
     def pack(self, payload):
         self.queue.append(payload)

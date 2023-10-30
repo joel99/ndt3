@@ -101,18 +101,21 @@ class FlintLoader(ExperimentalTaskLoader):
             packer = PackToChop(exp_task_cfg.chop_size_ms // cfg.bin_size_ms, cache_root)
         meta_payload = {}
         meta_payload['path'] = []
-
+        def get_mat_or_dict(obj, key):
+            if isinstance(obj, dict):
+                return obj[key]
+            return getattr(obj, key)
         def proc_trial_data(chunk_data, prefix=''):
             all_vels = []
             all_spikes = []
             for trial_data in chunk_data: # trial_data may be dict or unconverted matlab struct
-                trial_times = getattr(trial_data, 'Time') # in seconds
-                trial_vel = np.array(getattr(trial_data, 'HandVel'))[:,:2] # Last dim is empty
+                trial_times = get_mat_or_dict(trial_data, 'Time') # in seconds
+                trial_vel = np.array(get_mat_or_dict(trial_data, 'HandVel'))[:,:2] # Last dim is empty
                 trial_vel = torch.tensor(
                     signal.resample_poly(trial_vel, 10, cfg.bin_size_ms, padtype='line', axis=0), # Default 100Hz
                     dtype=torch.float32
                 ) # Time x Dim
-                spike_times = [(np.array(getattr(t, 'Spike')) - trial_times[0]) * 1000 for t in getattr(trial_data, 'Neuron')] # List of channel spike times, in ms from trial start
+                spike_times = [(np.array(get_mat_or_dict(t, 'Spike')) - trial_times[0]) * 1000 for t in get_mat_or_dict(trial_data, 'Neuron')] # List of channel spike times, in ms from trial start
 
                 dense_spikes = spike_times_to_dense(spike_times, cfg.bin_size_ms, time_end=int((trial_times[-1] - trial_times[0]) * 1000) + 10) # Timebins x Channel x 1, at bin res
                 # Crop trailing bin if needed - which is what we do for spikes
@@ -152,7 +155,7 @@ class FlintLoader(ExperimentalTaskLoader):
                     torch.save(single_payload, single_path)
             if cfg.pack_dense:
                 packer.flush()
-                meta_payload['path'].extend(packer.get_paths())
         for i, chunk_data in enumerate(trial_datas):
             proc_trial_data(chunk_data, prefix=f'{i}_')
+        meta_payload['path'] = packer.get_paths()
         return pd.DataFrame(meta_payload)
