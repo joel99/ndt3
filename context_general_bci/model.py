@@ -646,7 +646,6 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.next_step_prediction:
             # Pack and Sort. Time is the major sort key, space is minor. We pre-allocate space per modality
             # print(times.unique(), pipeline_context.shape)
-            breakpoint()
             # TODO this op may be redundant - we may be able to address it directly in data loader
             times[pipeline_padding] = self.cfg.transformer.max_trial_length # Assumes dataloader currently doesn't serve pad time especially
             space[pipeline_padding] = self.cfg.max_spatial_position # Assumes dataloader currently doesn't serve pad space especially

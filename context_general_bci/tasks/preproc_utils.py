@@ -4,7 +4,7 @@ from einops import rearrange, reduce
 
 from context_general_bci.config import DataKey
 
-def chop_vector(vec: torch.Tensor, chop_size_ms: int, bin_size_ms: int):
+def chop_vector(vec: torch.Tensor | None, chop_size_ms: int, bin_size_ms: int):
     # vec - T H
     # vec - already at target resolution, just needs chopping
     chops = round(chop_size_ms / bin_size_ms)

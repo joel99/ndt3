@@ -251,15 +251,17 @@ class PittCOLoader(ExperimentalTaskLoader):
         context_arrays: List[str],
         dataset_alias: str,
         task: ExperimentalTask,
+        sample_bin_ms=20
     ):
+        downsample = cfg.bin_size_ms / sample_bin_ms
         # assert cfg.bin_size_ms == 20, 'code not prepped for different resolutions'
         meta_payload = {}
         meta_payload['path'] = []
         arrays_to_use = context_arrays
         def chop_vector(vec: torch.Tensor | None): # T x C
+            # vec - already at target sampling resolution, just needs chopping
             if vec is None:
                 return None
-            # vec - already at target resolution, just needs chopping
             if vec.size(0) < cfg.pitt_co.chop_size_ms / cfg.bin_size_ms:
                 return vec.unsqueeze(0)
             chop_size = round(cfg.pitt_co.chop_size_ms / cfg.bin_size_ms)
