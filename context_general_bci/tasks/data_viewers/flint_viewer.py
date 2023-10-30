@@ -11,13 +11,18 @@ data_dir = Path(
 # for sample_file in data_dir.glob('*.mat'):
     # data = loadmat(sample_file)
     # print(f'{sample_file.stem} -- Num channels : {len(data["AllSpikeTimes"])}')
-sample_file = data_dir.glob('*.mat').__next__()
+# sample_file = data_dir.glob('*.mat').__next__()
+sample_file = list(data_dir.glob('*.mat'))[1]
 
 
 data = loadmat(sample_file)
 print(data.keys())
 #%%
 subject = data['Subject']
+print(len(subject[0].Trial))
+print(len(subject[1].Trial))
+print(subject[1]._fieldnames)
+#%%
 equipment = data['Equipment']
 task = data['Task']
 print(task)

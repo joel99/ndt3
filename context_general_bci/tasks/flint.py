@@ -90,10 +90,14 @@ class FlintLoader(ExperimentalTaskLoader):
         """
         exp_task_cfg: ExperimentalConfig = getattr(cfg, task.value)
         payload = loadmat(datapath)
-        payload = payload['Subject']['Trial']
+        subject_payload = payload['Subject']
+        if isinstance(subject_payload, dict):
+            trial_datas = subject_payload['Trial']
+        else:
+            trial_datas = [f.Trial for f in subject_payload] # some matlab structs in some files
         all_vels = []
         all_spikes = []
-        for trial_data in payload:
+        for trial_data in trial_datas:
             trial_times = trial_data['Time'] # in seconds
             trial_vel = np.array(trial_data['HandVel'])[:,:2] # Last dim is empty
             trial_vel = torch.tensor(

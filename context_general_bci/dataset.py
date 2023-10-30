@@ -629,7 +629,10 @@ class SpikingDataset(Dataset):
                             covariate_time_mask[-1] = True # ensure we have at least one timestep, even if OOB (optimization should more or less ignore)
                         covariate = covariate[covariate_time_mask]
                         covariate_space = b[DataKey.covariate_space][covariate_time_mask]
-                        covariate_time = b[DataKey.covariate_time][covariate_time_mask] - crop_start[i]
+                        # Don't offset the dummy token for null kinematic trials - don't pollute regular time space
+                        is_dummy_covariate = b[DataKey.covariate_time] == self.cfg.max_trial_length
+                        offset = torch.where(is_dummy_covariate, 0, crop_start[i])
+                        covariate_time = b[DataKey.covariate_time][covariate_time_mask] - offset[covariate_time_mask]
                         stack_batch[DataKey.covariate_time].append(covariate_time)
                         stack_batch[DataKey.covariate_space].append(covariate_space)
                         stack_batch[k].append(covariate)

@@ -828,6 +828,8 @@ class BrainBertInterface(pl.LightningModule):
                 kin_maskout = self.kin_maskout
         # breakpoint()
         features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix, kin_maskout=kin_maskout) # B T H
+        if ((times > 750) & (times < 1500)).any():
+            breakpoint() # This is an invalid value... what's happening
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
