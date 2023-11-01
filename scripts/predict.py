@@ -24,19 +24,7 @@ from context_general_bci.analyze_utils import (
     data_label_to_target
 )
 
-
-query = 'pitt_monkey-92bj8iw0'
-# query = 'pitt_monkey_16k-sq9jr9d0'
-# query = 'pitt-rku9o9ve'
-
-
-# Rouse tuned
-# query = 'pitt_monkey_160-qj087lns'
-
-# CRS08 tuned
-# query = 'pitt_monkey-yv2du2y1'
-# query = 'pitt_monkey-hedfeq5w'
-
+query = 'pitt_monkey_4k_16k_kmu_0_1-aqlof55a'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -54,14 +42,14 @@ cfg.model.task.outputs = [
 # data_label ='indy'
 data_label = ''
 data_label = 'crs08_grasp'
-data_label = ''
+# data_label = ''
 if data_label:
     target = data_label_to_target(data_label)
 else:
     target = [
         # 'rouse.*',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
-        'pitt_broad_pitt_co_CRS07Home_108_.*',
+        # 'pitt_broad_pitt_co_CRS07Home_108_.*',
         # 'pitt_broad_pitt_co_CRS08Lab_36_.*',
         # 'pitt_broad_pitt_co_CRS08Lab_10_.*',
 
@@ -93,7 +81,7 @@ else:
         # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
-    data_label = 'grasp'
+    # data_label = 'grasp'
     print(f'Assuming: {data_label}')
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
@@ -129,6 +117,7 @@ CUE_LENGTH_S = 1
 CUE_LENGTH_S = 4
 # CUE_LENGTH_S = 9
 # CUE_LENGTH_S = 13
+CUE_LENGTH_S = 30
 
 EVAL_GAP_S = 1
 model.cfg.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
@@ -187,11 +176,12 @@ camera_label = {
     'EMG_ECRb': 'ECRb',
     'EMG_EDCr': 'EDCr',
 }
-xlim = [0, 1000]
+xlim = [0, 1500]
+xlim = [0, 750]
 # xlim = [0, 2000]
 # xlim = [0, 3000]
 # xlim = [0, 500]
-xlim = [0, 5000]
+# xlim = [0, 5000]
 # xlim = [3000, 4000]
 subset_cov = []
 # subset_cov = ['EMG_FCU', 'EMG_ECRl']
@@ -317,13 +307,13 @@ data_label_camera = {
     'odoherty': "O'Doherty",
     'miller': 'IsoEMG',
 }
-fig.suptitle(
-    f'{data_label_camera.get(data_label, data_label)} 0-Shot $R^2$ ($\\uparrow$)',
-    fontsize=20,
-    # offset
-    x=0.35,
-    y=0.99,
-)
+# fig.suptitle(
+#     f'{data_label_camera.get(data_label, data_label)} 0-Shot $R^2$ ($\\uparrow$)',
+#     fontsize=20,
+#     # offset
+#     x=0.35,
+#     y=0.99,
+# )
 # fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
 #%%

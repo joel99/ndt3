@@ -23,6 +23,7 @@ print(len(subject[0].Trial))
 print(subject[0].Trial[0].Time)
 print(subject[1].Trial[0].Time)
 print(subject[1].Trial[0]._fieldnames)
+print(getattr(subject[0].Trial[0], 'Time'))
 # print(subject[1]._fieldnames)
 #%%
 equipment = data['Equipment']

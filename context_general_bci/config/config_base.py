@@ -280,6 +280,8 @@ class EvalConfig:
     student_gap: int = 0 # Timesteps since teacher to start counting predictions. Related but exclusive from maskout_last_n
     offset_kin_hotfix: int = 0 # Offset post-spike modalities position by this much. Needed as position of post-spike dimensions are 1 lower than they used to be, quick hotfix so I can still use those checkpoitns. Break ~https://github.com/joel99/ndt3/commit/7f29a564b080864d362b43dffe06c123b82ce75d
 
+    icl_invert: bool = False # Invert kinematic inputs, to see if we can invert kinematic outputs
+
 
 @dataclass
 class ModelConfig:
@@ -629,35 +631,12 @@ class DatasetConfig:
         'CRS02b-lateral_m1', 'CRS02b-medial_m1',
         'CRS07-lateral_m1', 'CRS07-medial_m1',
         'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ]))
-
-    pitt_bmi01: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
         'BMI01-lateral_m1', 'BMI01-medial_m1',
-    ], native_resolution_ms=30)) # Separated as BMI01 recorded with distinct bin sizes and thus needs distinct (but overlapping) processing logic
-
-    observation: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
     ]))
 
-    ortho: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ]))
+    # pitt_bmi01: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
+    # ], native_resolution_ms=30)) # Easier just to hardcode the check for BMI01 in the loader
 
-    fbc: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ]))
-
-    unstructured: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
-        'CRS02b-lateral_m1', 'CRS02b-medial_m1',
-        'CRS07-lateral_m1', 'CRS07-medial_m1',
-        'CRS08-lateral_m1', 'CRS08-medial_m1',
-    ]))
     delay_reach: ExperimentalConfig = field(default_factory=ExperimentalConfig)
 
     permute_channels: bool = False # test flag, permute channels randomly per session

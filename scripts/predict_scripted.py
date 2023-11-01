@@ -72,8 +72,8 @@ def main(
         cfg.model.eval.offset_kin_hotfix = 1
 
     if eval_tail_s:
-        if data_label not in ['robust', 'eval', 'indy', 'miller']:
-            raise ValueError("Eval tail only supported for 5s chop datasets")
+        if data_label not in ['robust', 'eval', 'indy', 'miller'] and not cfg.dataset.pack_dense:
+            raise ValueError("Eval tail only supported for continuous datasets")
         print(f"Eval tail: {eval_tail_s}")
         # Compute gap based on total timebins - eval tail bins - teacher timesteps
         # Hm,... I need to update this script.

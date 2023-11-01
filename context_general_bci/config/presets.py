@@ -269,7 +269,12 @@ class BaseDataConfig(DatasetConfig):
         arrays=["Reggie-M1", "Nitschke-M1", "Jenkins-M1"]
     ))
     pitt_co: PittConfig = field(default_factory=lambda: PittConfig(
-        arrays=["CRS02b-lateral_m1", "CRS02b-medial_m1", "CRS07-lateral_m1", "CRS07-medial_m1", "CRS08-lateral_m1", "CRS08-medial_m1"]
+        arrays=[
+            "CRS02b-lateral_m1", "CRS02b-medial_m1",
+            "CRS07-lateral_m1", "CRS07-medial_m1",
+            "CRS08-lateral_m1", "CRS08-medial_m1",
+            "BMI01-lateral_m1", "BMI01-medial_m1",
+        ]
     ))
 
 cs.store(group="dataset", name="base", node=BaseDataConfig)
@@ -387,7 +392,12 @@ class ScaleHistoryDatasetConfig(FlatDataConfig):
     max_length_ms: int = 15000 # 15s for now
     max_tokens: int = 8192
     pitt_co: PittConfig = field(default_factory=lambda: PittConfig(
-        arrays=["CRS02b-lateral_m1", "CRS02b-medial_m1", "CRS07-lateral_m1", "CRS07-medial_m1", "CRS08-lateral_m1", "CRS08-medial_m1"],
+        arrays=[
+            "CRS02b-lateral_m1", "CRS02b-medial_m1",
+            "CRS07-lateral_m1", "CRS07-medial_m1",
+            "CRS08-lateral_m1", "CRS08-medial_m1",
+            "BMI01-lateral_m1", "BMI01-medial_m1",
+        ],
         chop_size_ms=15000,
     ))
     odoherty_rtt: RTTConfig = field(default_factory=lambda: RTTConfig(

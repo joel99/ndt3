@@ -9,14 +9,6 @@ r"""
 
 """
 
-@dataclass
-class PittChicagoArrayInfo(GeometricArrayInfo):
-    one_indexed: bool = True
-    pedestal_index: int = 0
-
-    def as_indices(self):
-        return super().as_indices() + self.pedestal_index * SubjectInfoPittChicago.channels_per_pedestal
-
 class SubjectInfoPittChicago(SubjectInfo):
     r"""
         Human array subclass. These folks all have 4 arrays, wired to two pedestals
@@ -98,6 +90,15 @@ class SubjectInfoPittChicago(SubjectInfo):
         else:
             return cls.blacklist_channels, cls.blacklist_pedestals
 
+@dataclass
+class PittChicagoArrayInfo(GeometricArrayInfo):
+    one_indexed: bool = True
+    pedestal_index: int = 0
+    pedestal_offset: int = SubjectInfoPittChicago.channels_per_pedestal
+
+    def as_indices(self):
+        return super().as_indices() + self.pedestal_index * self.pedestal_offset
+
 @SubjectArrayRegistry.register(other_aliases=['CRS02bLab', 'CRS02bHome'])
 class CRS02b(SubjectInfoPittChicago):
     # Layout shared across motor channels
@@ -115,7 +116,7 @@ class CRS02b(SubjectInfoPittChicago):
         [np.nan, np.nan, 52, 1, 11, 20, 32, 106, np.nan, np.nan, ]
     ])
     motor_arrays = [
-        PittChicagoArrayInfo(array=_motor_layout),
+        PittChicagoArrayInfo(array=_motor_layout,),
         PittChicagoArrayInfo(array=_motor_layout, pedestal_index=1)
     ]
 
@@ -232,19 +233,19 @@ class CRS08(SubjectInfoPittChicago):
         PittChicagoArrayInfo(array=_sensory_layout, pedestal_index=1)
     ]
 
-@SubjectArrayRegistry.register
-class P1(SubjectInfoPittChicago):
+@SubjectArrayRegistry.register(other_aliases=['BMI01Lab', 'BMI01Home'])
+class BMI01(SubjectInfoPittChicago):
     # https://github.com/pitt-rnel/bci_analysis/blob/master/Old%20HST%20Code/ElectrodeLocation.m
     # Man... not worth it to figure out what exactly is going on here - we know this person has 2 96 channel arrays; so just pull 192.
-    name = SubjectName.P1
+    name = SubjectName.BMI01
 
     _motor_layout = np.array([
         0.
     ])
 
     motor_arrays = [
-        PittChicagoArrayInfo(array=np.arange(96)),
-        PittChicagoArrayInfo(array=np.arange(96), pedestal_index=1)
+        PittChicagoArrayInfo(array=np.arange(96), one_indexed=False),
+        PittChicagoArrayInfo(array=np.arange(96), pedestal_index=1, one_indexed=False, pedestal_offset=96)
     ]
 
     sensory_arrays = []
@@ -327,5 +328,3 @@ class BCI02(SubjectInfoPittChicago):
             'lateral_m1': cls.motor_arrays[1],
             'medial_m1': cls.motor_arrays[0],
         }
-
-

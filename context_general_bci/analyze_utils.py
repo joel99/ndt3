@@ -173,7 +173,7 @@ def stack_batch(batch_out: List[Dict[str, torch.Tensor | List[str]]], try_collap
 
     cov_labels = None
     collapsing_cov = try_collapse_labels
-    breakpoint()
+    # breakpoint()
     for batch in batch_out:
         for k, v in batch.items():
             if isinstance(v, float) or isinstance(v, int):

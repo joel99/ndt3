@@ -13,6 +13,7 @@ def get_minmax_norm(covariates: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, t
     r"""
         Get min/max normalization for covariates
         covariates: ... H  trailing dim is covariate dim
+        noise_suppression: H - clip away values under this magnitude
     """
     original_shape = covariates.shape
     covariates = covariates.flatten(start_dim=0, end_dim=-2)

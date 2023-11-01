@@ -410,13 +410,14 @@ class BCIContextInfo(ReachingContextInfo):
                             task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
                         else:
                             task = task_map.get('default', ExperimentalTask.unstructured)
+            arrs = [
+                'lateral_s1', 'medial_s1',
+                'lateral_m1', 'medial_m1',
+            ] if 'BMI01' not in subject else ['lateral_m1', 'medial_m1']
             return BCIContextInfo(
                 subject=SubjectArrayRegistry.query_by_subject(subject),
                 task=task,
-                _arrays=[
-                    'lateral_s1', 'medial_s1',
-                    'lateral_m1', 'medial_m1',
-                ],
+                _arrays=arrs,
                 alias=alias,
                 session=int(session),
                 session_set=int(session_set),

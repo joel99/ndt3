@@ -109,7 +109,6 @@ def create_spike_payload(spikes: Union[torch.Tensor, np.ndarray], arrays_to_use:
     elif spikes.ndim == 2:
         spikes = rearrange(spikes, 't c -> t c ()')
     spike_payload = {}
-
     for a in arrays_to_use:
         array = SubjectArrayRegistry.query_by_array(a)
         if array.is_exact:

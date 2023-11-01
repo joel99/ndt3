@@ -1,0 +1,11 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  kinematic_token_maskout: 0.0
+dataset:
+  # max_tokens: 4092 # For subsequent curricula
+  max_tokens: 16384 # For subsequent curricula
+train:
+  batch_size: 6 # 40G

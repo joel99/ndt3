@@ -6,9 +6,7 @@ import numpy as np
 import torch
 import torch.distributions as dists
 import pandas as pd
-from scipy.interpolate import interp1d
 from scipy.io import loadmat
-from scipy.ndimage import gaussian_filter1d
 from scipy.signal import resample_poly
 import torch.nn.functional as F
 from einops import rearrange, reduce, repeat
@@ -17,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
-from context_general_bci.subjects import SubjectInfo, create_spike_payload
+from context_general_bci.subjects import SubjectInfo, SubjectName, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
 from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
 
@@ -101,11 +99,14 @@ def load_trial(fn, use_ql=True, key='data', copy_keys=True, limit_dims=8):
             spikes = spikes[..., standard_channels]
         out['spikes'] = torch.from_numpy(spikes)
         out['trial_num'] = torch.from_numpy(payload['trial_num'])
-        effector = payload['effector']
-        if len(effector) == 0:
-            out['effector'] = ''
+        if 'effector' in payload:
+            effector = payload['effector']
+            if len(effector) == 0:
+                out['effector'] = ''
+            else:
+                out['effector'] = effector.lower().strip()
         else:
-            out['effector'] = effector.lower().strip()
+            out['effector'] = ''
         if 'Kinematics' in payload:
             # cursor x, y
             # breakpoint()
@@ -180,7 +181,7 @@ class PittCOLoader(ExperimentalTaskLoader):
         # position = position - position[0] # zero out initial position
         # Manually pad with edge values
         # OK to pad because this is beginning and end of _set_ where we expect little derivative (but possibly lack of centering)
-        assert kernel.shape[0] % 2 == 1, "Kernel must be odd (for convenience)"
+        # assert kernel.shape[0] % 2 == 1, "Kernel must be odd (for convenience)"
         pad_left, pad_right = int(kernel.shape[0] / 2), int(kernel.shape[0] / 2)
         position = F.pad(position.T, (pad_left, pad_right), 'replicate')
         return F.conv1d(position.unsqueeze(1), torch.tensor(kernel).float().T.unsqueeze(1))[:,0].T
@@ -253,7 +254,10 @@ class PittCOLoader(ExperimentalTaskLoader):
         task: ExperimentalTask,
     ):
         exp_task_cfg: PittConfig = getattr(cfg, task.value)
-        sample_bin_ms = exp_task_cfg.native_resolution_ms
+        if subject.name == SubjectName.BMI01:
+            sample_bin_ms = 30
+        else:
+            sample_bin_ms = exp_task_cfg.native_resolution_ms
         downsample = cfg.bin_size_ms / sample_bin_ms
         # assert cfg.bin_size_ms == 20, 'code not prepped for different resolutions'
         meta_payload = {}
@@ -284,9 +288,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                     # spikes[spikes == u] = CLAMP_MAX # clip
 
             # Iterate by trial, assumes continuity so we grab velocity outside
-
             # * Kinematics (labeled 'vel' as we take derivative of reported position)
-            kernel = np.ones((int(exp_task_cfg.causal_smooth_ms / cfg.bin_size_ms), 1)) / (exp_task_cfg.causal_smooth_ms / cfg.bin_size_ms)
+            kernel = np.ones((int(exp_task_cfg.causal_smooth_ms / sample_bin_ms), 1)) / (exp_task_cfg.causal_smooth_ms / sample_bin_ms)
             kernel[-kernel.shape[0] // 2:] = 0 # causal, including current timestep
             if (
                 'position' in payload # and \
@@ -408,7 +411,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                     compress_vector(passive_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False),
                 ], 2)
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
-                # ! If we ever extend beyond 9 dims, the other force dimensions all belong to the grasp domain: src - Jeff Weiss
+                # ! If we ever extend beyond 9 dims, all dims > 6 all belong to the grasp domain: src - Jeff Weiss. Change the above line to reflect this.
                 if override_assist is not None:
                     # breakpoint() # assuming override dimension is Trial T (domain 3) after chop
                     chopped_override = compress_vector(override_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False)

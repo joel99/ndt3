@@ -828,8 +828,8 @@ class BrainBertInterface(pl.LightningModule):
                 kin_maskout = self.kin_maskout
         # breakpoint()
         features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix, kin_maskout=kin_maskout) # B T H
-        if ((times > 750) & (times < 1500)).any():
-            breakpoint() # This is an invalid value... what's happening
+        # if ((times > 750) & (times < 1500)).any():
+        #     breakpoint() # This is an invalid value... what's happening
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -949,9 +949,13 @@ class BrainBertInterface(pl.LightningModule):
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
 
         if self.cfg.next_step_prediction:
+            if self.cfg.eval.icl_invert:
+                real_kin = batch[DataKey.bhvr_vel.name].clone()
+                batch[DataKey.bhvr_vel.name] = -batch[DataKey.bhvr_vel.name]
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
-
+            if self.cfg.eval.icl_invert:
+                batch[DataKey.bhvr_vel.name] = real_kin
             # There are only certain tokens I want model predictions for - the tokens that have kinematic modality targets.
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
