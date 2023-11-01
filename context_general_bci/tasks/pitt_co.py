@@ -337,7 +337,7 @@ class PittCOLoader(ExperimentalTaskLoader):
 
             # Ideally this should be done before, but I feel a bit jittery downsample before our noise suppression
             if downsample > 1 and covariates is not None:
-                covariates = resample_poly(covariates, 1, downsample, axis=0)
+                covariates = torch.as_tensor(resample_poly(covariates, 1, downsample, axis=0))
 
             if exp_task_cfg.minmax and covariates is not None: # T x C
                 rescale = payload['cov_max'] - payload['cov_min']
@@ -411,12 +411,21 @@ class PittCOLoader(ExperimentalTaskLoader):
                     compress_vector(passive_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False),
                 ], 2)
                 chopped_constraints = repeat(chopped_constraints, 'trial t dim domain -> trial t dim (domain 3)')[..., :covariates.size(-1)] # Put behavioral control dimension last
+                if covariates.size(-1) > chopped_constraints.size(-1):
+                    chopped_constraints = torch.cat([
+                        chopped_constraints,
+                        repeat(chopped_constraints[..., -1:], 'trial t dim one -> trial t dim (one r)', r=covariates.size(-1) - chopped_constraints.size(-1))
+                    ], -1)
                 # ! If we ever extend beyond 9 dims, all dims > 6 all belong to the grasp domain: src - Jeff Weiss. Change the above line to reflect this.
                 if override_assist is not None:
                     # breakpoint() # assuming override dimension is Trial T (domain 3) after chop
+                    if override_assist.size(-1) != chopped_constraints.size(-1):
+                        print('Override assist size mismatch, extending as no override')
+                        override_assist= F.pad(override_assist, (0, chopped_constraints.size(-1) - override_assist.size(-1)), value=0)
                     chopped_override = compress_vector(override_assist, chop_size_ms=exp_task_cfg.chop_size_ms, bin_size_ms=cfg.bin_size_ms, compression='max', sample_bin_ms=sample_bin_ms, keep_dim=False)
                     chopped_constraints[..., 0, :] = torch.maximum(chopped_constraints[..., 0, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, brain control is off, which means FBC constraint is 1
                     chopped_constraints[..., 1, :] = torch.maximum(chopped_constraints[..., 1, :], chopped_override[..., :chopped_constraints.shape[-1]]) # if override is on, active assist is on, which means active assist constraint is 1
+
 
             if reward_dense is not None:
                 # Reward should be _summed_ over compression bins

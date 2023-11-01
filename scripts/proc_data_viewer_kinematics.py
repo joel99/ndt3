@@ -22,6 +22,8 @@ from context_general_bci.utils import wandb_query_latest, unflatten
 sample_query = "pitt_monkey-a1yiwczo"
 sample_query = 'pitt_monkey_16k-sq9jr9d0'
 
+sample_query = 'pitt_monkey_4k_16k-co20cwij'
+
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
 
@@ -30,20 +32,27 @@ _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
 run_cfg = cfg.dataset
 cfg.dataset.eval_datasets = []
 cfg.dataset.exclude_datasets = []
+cfg.dataset.pitt_co.arrays=[
+    "CRS02b-lateral_m1", "CRS02b-medial_m1",
+    "CRS07-lateral_m1", "CRS07-medial_m1",
+    "CRS08-lateral_m1", "CRS08-medial_m1",
+    "BMI01-lateral_m1", "BMI01-medial_m1",
+]
 
 run_cfg.datasets = [
+    # 'pitt_broad_pitt_co_BMI01Lab_231.*',
+    # 'pitt_broad_pitt_co_BMI01Lab_1_.*',
+    'pitt_broad_pitt_co_BMI01Lab_97_16.*',
+    # 'pitt_broad_pitt_co_BMI01Lab_296.*',
     # FBC Helicopter
-    # 'pitt_return_pitt_co_CRS07Lab_97_13',
-    # 'pitt_return_pitt_co_CRS07Lab_97_15',
-    # 'pitt_return_pitt_co_CRS07Lab_97_17',
 
     # Helicopter session
     # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
-    'pitt_broad_pitt_co_CRS02bLab_1942_1',
-    'pitt_broad_pitt_co_CRS02bLab_1942_2',
-    'pitt_broad_pitt_co_CRS02bLab_1942_3',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
-    'pitt_broad_pitt_co_CRS02bLab_1942_6',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
     # Force
     # 'pitt_test_pitt_co_CRS07Home_108_1',
     # 'pitt_test_pitt_co_CRS07Lab_95_6',
@@ -80,7 +89,6 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_245_12.*'
     # 'pitt_broad_pitt_co_CRS08Lab_9_.*',
     # 'pitt_broad_pitt_co_CRS07Home_108_.*',
-
 
     # 'dyer_co.*',
     # 'gallego_.*', # Gallego

@@ -42,6 +42,7 @@ cfg.model.task.outputs = [
 # data_label ='indy'
 data_label = ''
 data_label = 'crs08_grasp'
+data_label = 'miller'
 # data_label = ''
 if data_label:
     target = data_label_to_target(data_label)
@@ -115,11 +116,11 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 
 CUE_LENGTH_S = 1
 CUE_LENGTH_S = 4
-# CUE_LENGTH_S = 9
-# CUE_LENGTH_S = 13
+CUE_LENGTH_S = 9
 CUE_LENGTH_S = 30
 
-EVAL_GAP_S = 1
+EVAL_GAP_S = 45 - CUE_LENGTH_S - 6 # TAIL
+
 model.cfg.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
 model.cfg.eval.student_gap = int(EVAL_GAP_S * 1000 / cfg.dataset.bin_size_ms)
 model.cfg.eval.use_student = True
@@ -143,13 +144,18 @@ is_student = outputs[Output.behavior_query_mask]
 r2 = r2_score(target, prediction)
 # r2_student = r2_score(target[is_student], prediction[is_student])
 is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-valid = is_student_rolling > model.cfg.eval.student_gap
+
+valid = is_student_rolling > model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name])
+
+print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
 mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
 r2_student = r2_score(target[valid], prediction[valid])
 
 print(f'R2: {r2:.4f}')
 print(f'R2 Student: {r2_student:.4f}')
 print(model.cfg.eval)
+
+
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
 palette = sns.color_palette(n_colors=2)
@@ -177,10 +183,8 @@ camera_label = {
     'EMG_EDCr': 'EDCr',
 }
 xlim = [0, 1500]
-xlim = [0, 750]
-# xlim = [0, 2000]
-# xlim = [0, 3000]
-# xlim = [0, 500]
+# xlim = [0, 750]
+xlim = [0, 3000]
 # xlim = [0, 5000]
 # xlim = [3000, 4000]
 subset_cov = []
@@ -229,6 +233,7 @@ def plot_target_pred_overlay(
     ax = prep_plt(ax, big=True)
     palette[0] = 'k'
     r2_subset = r2_score(target[valid_pred], prediction[valid_pred])
+    is_student = valid_pred
     if xlim:
         target = target[xlim[0]:xlim[1]]
         prediction = prediction[xlim[0]:xlim[1]]

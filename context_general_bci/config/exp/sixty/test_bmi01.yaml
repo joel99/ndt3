@@ -20,5 +20,7 @@ dataset:
   # - odoherty_rtt.*
   # - delay.*
   - pitt_broad_pitt_co_BMI01.*
+  eval_datasets: []
+  exclude_datasets: []
 train:
   batch_size: 32

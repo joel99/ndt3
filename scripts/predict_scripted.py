@@ -129,15 +129,13 @@ def icl_eval(
         )
 
     dataloader = get_dataloader(dataset)
-    heldin_outputs = stack_batch(trainer.predict(model, dataloader))
-    # print(heldin_outputs[Output.behavior_pred].shape)
-    # print(heldin_outputs[Output.behavior].shape)
+    outputs = stack_batch(trainer.predict(model, dataloader))
 
-    prediction = heldin_outputs[Output.behavior_pred]
-    target = heldin_outputs[Output.behavior]
-    is_student = heldin_outputs[Output.behavior_query_mask]
+    prediction = outputs[Output.behavior_pred]
+    target = outputs[Output.behavior]
+    is_student = outputs[Output.behavior_query_mask]
     is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-    valid = is_student_rolling > model.cfg.eval.student_gap
+    valid = is_student_rolling > model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name])
     # Compute R2
     # r2 = r2_score(target, prediction)
     mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
