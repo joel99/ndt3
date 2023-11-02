@@ -1,5 +1,7 @@
 from typing import Tuple, Dict, List, Optional, Any
 from pathlib import Path
+import logging
+import math
 import abc
 import itertools
 import numpy as np
@@ -9,7 +11,6 @@ import torch.nn.functional as F
 from einops import rearrange, repeat, reduce, einsum, pack, unpack # baby steps...
 from einops.layers.torch import Rearrange
 from sklearn.metrics import r2_score
-import logging
 
 logger = logging.getLogger(__name__)
 
@@ -1062,6 +1063,159 @@ class ReturnInfill(ReturnContext):
                 batch_out[Metric.return_acc.value] = acc[loss_mask].float().mean()
         return batch_out
 
+class MetadataContext(ContextPipeline):
+    def __init__(
+        self,
+        backbone_out_size: int,
+        channel_count: int,
+        cfg: ModelConfig,
+        data_attrs: DataAttrs,
+    ):
+        super().__init__(
+            backbone_out_size=backbone_out_size,
+            channel_count=channel_count,
+            cfg=cfg,
+            data_attrs=data_attrs
+        )
+        self.cfg = cfg # Override for now
+        self.is_sparse = data_attrs.sparse_rewards
+        self.max_return = cfg.max_return + 1 if data_attrs.pad_token is not None else cfg.max_return
+        self.return_enc = nn.Embedding(
+            self.max_return, # It will rarely be
+            cfg.hidden_size,
+            padding_idx=data_attrs.pad_token,
+        )
+        self.reward_enc = nn.Embedding(
+            3 if data_attrs.pad_token is not None else 2, # 0 or 1, not a parameter for simple API convenience
+            cfg.hidden_size,
+            padding_idx=data_attrs.pad_token,
+        )
+
+        for attr in ['session', 'subject', 'task', 'array']:
+            if getattr(self.cfg, f'{attr}_embed_strategy') is not EmbedStrat.none:
+                assert getattr(data_attrs.context, attr), f"{attr} embedding strategy requires {attr} in data"
+                if len(getattr(data_attrs.context, attr)) == 1:
+                    logger.warning(f'Using {attr} embedding strategy with only one {attr}. Expected only if tuning.')
+
+        # We write the following repetitive logic explicitly to maintain typing
+        project_size = self.cfg.hidden_size
+
+        if self.cfg.session_embed_strategy is not EmbedStrat.none:
+            if self.cfg.session_embed_strategy == EmbedStrat.token and self.cfg.session_embed_token_count > 1:
+                self.session_embed = nn.Parameter(torch.randn(len(data_attrs.context.session), self.cfg.session_embed_token_count, self.cfg.session_embed_size) / math.sqrt(self.cfg.session_embed_size))
+                self.session_flag = nn.Parameter(torch.randn(self.cfg.session_embed_token_count, self.cfg.session_embed_size) / math.sqrt(self.cfg.session_embed_size))
+            else:
+                self.session_embed = nn.Embedding(len(data_attrs.context.session), self.cfg.session_embed_size)
+                if self.cfg.session_embed_strategy == EmbedStrat.concat:
+                    project_size += self.cfg.session_embed_size
+                elif self.cfg.session_embed_strategy == EmbedStrat.token:
+                    assert self.cfg.session_embed_size == self.cfg.hidden_size
+                    if self.cfg.init_flags:
+                        self.session_flag = nn.Parameter(torch.randn(self.cfg.session_embed_size) / math.sqrt(self.cfg.session_embed_size))
+                    else:
+                        self.session_flag = nn.Parameter(torch.zeros(self.cfg.session_embed_size))
+
+        if self.cfg.subject_embed_strategy is not EmbedStrat.none:
+            if self.cfg.subject_embed_strategy == EmbedStrat.token and self.cfg.subject_embed_token_count > 1:
+                self.subject_embed = nn.Parameter(torch.randn(len(data_attrs.context.subject), self.cfg.subject_embed_token_count, self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
+                self.subject_flag = nn.Parameter(torch.randn(self.cfg.subject_embed_token_count, self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
+            else:
+                self.subject_embed = nn.Embedding(len(data_attrs.context.subject), self.cfg.subject_embed_size)
+                if self.cfg.subject_embed_strategy == EmbedStrat.concat:
+                    project_size += self.cfg.subject_embed_size
+                elif self.cfg.subject_embed_strategy == EmbedStrat.token:
+                    assert self.cfg.subject_embed_size == self.cfg.hidden_size
+                    if self.cfg.init_flags:
+                        self.subject_flag = nn.Parameter(torch.randn(self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
+                    else:
+                        self.subject_flag = nn.Parameter(torch.zeros(self.cfg.subject_embed_size))
+
+        if self.cfg.array_embed_strategy is not EmbedStrat.none:
+            self.array_embed = nn.Embedding(
+                len(data_attrs.context.array),
+                self.cfg.array_embed_size,
+                padding_idx=data_attrs.context.array.index('') if '' in data_attrs.context.array else None
+            )
+            self.array_embed.weight.data.fill_(0) # Don't change by default
+            if self.cfg.array_embed_strategy == EmbedStrat.concat:
+                project_size += self.cfg.array_embed_size
+            elif self.cfg.array_embed_strategy == EmbedStrat.token:
+                assert self.cfg.array_embed_size == self.cfg.hidden_size
+                if self.cfg.init_flags:
+                    self.array_flag = nn.Parameter(torch.randn(data_attrs.max_arrays, self.cfg.array_embed_size) / math.sqrt(self.cfg.array_embed_size))
+                else:
+                    self.array_flag = nn.Parameter(torch.zeros(data_attrs.max_arrays, self.cfg.array_embed_size))
+
+        if self.cfg.task_embed_strategy is not EmbedStrat.none:
+            if self.cfg.task_embed_strategy == EmbedStrat.token and self.cfg.task_embed_token_count > 1:
+                self.task_embed = nn.Parameter(torch.randn(len(data_attrs.context.task), self.cfg.task_embed_token_count, self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
+                self.task_flag = nn.Parameter(torch.randn(self.cfg.task_embed_token_count, self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
+            else:
+                self.task_embed = nn.Embedding(len(data_attrs.context.task), self.cfg.task_embed_size)
+                if self.cfg.task_embed_strategy == EmbedStrat.concat:
+                    project_size += self.cfg.task_embed_size
+                elif self.cfg.task_embed_strategy == EmbedStrat.token:
+                    assert self.cfg.task_embed_size == self.cfg.hidden_size
+                    if self.cfg.init_flags:
+                        self.task_flag = nn.Parameter(torch.randn(self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
+                    else:
+                        self.task_flag = nn.Parameter(torch.zeros(self.cfg.task_embed_size))
+
+
+
+    def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
+        # TODO phase these out given re-generation of PittCO
+        assert self.cfg.array_embed_strategy == EmbedStrat.none, "Array embed strategy deprecated"
+
+        if self.cfg.session_embed_strategy is not EmbedStrat.none:
+            if self.cfg.session_embed_token_count > 1:
+                session: torch.Tensor = self.session_embed[batch[MetaKey.session]] # B x K x H
+            else:
+                session: torch.Tensor = self.session_embed(batch[MetaKey.session]) # B x H
+        else:
+            session = None
+        if self.cfg.subject_embed_strategy is not EmbedStrat.none:
+            if self.cfg.subject_embed_token_count > 1:
+                subject: torch.Tensor = self.subject_embed[batch[MetaKey.subject]]
+            else:
+                subject: torch.Tensor = self.subject_embed(batch[MetaKey.subject]) # B x H
+        else:
+            subject = None
+        if self.cfg.task_embed_strategy is not EmbedStrat.none:
+            if self.cfg.task_embed_token_count > 1:
+                task: torch.Tensor = self.task_embed[batch[MetaKey.task]]
+            else:
+                task: torch.Tensor = self.task_embed(batch[MetaKey.task])
+        else:
+            task = None
+
+        if self.cfg.encode_decode or self.cfg.task.decode_separate: # TODO decouple - or at least move after flag injection below
+            # cache context
+            batch['session'] = session
+            batch['subject'] = subject
+            batch['task'] = task
+
+        static_context: List[torch.Tensor] = []
+        # Note we may augment padding tokens below but if attn is implemented correctly that should be fine
+        def _add_context(context: torch.Tensor, flag: torch.Tensor, strategy: EmbedStrat):
+            if strategy is EmbedStrat.none:
+                return
+            # assume token strategy
+            context = context + flag
+            static_context.append(context)
+        _add_context(session, getattr(self, 'session_flag', None), self.cfg.session_embed_strategy)
+        _add_context(subject, getattr(self, 'subject_flag', None), self.cfg.subject_embed_strategy)
+        _add_context(task, getattr(self, 'task_flag', None), self.cfg.task_embed_strategy)
+        if not static_context:
+            return [], [], [], []
+        metadata_context = pack(static_context, 'b * h')[0]
+        return (
+            metadata_context,
+            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=int), # time
+            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=int), # space
+            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
+        )
+
 class CovariateReadout(DataPipeline, ConstraintPipeline):
     r"""
         Base class for decoding (regression/classification) of covariates.
@@ -1838,4 +1992,5 @@ task_modules = {
     ModelTask.constraints: ConstraintPipeline,
     ModelTask.return_context: ReturnContext,
     ModelTask.return_infill: ReturnInfill,
+    ModelTask.metadata_context: MetadataContext,
 }

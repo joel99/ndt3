@@ -77,6 +77,7 @@ def get_modality_dimensonality(
 TASK_MODALITY_MAP = { # keys are pipeline names and some human readable terms
     'padding': NULL,
     'trial': NULL,
+    'metadata_context': NULL,
     'constraints': CONSTRAINTS,
     'spike': SPIKE,
     'spike_context': SPIKE,
@@ -161,7 +162,21 @@ class BrainBertInterface(pl.LightningModule):
                     std=self.cfg.transformer.initializer_range,
                     trunc=self.cfg.transformer.initializer_trunc
                 ))
-        self.bind_io()
+
+        self.task_pipelines = nn.ModuleDict({
+            k.value: task_modules[k](
+                self.backbone.out_size,
+                self.data_attrs.max_channel_count,
+                self.cfg,
+                self.data_attrs
+            ) for k in self.cfg.task.tasks
+        })
+
+        if self.cfg.next_step_prediction: # special tokens
+            self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
+            # Checks on spatial tokens
+            assert self.cfg.max_spatial_position > get_task_dimensionality_range('kinematic_infill', data_attrs=self.data_attrs)[-1]
+
 
         if self.cfg.compile:
             self.backbone = torch.compile(self.backbone, dynamic=True, fullgraph=True)
@@ -212,145 +227,6 @@ class BrainBertInterface(pl.LightningModule):
             setattr(self_copy, safe_attr, getattr(cfg, safe_attr))
         recursive_diff_log(self_copy, cfg)
         return self_copy != cfg
-
-    def bind_io(self):
-        r"""
-            Add context-specific input/output parameters.
-            Has support for re-binding IO, but does _not_ check for shapes, which are assumed to be correct.
-            This means we rebind
-            - embeddings
-            - flags
-            - task_modules
-            Shapes are hidden sizes for flags/embeddings, and are configured via cfg.
-            From this "same cfg" assumption - we will assume that
-            `context_project` and `readin` are the same.
-
-
-            Ideally, we will just bind embedding layers here, but there may be some MLPs.
-        """
-        for attr in ['session', 'subject', 'task', 'array']:
-            if getattr(self.cfg, f'{attr}_embed_strategy') is not EmbedStrat.none:
-                assert getattr(self.data_attrs.context, attr), f"{attr} embedding strategy requires {attr} in data"
-                if len(getattr(self.data_attrs.context, attr)) == 1:
-                    logger.warning(f'Using {attr} embedding strategy with only one {attr}. Expected only if tuning.')
-
-        # We write the following repetitive logic explicitly to maintain typing
-        project_size = self.cfg.hidden_size
-
-        if self.cfg.session_embed_strategy is not EmbedStrat.none:
-            if self.cfg.session_embed_strategy == EmbedStrat.token and self.cfg.session_embed_token_count > 1:
-                self.session_embed = nn.Parameter(torch.randn(len(self.data_attrs.context.session), self.cfg.session_embed_token_count, self.cfg.session_embed_size) / math.sqrt(self.cfg.session_embed_size))
-                self.session_flag = nn.Parameter(torch.randn(self.cfg.session_embed_token_count, self.cfg.session_embed_size) / math.sqrt(self.cfg.session_embed_size))
-            else:
-                self.session_embed = nn.Embedding(len(self.data_attrs.context.session), self.cfg.session_embed_size)
-                if self.cfg.session_embed_strategy == EmbedStrat.concat:
-                    project_size += self.cfg.session_embed_size
-                elif self.cfg.session_embed_strategy == EmbedStrat.token:
-                    assert self.cfg.session_embed_size == self.cfg.hidden_size
-                    if self.cfg.init_flags:
-                        self.session_flag = nn.Parameter(torch.randn(self.cfg.session_embed_size) / math.sqrt(self.cfg.session_embed_size))
-                    else:
-                        self.session_flag = nn.Parameter(torch.zeros(self.cfg.session_embed_size))
-
-        if self.cfg.subject_embed_strategy is not EmbedStrat.none:
-            if self.cfg.subject_embed_strategy == EmbedStrat.token and self.cfg.subject_embed_token_count > 1:
-                self.subject_embed = nn.Parameter(torch.randn(len(self.data_attrs.context.subject), self.cfg.subject_embed_token_count, self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
-                self.subject_flag = nn.Parameter(torch.randn(self.cfg.subject_embed_token_count, self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
-            else:
-                self.subject_embed = nn.Embedding(len(self.data_attrs.context.subject), self.cfg.subject_embed_size)
-                if self.cfg.subject_embed_strategy == EmbedStrat.concat:
-                    project_size += self.cfg.subject_embed_size
-                elif self.cfg.subject_embed_strategy == EmbedStrat.token:
-                    assert self.cfg.subject_embed_size == self.cfg.hidden_size
-                    if self.cfg.init_flags:
-                        self.subject_flag = nn.Parameter(torch.randn(self.cfg.subject_embed_size) / math.sqrt(self.cfg.subject_embed_size))
-                    else:
-                        self.subject_flag = nn.Parameter(torch.zeros(self.cfg.subject_embed_size))
-
-        if self.cfg.array_embed_strategy is not EmbedStrat.none:
-            self.array_embed = nn.Embedding(
-                len(self.data_attrs.context.array),
-                self.cfg.array_embed_size,
-                padding_idx=self.data_attrs.context.array.index('') if '' in self.data_attrs.context.array else None
-            )
-            self.array_embed.weight.data.fill_(0) # Don't change by default
-            if self.cfg.array_embed_strategy == EmbedStrat.concat:
-                project_size += self.cfg.array_embed_size
-            elif self.cfg.array_embed_strategy == EmbedStrat.token:
-                assert self.cfg.array_embed_size == self.cfg.hidden_size
-                if self.cfg.init_flags:
-                    self.array_flag = nn.Parameter(torch.randn(self.data_attrs.max_arrays, self.cfg.array_embed_size) / math.sqrt(self.cfg.array_embed_size))
-                else:
-                    self.array_flag = nn.Parameter(torch.zeros(self.data_attrs.max_arrays, self.cfg.array_embed_size))
-
-        if self.cfg.task_embed_strategy is not EmbedStrat.none:
-            if self.cfg.task_embed_strategy == EmbedStrat.token and self.cfg.task_embed_token_count > 1:
-                self.task_embed = nn.Parameter(torch.randn(len(self.data_attrs.context.task), self.cfg.task_embed_token_count, self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
-                self.task_flag = nn.Parameter(torch.randn(self.cfg.task_embed_token_count, self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
-            else:
-                self.task_embed = nn.Embedding(len(self.data_attrs.context.task), self.cfg.task_embed_size)
-                if self.cfg.task_embed_strategy == EmbedStrat.concat:
-                    project_size += self.cfg.task_embed_size
-                elif self.cfg.task_embed_strategy == EmbedStrat.token:
-                    assert self.cfg.task_embed_size == self.cfg.hidden_size
-                    if self.cfg.init_flags:
-                        self.task_flag = nn.Parameter(torch.randn(self.cfg.task_embed_size) / math.sqrt(self.cfg.task_embed_size))
-                    else:
-                        self.task_flag = nn.Parameter(torch.zeros(self.cfg.task_embed_size))
-
-        if project_size is not self.cfg.hidden_size:
-            self.context_project = nn.Sequential(
-                nn.Linear(project_size, self.cfg.hidden_size),
-                nn.ReLU() if self.cfg.activation == 'relu' else nn.GELU(),
-            )
-
-        if self.data_attrs.max_channel_count > 0: # there is padding
-            channel_count = self.data_attrs.max_channel_count
-        else:
-            # * Just project all channels.
-            # Doesn't (yet) support separate array projections.
-            # Doesn't (yet) support task-subject specific readin.
-            # ? I am unclear how Talukder managed to have mixed batch training if different data was shaped different sizes.
-            # * Because we only ever train on one subject in this strategy, all registered arrays must belong to that subject.
-            # * A rework will be needed if we want to do this lookup grouped per subject
-            assert self.cfg.readin_strategy == EmbedStrat.project, 'Ragged array readin only implemented for project readin strategy'
-            assert len(self.data_attrs.context.subject) <= 1, "Only implemented for single subject (likely need padding for mixed batches)"
-
-            # for a in self.data_attrs.context.array:
-            #     assert not isinstance(subject_array_registry.query_by_array(a), SortedArrayInfo), "actual mixed readins per session not yet implemented"
-            channel_count = sum(
-                subject_array_registry.query_by_array(a).get_channel_count() for a in self.data_attrs.context.array
-            ) * self.data_attrs.spike_dim
-
-        if self.cfg.transform_space:
-            assert self.cfg.spike_embed_style in [EmbedStrat.project, EmbedStrat.token]
-        if self.cfg.readout_strategy == EmbedStrat.unique_project:
-            assert False, "deprecated"
-        elif self.cfg.readout_strategy == EmbedStrat.contextual_mlp:
-            assert False, "deprecated"
-
-        def get_target_size(k: ModelTask):
-            if k == ModelTask.heldout_decoding:
-                # even more hacky - we know only one of these is nonzero at the same time
-                return max(
-                    self.data_attrs.rtt_heldout_channel_count,
-                    self.data_attrs.maze_heldout_channel_count,
-                )
-            return channel_count
-        self.task_pipelines = nn.ModuleDict({
-            k.value: task_modules[k](
-                self.backbone.out_size,
-                get_target_size(k),
-                self.cfg,
-                self.data_attrs
-            ) for k in self.cfg.task.tasks
-        })
-
-        if self.cfg.next_step_prediction: # special tokens
-            self.start_of_sentence = nn.Parameter(torch.randn(self.cfg.hidden_size) / math.sqrt(self.cfg.hidden_size))
-            # Checks on spatial tokens
-            assert self.cfg.max_spatial_position > get_task_dimensionality_range('kinematic_infill', data_attrs=self.data_attrs)[-1]
-
 
     def _wrap_key(self, prefix, key):
         return f'{prefix}.{key}'
@@ -502,66 +378,6 @@ class BrainBertInterface(pl.LightningModule):
             for p in m.parameters():
                 p.requires_grad = False
 
-    def _prepare_trial_context(self, batch: Dict[BatchKey, torch.Tensor]) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-        r"""
-            Format spikes and context into tokens for backbone.
-            In:
-                spikes: B T A C H=1 (features provided on channel dim for principles but functionally useless)
-                or B (Token) C H if `serve_tokens_flat`
-            Returns:
-                static_context: List(T') [B x H]
-        """
-        assert self.cfg.array_embed_strategy == EmbedStrat.none, "Array embed strategy deprecated"
-
-        if self.cfg.session_embed_strategy is not EmbedStrat.none:
-            if self.cfg.session_embed_token_count > 1:
-                session: torch.Tensor = self.session_embed[batch[MetaKey.session]] # B x K x H
-            else:
-                session: torch.Tensor = self.session_embed(batch[MetaKey.session]) # B x H
-        else:
-            session = None
-        if self.cfg.subject_embed_strategy is not EmbedStrat.none:
-            if self.cfg.subject_embed_token_count > 1:
-                subject: torch.Tensor = self.subject_embed[batch[MetaKey.subject]]
-            else:
-                subject: torch.Tensor = self.subject_embed(batch[MetaKey.subject]) # B x H
-        else:
-            subject = None
-        if self.cfg.task_embed_strategy is not EmbedStrat.none:
-            if self.cfg.task_embed_token_count > 1:
-                task: torch.Tensor = self.task_embed[batch[MetaKey.task]]
-            else:
-                task: torch.Tensor = self.task_embed(batch[MetaKey.task])
-        else:
-            task = None
-
-        if self.cfg.encode_decode or self.cfg.task.decode_separate: # TODO decouple - or at least move after flag injection below
-            # cache context
-            batch['session'] = session
-            batch['subject'] = subject
-            batch['task'] = task
-
-        static_context: List[torch.Tensor] = []
-        # Note we may augment padding tokens below but if attn is implemented correctly that should be fine
-        def _add_context(context: torch.Tensor, flag: torch.Tensor, strategy: EmbedStrat):
-            if strategy is EmbedStrat.none:
-                return
-            # assume token strategy
-            context = context + flag
-            static_context.append(context)
-        _add_context(session, getattr(self, 'session_flag', None), self.cfg.session_embed_strategy)
-        _add_context(subject, getattr(self, 'subject_flag', None), self.cfg.subject_embed_strategy)
-        _add_context(task, getattr(self, 'task_flag', None), self.cfg.task_embed_strategy)
-        if not static_context:
-            return [], [], [], []
-        metadata_context = pack(static_context, 'b * h')[0]
-        return (
-            metadata_context,
-            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=int), # time
-            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=int), # space
-            torch.zeros(metadata_context.size()[:2], device=metadata_context.device, dtype=bool), # padding
-        )
-
     @property
     def do_kin_maskout(self):
         if self.cfg.kinematic_token_maskout_schedule == "cosine":
@@ -602,18 +418,11 @@ class BrainBertInterface(pl.LightningModule):
                 - modalities: modality of target at timestep. Roll forward to determine input modality.
                 - mask: Was kinematic _input_ zeroed at this timestep?
         """
-        # TODO we should bake metadata context into a regular pipeline, right now left alone due to special transfer logic
-        trial_context, trial_times, trial_space, trial_padding = self._prepare_trial_context(batch) # metadata context
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
-        tks.append('trial')
 
-        pipeline_context = [*pipeline_context, trial_context] # tuples
-        pipeline_times = [*pipeline_times, trial_times]
-        pipeline_space = [*pipeline_space, trial_space]
-        pipeline_padding = [*pipeline_padding, trial_padding]
         filtered = [i for i, p in enumerate(pipeline_context) if p != []]
         tks = [tks[i] for i in filtered]
         pipeline_context = [pipeline_context[i] for i in filtered] # embedded at this point
@@ -633,7 +442,7 @@ class BrainBertInterface(pl.LightningModule):
             modalities, _ = pack(modalities, 'b *')
         else:
             for i, (tk, s) in enumerate(zip(tks, pipeline_space)):
-                pipeline_space[i] = (s + 1) if tk != 'trial' else s
+                pipeline_space[i] = (s + 1) if tk != ModelTask.metadata_context else s
             modalities = None
 
         pipeline_context, ps = pack(pipeline_context, 'b * h')

@@ -42,6 +42,7 @@ class ModelTask(Enum):
     detection_decoding = 'detection_decoding'
 
     constraints = 'constraints'
+    metadata_context = 'metadata_context' # More or less deprecated, NDT2-partiy functionality not implemented and this migration is not tested
 
 
 class Metric(Enum):
