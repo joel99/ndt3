@@ -653,8 +653,13 @@ class BrainBertInterface(pl.LightningModule):
                 batch[DataKey.bhvr_vel.name] = -batch[DataKey.bhvr_vel.name]
             # Autoregressive inference (no beam search atm - in practice we need one step at a time anw)
             tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
+            assert modalities is not None
             if self.cfg.eval.icl_invert:
                 batch[DataKey.bhvr_vel.name] = real_kin
+
+            # We want to create outputs in a time-major order, so that consecutive timesteps are together in the output tensor (not consecutive trials)
+            # However, since each batch might not have consistent dimensions, each timestep may not have constant modalities.
+            # Hence we need to check the modality mask at all times
             # There are only certain tokens I want model predictions for - the tokens that have kinematic modality targets.
             to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk in ['kinematic_infill', 'return_infill']], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
@@ -666,18 +671,19 @@ class BrainBertInterface(pl.LightningModule):
                     to_infer_mask[:, limit_in_batch:] = False
 
             proc_step = 0
-            raw_stream = []
+            cov_stream = []
+            return_logits_stream = []
             target_stream = []
             cue_mask = [torch.zeros_like(to_infer_mask[:, 0])] # is "student" i.e. need legitimate
 
             # Target seq tracks all plausible candidates we want to keep - since full batch might not be relevant, stream_mask keeps finer grained mask
             target_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel.name].dtype) # B T
-            stream_mask = [] # TODO need to make, modality_mask
+            modality_mask = []
             target_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel.name].flatten() # Flatten is allowed since kinematic dim = 1
             if DataKey.task_return.name in batch:
-                target_seq[modalities == tks.index('return_infill')] = batch[DataKey.task_return.name].flatten() # Flatten is allowed since kinematic dim = 1
-            breakpoint()
-            predicted_to = 0 # Exclusive, do we have a prediction up till this step?
+                target_seq[modalities == tks.index('return_infill')] = batch[DataKey.task_return.name].to(target_seq.dtype).flatten() # Flatten is allowed since kinematic dim = 1
+
+            predicted_to = 0 # Do we have a prediction up till this step (Exclusive)?
             predict_until = 0 # The goalpost hasn't been set yet.
             need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
             if self.cfg.eval.use_student:
@@ -726,79 +732,98 @@ class BrainBertInterface(pl.LightningModule):
                     )
                     predicted_to = predict_until
                     # The question hereafter is - is a prediction for proc_step ready?
-                # Sample the output from the kinematic pipeline
-                decode = self.task_pipelines['kinematic_infill'](
-                    batch,
-                    outputs[:, proc_step: proc_step + 1],
-                    times[:, proc_step: proc_step + 1],
-                    space[:, proc_step: proc_step + 1],
-                    pipeline_padding[:, proc_step: proc_step + 1],
-                    compute_metrics=False,
-                    temperature=self.cfg.eval.temperature,
-                )
+
+                # This is not a super great solution but we essentially sample readouts at all timesteps
+                # We track two readouts, but only one infer mask/modality mask/target mask
+                # Alternatives are - a single classification head would've made this easier (but we would still need to parse the specific dimensions)
+                target_stream.append(target_seq[:, proc_step:proc_step+1]) # Keep targets for step
+                modality_mask.append(to_infer_mask[:, proc_step:proc_step+1] * modalities[:, proc_step:proc_step+1]) # Mark relevant tokens in step # TODO mark modality
 
                 # We run prediction even if modality is wrong; we slice out correct trials only when forced.
-                raw_pred = decode[Output.behavior_pred]
-                # breakpoint()
-                raw_stream.append(raw_pred)
-                target_stream.append(target_seq[:, proc_step:proc_step+1]) # Keep targets for step
-                stream_mask.append(to_infer_mask[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
+                # Sample the output from the kinematic pipeline
+                if ModelTask.return_infill in self.cfg.task.tasks:
+                    decode = self.task_pipelines['return_infill'](
+                        batch,
+                        outputs[:, proc_step: proc_step + 1],
+                        times[:, proc_step: proc_step + 1],
+                        space[:, proc_step: proc_step + 1],
+                        pipeline_padding[:, proc_step: proc_step + 1],
+                        compute_metrics=False,
+                    )
+                    return_logits_stream.append(decode[Output.return_logits])
+                if ModelTask.kinematic_infill in self.cfg.task.tasks:
+                    decode = self.task_pipelines['kinematic_infill'](
+                        batch,
+                        outputs[:, proc_step: proc_step + 1],
+                        times[:, proc_step: proc_step + 1],
+                        space[:, proc_step: proc_step + 1],
+                        pipeline_padding[:, proc_step: proc_step + 1],
+                        compute_metrics=False,
+                        temperature=self.cfg.eval.temperature,
+                    )
+                    raw_pred = decode[Output.behavior_pred]
+                    cov_stream.append(raw_pred)
 
-                # Need to decode and quantize again... (redundant work but IDRC)
-                # Greedy decoding - subset to only the relevant pieces
-                # No student replacement - just debugging atm!
-                re_enc: torch.Tensor = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
-                if self.cfg.eval.use_student:
-                    if self.cfg.eval.student_prob < 1:
-                        re_enc = torch.where(
-                            torch.rand_like(re_enc) < self.cfg.eval.student_prob,
-                            re_enc,
-                            0
-                        )
-                else:
-                    re_enc.zero_() # Mirrors Maskout
+                    re_enc: torch.Tensor = self.task_pipelines['kinematic_infill'].encode_cov(raw_pred)
 
-                if proc_step < times.size(1) - 1:
-                    # Will the next step need a student?
-                    should_student = times[:, proc_step+1] >= self.cfg.eval.teacher_timesteps
-                    cue_mask.append(should_student)
-                    # Only student force the tokens that we predicted - hence use `to_infer_mask` of current step
-                    if self.cfg.eval.maskout_last_n:
-                        # Essentially keep the student stream updated; but only copy up to the last N steps. Meanwhile, true stream should be zero-ed out
-                        student_stream[:, proc_step+1][
-                            to_infer_mask[:, proc_step] & should_student
-                        ] = re_enc[
-                            to_infer_mask[:, proc_step] & should_student
-                        ]
-                        re_enc.zero_()
-                        pipeline_context[:, proc_step+1][
-                            to_infer_mask[:, proc_step] & should_student
-                        ] = re_enc[
-                            to_infer_mask[:, proc_step] & should_student
-                        ]
-                        veil_time = times[:, proc_step:proc_step + 1] - self.cfg.eval.maskout_last_n
-                        time_mask = times[:, :proc_step+1] < veil_time
-                        pipeline_context[:, :proc_step + 1][time_mask] = student_stream[:, :proc_step + 1][time_mask]
+                    # Need to decode and quantize again... (redundant work but IDRC)
+                    # Greedy decoding - subset to only the relevant pieces
+                    # No student replacement - just debugging atm!
+                    if self.cfg.eval.use_student:
+                        if self.cfg.eval.student_prob < 1:
+                            re_enc = torch.where(
+                                torch.rand_like(re_enc) < self.cfg.eval.student_prob,
+                                re_enc,
+                                0
+                            )
                     else:
-                        pipeline_context[:, proc_step+1][
-                            to_infer_mask[:, proc_step] & should_student
-                        ] = re_enc[
-                            to_infer_mask[:, proc_step] & should_student
-                        ]
+                        re_enc.zero_() # Mirrors Maskout
+
+                    if proc_step < times.size(1) - 1:
+                        # Will the next step need a student?
+                        should_student = times[:, proc_step+1] >= self.cfg.eval.teacher_timesteps
+                        cue_mask.append(should_student)
+                        # Only student force the tokens that we predicted - hence use `to_infer_mask` of current step
+                        if self.cfg.eval.maskout_last_n:
+                            # Essentially keep the student stream updated; but only copy up to the last N steps. Meanwhile, true stream should be zero-ed out
+                            student_stream[:, proc_step+1][
+                                to_infer_mask[:, proc_step] & should_student
+                            ] = re_enc[
+                                to_infer_mask[:, proc_step] & should_student
+                            ]
+                            re_enc.zero_()
+                            pipeline_context[:, proc_step+1][
+                                to_infer_mask[:, proc_step] & should_student
+                            ] = re_enc[
+                                to_infer_mask[:, proc_step] & should_student
+                            ]
+                            veil_time = times[:, proc_step:proc_step + 1] - self.cfg.eval.maskout_last_n
+                            time_mask = times[:, :proc_step+1] < veil_time
+                            pipeline_context[:, :proc_step + 1][time_mask] = student_stream[:, :proc_step + 1][time_mask]
+                        else:
+                            pipeline_context[:, proc_step+1][
+                                to_infer_mask[:, proc_step] & should_student
+                            ] = re_enc[
+                                to_infer_mask[:, proc_step] & should_student
+                            ]
                 proc_step += 1
-            raw_stream = torch.cat(raw_stream, 1) # B T
+            cov_stream = torch.cat(cov_stream, 1) # B T
             target_stream = torch.cat(target_stream, 1) # B T
+            return_logits_stream = torch.cat(return_logits_stream, 1)
             cue_mask = torch.stack(cue_mask, 1) # B T
-            stream_mask = torch.cat(stream_mask, 1) # B T
-            cue_mask = cue_mask[:, :stream_mask.size(1)] # Crop if excess
+            modality_mask = torch.cat(modality_mask, 1) # B T
+            cue_mask = cue_mask[:, :modality_mask.size(1)] # Crop if excess
 
             # In order to ID the right raws across batches, track behavior in flat datastream timeline
-            # breakpoint()
             batch_out = {
-                Output.behavior_pred: raw_stream[stream_mask], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
-                Output.behavior: target_stream[stream_mask],
-                Output.behavior_query_mask: cue_mask[stream_mask],
+                Output.behavior_pred: cov_stream[modality_mask == tks.index('kinematic_infill')], # Row major flattening. Should produce coherent outputs, discontinuities at trials.
+                Output.behavior: target_stream[modality_mask == tks.index('kinematic_infill')],
+                Output.behavior_query_mask: cue_mask[modality_mask == tks.index('kinematic_infill')],
             }
+            if ModelTask.return_infill in self.cfg.task.tasks:
+                breakpoint()
+                batch_out[Output.return_logits] = return_logits_stream[modality_mask == tks.index('return_infill')]
+                batch_out[Output.return_target] = target_stream[modality_mask == tks.index('return_infill')]
             # Check covariate labels all the same
             if DataKey.covariate_labels.name in batch:
                 first_dims = batch[DataKey.covariate_labels.name][0]
