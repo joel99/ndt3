@@ -123,19 +123,16 @@ class BrainBertInterface(pl.LightningModule):
         self.save_hyperparameters(logger=False)
         self.cfg = cfg
         self.data_attrs = data_attrs
-        assert data_attrs.serve_tokens_flat, 'NDT3 assumes flat serving of tokens'
+        assert (data_attrs.serve_tokens_flat and self.cfg.transformer.flat_encoder), 'NDT3 assumes flat serving of tokens'
         r"""
             Make cfg use correct module refs for enums via a backport after migration
         """
 
         assert self.data_attrs.max_channel_count % self.cfg.neurons_per_token == 0, "Neurons per token must divide max channel count"
         if self.data_attrs.serve_tokens:
-            assert self.cfg.array_embed_strategy == EmbedStrat.none, 'array IDs serving not implemented for spatially tokenized data'
             assert self.cfg.transform_space, 'Transform space must be true if serving (spacetime) tokens'
             assert self.data_attrs.neurons_per_token == self.cfg.neurons_per_token, \
                 f"Neurons per token served by data ({self.data_attrs.neurons_per_token}) must match model token size {self.cfg.neurons_per_token}"
-        if self.data_attrs.serve_tokens_flat:
-            assert self.cfg.transformer.flat_encoder, "Flat encoder must be true if serving flat tokens"
         assert self.cfg.arch in [Architecture.ndt, Architecture.flash_ndt], "ndt is all you need"
 
         # Max space can be manipulated in model in next_step path; thus model is responsible for determining max space to encode. If not, use raw max token expected
@@ -193,7 +190,6 @@ class BrainBertInterface(pl.LightningModule):
 
         self.token_proc_approx = 0
         self.token_seen_approx = 0
-        self.detach_backbone_for_task = False
 
     def diff_cfg(self, cfg: ModelConfig):
         r"""
@@ -237,65 +233,6 @@ class BrainBertInterface(pl.LightningModule):
             out.append(self._wrap_key(prefix, n))
         return out
 
-    def try_transfer(self, module_name: str, transfer_module: Any = None, transfer_data_attrs: Optional[DataAttrs] = None):
-        if (module := getattr(self, module_name, None)) is not None:
-            if transfer_module is not None:
-                if isinstance(module, nn.Parameter):
-                    assert module.data.shape == transfer_module.data.shape
-                    # Currently will fail for array flag transfer, no idea what the right policy is right now
-                    module.data = transfer_module.data
-                else:
-                    module.load_state_dict(transfer_module.state_dict(), strict=False)
-                logger.info(f'Transferred {module_name} weights.')
-            else:
-                # if isinstance(module, nn.Parameter):
-                #     self.novel_params.append(self._wrap_key(module_name, module_name))
-                # else:
-                #     self.novel_params.extend(self._wrap_keys(module_name, module.named_parameters()))
-                logger.info(f'New {module_name} weights.')
-
-    def try_transfer_embed(
-        self,
-        embed_name: str, # Used for looking up possibly existing attribute
-        new_attrs: List[str],
-        old_attrs: List[str],
-        transfer_embed: nn.Embedding | nn.Parameter,
-    ) -> nn.Embedding | nn.Parameter:
-        if transfer_embed is None:
-            logger.info(f'Found no weights to transfer for {embed_name}.')
-            return
-        if new_attrs == old_attrs:
-            self.try_transfer(embed_name, transfer_embed)
-            return
-        if not hasattr(self, embed_name):
-            return
-        embed = getattr(self, embed_name)
-        if not old_attrs:
-            logger.info(f'New {embed_name} weights.')
-            return
-        if not new_attrs:
-            logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
-            return
-        num_reassigned = 0
-        def get_param(embed):
-            if isinstance(embed, nn.Parameter):
-                return embed
-            return getattr(embed, 'weight')
-        # Backport pre: package enum to string (enums from old package aren't equal to enums from new package)
-        old_attrs = [str(a) for a in old_attrs]
-        for n_idx, target in enumerate(new_attrs):
-            if str(target) in old_attrs:
-                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(str(target))]
-                num_reassigned += 1
-        # for n_idx, target in enumerate(new_attrs):
-        #     if target in old_attrs:
-        #         get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
-        #         num_reassigned += 1
-        logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
-        if num_reassigned == 0:
-            logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
-        if num_reassigned < len(new_attrs):
-            logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
 
     def transfer_io(self, transfer_model: pl.LightningModule):
         r"""
@@ -308,75 +245,23 @@ class BrainBertInterface(pl.LightningModule):
         if self.cfg.task != transfer_cfg.task:
             logger.info(pformat(f'Task config updating.. (first logged is new config)'))
             recursive_diff_log(self.cfg.task, transfer_cfg.task)
-        self.try_transfer_embed(
-            'session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session,
-            getattr(transfer_model, 'session_embed', None)
-        )
-        try:
-            self.try_transfer_embed(
-                'subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject,
-                getattr(transfer_model, 'subject_embed', None)
-            )
-            self.try_transfer_embed(
-                'task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task,
-                getattr(transfer_model, 'task_embed', None)
-            )
-            self.try_transfer_embed(
-                'array_embed', self.data_attrs.context.array, transfer_data_attrs.context.array,
-                getattr(transfer_model, 'array_embed', None)
-            )
-        except:
-            print("Failed extra embed transfer, likely no impt reason (model e.g. didn't have.)")
-
-        self.try_transfer('session_flag', getattr(transfer_model, 'session_flag', None))
-        try:
-            self.try_transfer('subject_flag', getattr(transfer_model, 'subject_flag', None))
-            self.try_transfer('task_flag', getattr(transfer_model, 'task_flag', None))
-            self.try_transfer('array_flag', getattr(transfer_model, 'array_flag', None))
-        except:
-            print("Failed extra embed transfer, likely no impt reason (model e.g. didn't have.)")
-
-        self.try_transfer('context_project', getattr(transfer_model, 'context_project', None))
-        self.try_transfer('readin', getattr(transfer_model, 'readin', None), transfer_data_attrs=transfer_data_attrs)
-        self.try_transfer('readout', getattr(transfer_model, 'readout', None), transfer_data_attrs=transfer_data_attrs)
 
         for k in self.task_pipelines:
             if k in transfer_model.task_pipelines:
                 logger.info(f"Transferred task pipeline {k}.")
-                self.task_pipelines[k].load_state_dict(transfer_model.task_pipelines[k].state_dict(), strict=False)
+                if k == ModelTask.metadata_context:
+                    self.task_pipelines[k].transfer_weights(transfer_model.task_pipelines[k], transfer_data_attrs)
+                else:
+                    self.task_pipelines[k].load_state_dict(transfer_model.task_pipelines[k].state_dict(), strict=False)
             else:
                 logger.info(f"New task pipeline {k}.")
                 self.novel_params.extend(self._wrap_keys(f'task_pipelines.{k}', self.task_pipelines[k].named_parameters()))
-
-    def freeze_embed(self):
-        logger.info("Freezing embed.")
-        def freeze_if_exists(attr: str):
-            if hasattr(self, attr):
-                if isinstance(getattr(self, attr), nn.Parameter):
-                    getattr(self, attr).requires_grad = False
-                else:
-                    for p in getattr(self, attr).parameters():
-                        p.requires_grad = False
-        freeze_if_exists('session_embed')
-        freeze_if_exists('subject_embed')
-        freeze_if_exists('task_embed')
-        freeze_if_exists('array_embed')
-        freeze_if_exists('session_flag')
-        freeze_if_exists('subject_flag')
-        freeze_if_exists('task_flag')
-        freeze_if_exists('array_flag')
 
     def freeze_backbone(self):
         logger.info("Freezing backbone.")
         for p in self.backbone.parameters():
             p.requires_grad = False
         # self.backbone.eval() # No, we still want dropout
-
-    def freeze_non_embed(self):
-        logger.info("Freezing non-embed.")
-        for m in [self.backbone, self.task_pipelines]:
-            for p in m.parameters():
-                p.requires_grad = False
 
     @property
     def do_kin_maskout(self):
@@ -649,7 +534,6 @@ class BrainBertInterface(pl.LightningModule):
         # Create outputs for configured task
         running_loss = 0
         for i, task in enumerate(self.cfg.task.tasks):
-            should_detach = 'infill' not in task.value and self.detach_backbone_for_task
             if self.cfg.next_step_prediction:
                 sub_features = features[modalities == i] # Only route relevant features, tasks shouldn't be doing anything. # B* H (flattened)
                 sub_times = times[modalities == i]
@@ -679,7 +563,7 @@ class BrainBertInterface(pl.LightningModule):
                 sub_loss_mask = zero_mask
             update = self.task_pipelines[task.value](
                 batch,
-                sub_features.detach() if should_detach else sub_features,
+                sub_features,
                 sub_times,
                 sub_space,
                 sub_padding,
@@ -1034,7 +918,7 @@ class BrainBertInterface(pl.LightningModule):
         self,
         metrics,
         prefix='',
-        kinematic_labels=DEFAULT_KIN_LABELS,
+        kinematic_labels=None, # e.g. DEFAULT_KIN_LABELS
         **kwargs
     ):
         for m in metrics:
@@ -1079,47 +963,17 @@ class BrainBertInterface(pl.LightningModule):
         return metrics['loss']
 
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
-        # all_metrics = []
-        # if self.cfg.val_iters > 1:
-        #     assert not self.data_attrs.tokenize_covariates, "We don't know how to combine multiple different R2s at the moment"
-        #     clean = deepcopy(batch) # not intended to be efficient, quick and dirty
-        # for i in range(self.cfg.val_iters):
-        #     if i > 0:
-        #         batch = deepcopy(clean)
-        #     all_metrics.append(self._step(batch))
-        # metrics = {}
-        # for k in all_metrics[0]:
-        #     if isinstance(all_metrics[0][k], torch.Tensor):
-        #         metrics[k] = torch.stack([m[k] for m in all_metrics]).mean(0)
-        #     else:
-        #         metrics[k] = np.vstack([m[k] for m in all_metrics]).mean(0)
         # if dataloader_idx == 0 and batch_idx > 0:
             # return None # debug
         metrics = self._step(batch, use_prefix = True)
-        # metrics = self._step(batch, use_prefix = dataloader_idx > 0)
-        kin_labels = None #batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch and not self.cfg.compile else None
         self.common_log(
             metrics,
             prefix='val' if dataloader_idx == 0 else 'eval',
             # sync_dist=False,
             sync_dist=True,
             add_dataloader_idx=False,
-            kinematic_labels=kin_labels,
+            kinematic_labels=None,
         )
-        # if dataloader_idx == 0:
-        #     self.full_loss = 0
-        #     self.full_mse = 0
-        #     self.full_r2 = 0
-        #     self.full_acc = 0
-        # if dataloader_idx == 1:
-        #     self.full_loss += metrics['loss']
-        #     self.full_mse += metrics[Metric.kinematic_mse.value]
-        #     self.full_r2 += metrics[Metric.kinematic_r2.value].mean()
-        #     self.full_acc += metrics[Metric.kinematic_acc.value]
-        #     print(f"Batch {batch_idx}: avg prefix loss: {(self.full_loss / (batch_idx+1)):.3f}")
-        #     print(f"Batch {batch_idx}: avg prefix mse: {(self.full_mse / (batch_idx+1)):.5f}")
-        #     print(f"Batch {batch_idx}: avg prefix r2: {(self.full_r2 / (batch_idx+1)):.3f}")
-        #     print(f"Batch {batch_idx}: avg prefix acc: {(self.full_acc / (batch_idx+1)):.3f}")
 
     @torch.inference_mode()
     def test_step(self, batch, batch_idx):
@@ -1134,74 +988,11 @@ class BrainBertInterface(pl.LightningModule):
         self.common_log(metrics, prefix='test')
         return metrics
 
-    # def get_context_parameters(self):
-    # what the heck, this api is called wrong, IDK
-    #     # for use in layer-wise LR decay
-    #     params = []
-    #     for embed in ['session_embed', 'subject_embed', 'task_embed', 'array_embed']:
-    #         if hasattr(self, embed):
-    #             if isinstance(getattr(self, embed), nn.Parameter):
-    #                 params.append(getattr(self, embed))
-    #             else:
-    #                 params.extend(*getattr(self, embed).parameters())
-    #     return params
-
     def configure_optimizers(self):
         scheduler = None
-        if self.cfg.tune_decay > 0.0: # layer-wise LR decay
-            # fix readin
-            # accelerate context
-            # decay decoder, encoder (Kaiming MAE strategy https://arxiv.org/abs/2111.06377)
-            # Position embeddings are fixed (for simplicity)
-            # for simplicity
-            grouped_params = [
-                {
-                    "params": [p for n, p in self.named_parameters() if ('session_embed' in n or 'subject_embed' in n or 'task_embed' in n or 'array_embed' in n)],
-                    'lr': self.cfg.lr_init * self.cfg.accelerate_new_params
-                },
-            ]
-            decayed_lr = self.cfg.lr_init * self.cfg.accelerate_new_params
-            # Decoder
-            for k in self.task_pipelines:
-                if k not in [ModelTask.infill.value, ModelTask.shuffle_infill.value, ModelTask.kinematic_decoding.value, ModelTask.heldout_decoding.value]:
-                    raise NotImplementedError
-                # Supported pipelines use "out" and "decoder" terminology for final readout and transformer decoder, respectively
-                pipeline = self.task_pipelines[k]
-                grouped_params.append({"params": pipeline.out.parameters(), 'lr': decayed_lr})
-                if not hasattr(pipeline, 'decoder'):
-                    continue
-                if hasattr(pipeline.decoder, 'final_norm'):
-                    grouped_params.append({"params": pipeline.decoder.final_norm.parameters(), 'lr': decayed_lr})
-            for i in reversed(range(self.cfg.decoder_layers)):
-                for k in self.task_pipelines:
-                    if k not in [ModelTask.infill.value, ModelTask.shuffle_infill.value, ModelTask.kinematic_decoding.value, ModelTask.heldout_decoding.value]:
-                        raise NotImplementedError
-                    if not hasattr(pipeline, 'decoder'):
-                        continue
-                    pipeline = self.task_pipelines[k]
-                    decayed_lr *= self.cfg.tune_decay
-                    # Supported pipelines use "out" and "decoder" terminology for final readout and transformer decoder, respectively
-                    grouped_params.append({"params": pipeline.decoder.transformer_encoder.layers[i].parameters(), 'lr': decayed_lr})
-            # Encoder
-            if self.cfg.arch == Architecture.ndt:
-                if hasattr(self.backbone, 'final_norm'):
-                    grouped_params.append({"params": self.backbone.final_norm.parameters(), 'lr': decayed_lr})
-                for i in reversed(range(self.cfg.transformer.n_layers)):
-                    decayed_lr *= self.cfg.tune_decay
-                    grouped_params.append({"params": self.backbone.transformer_encoder.layers[i].parameters(), 'lr': decayed_lr})
-            else:
-                raise NotImplementedError
-        elif self.novel_params and self.cfg.accelerate_new_params > 1.0:
-            params = list(self.named_parameters()) # As of 2/24/23 all my parameters are named, this better stay the case
-            accel_flag = lambda name: name in self.novel_params or ('session_embed' in name or 'subject_embed' in name or 'task_embed' in name or 'array_embed' in name)
-            grouped_params = [
-                {"params": [p for n, p in params if accel_flag(n)], 'lr': self.cfg.lr_init * self.cfg.accelerate_new_params},
-                {"params": [p for n, p in params if not accel_flag(n)], 'lr': self.cfg.lr_init},
-            ]
-        else:
-            # grouped_params = self.parameters()
-            # https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.BaseFinetuning.html#lightning.pytorch.callbacks.BaseFinetuning
-            grouped_params = filter(lambda p: p.requires_grad, self.parameters())
+        # grouped_params = self.parameters()
+        # https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.callbacks.BaseFinetuning.html#lightning.pytorch.callbacks.BaseFinetuning
+        grouped_params = filter(lambda p: p.requires_grad, self.parameters())
         try:
             # from apex.optimizers import FusedAdam
             # optimizer_cls = FusedAdam # In JY's experience, about 5% speedup on 3090 in PT 1.13
@@ -1303,44 +1094,24 @@ def transfer_cfg(src_cfg: ModelConfig, target_cfg: ModelConfig):
     ]:
         setattr(target_cfg, attr, getattr(src_cfg, attr))
 
-# Note - I tried coding this as an override, but PTL `save_hyperparams()` acts up (trying to the save the `self` parameter, apparently) - even when passing explicitly that I just want to save `cfg` and `data_attrs`.
+r"""
+Note - I tried coding this as an override, but PTL `save_hyperparams()` acts up (trying to the save the `self` parameter, apparently) - even when passing explicitly that I just want to save `cfg` and `data_attrs`.
+Specifically, model topology is determined by data_attrs.
+data_attrs thus must be saved and loaded with a model to make sense of it.
+However, if we're initializing from another checkpoint, we want to know its data_attrs, but not save it as the new attrs. To avoid doing this while still hooking into PTL `save_hyperparameters()`, we do a manual state_dict transfer of two model instances (one with old and one with new topology.)
+"""
 def load_from_checkpoint(
     checkpoint_path: str,
-    cfg: Optional[ModelConfig] = None,
-    data_attrs: Optional[DataAttrs] = None,
-    use_ckpt_model_cfg: bool = False,
+    cfg: Optional[ModelConfig] = None, # Override from ckpt
+    data_attrs: Optional[DataAttrs] = None, # Override from ckpt
 ):
-    r"""
-        Specifically, model topology is determined by data_attrs.
-        data_attrs thus must be saved and loaded with a model to make sense of it.
-        However, if we're initializing from another checkpoint, we want to know its data_attrs, but not save it as the new attrs. To avoid doing this while still hooking into PTL `save_hyperparameters()`, we do a manual state_dict transfer of two model instances (one with old and one with new topology.)
-        Does not load optimizer state (TODO, get that)
-        Args:
-        - cfg: override, new cfg
-        - data_attrs: override, new data_attrs
-        cfg level changes are _expected_ to not affect topology,
-        BUT TODO e.g. it's unclear if novel weight decay declaration means optimizer is reinitialized?
-    """
     old_model = BrainBertInterface.load_from_checkpoint(checkpoint_path)
-    if cfg is None and data_attrs is None:
-        return old_model
-    if cfg is not None:
-        transfer_cfg(src_cfg=old_model.cfg, target_cfg=cfg)
-        # import pdb;pdb.set_trace()
-        if old_model.diff_cfg(cfg):
-            raise Exception("Unsupported config diff")
-    else:
-        cfg = old_model.cfg
-    if data_attrs is None:
-        data_attrs = old_model.data_attrs
-    new_cls = BrainBertInterface(cfg=cfg, data_attrs=data_attrs)
-    new_cls.backbone.load_state_dict(old_model.backbone.state_dict())
-    new_cls.transfer_io(old_model)
-    return new_cls
+    return transfer_model(old_model, cfg, data_attrs)
 
 def transfer_model(
-    old_model: BrainBertInterface, new_cfg: ModelConfig, new_data_attrs: DataAttrs,
-    extra_embed_map: Dict[str, Tuple[Any, DataAttrs]] = {}
+    old_model: BrainBertInterface,
+    new_cfg: ModelConfig | None = None,
+    new_data_attrs: DataAttrs | None = None,
 ):
     r"""
         Transfer model to new cfg and data_attrs.
@@ -1359,12 +1130,6 @@ def transfer_model(
     new_cls = BrainBertInterface(cfg=new_cfg, data_attrs=new_data_attrs)
     new_cls.backbone.load_state_dict(old_model.backbone.state_dict())
     new_cls.transfer_io(old_model)
-
-    for embed_key in extra_embed_map:
-        logger.info(f"Transferring extra {embed_key}...")
-        extra_embed, extra_attrs = extra_embed_map[embed_key]
-        new_cls.try_transfer_embed(f'{embed_key}_embed', getattr(new_cls.data_attrs.context, embed_key), getattr(extra_attrs.context, embed_key), extra_embed)
-
     return new_cls
 
 # Utilities

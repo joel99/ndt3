@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, List, Optional, Any
+from typing import Tuple, Dict, List, Optional, Any, Self
 from pathlib import Path
 import logging
 import math
@@ -1077,6 +1077,7 @@ class MetadataContext(ContextPipeline):
             cfg=cfg,
             data_attrs=data_attrs
         )
+        self.data_attrs = data_attrs
         self.cfg = cfg # Override for now
         self.is_sparse = data_attrs.sparse_rewards
         self.max_return = cfg.max_return + 1 if data_attrs.pad_token is not None else cfg.max_return
@@ -1161,6 +1162,94 @@ class MetadataContext(ContextPipeline):
                     else:
                         self.task_flag = nn.Parameter(torch.zeros(self.cfg.task_embed_size))
 
+    def try_transfer(self, module_name: str, transfer_module: Any = None, transfer_data_attrs: Optional[DataAttrs] = None):
+        if (module := getattr(self, module_name, None)) is not None:
+            if transfer_module is not None:
+                if isinstance(module, nn.Parameter):
+                    assert module.data.shape == transfer_module.data.shape
+                    # Currently will fail for array flag transfer, no idea what the right policy is right now
+                    module.data = transfer_module.data
+                else:
+                    module.load_state_dict(transfer_module.state_dict(), strict=False)
+                logger.info(f'Transferred {module_name} weights.')
+            else:
+                # if isinstance(module, nn.Parameter):
+                #     self.novel_params.append(self._wrap_key(module_name, module_name))
+                # else:
+                #     self.novel_params.extend(self._wrap_keys(module_name, module.named_parameters()))
+                logger.info(f'New {module_name} weights.')
+
+    def try_transfer_embed(
+        self,
+        embed_name: str, # Used for looking up possibly existing attribute
+        new_attrs: List[str],
+        old_attrs: List[str],
+        transfer_embed: nn.Embedding | nn.Parameter,
+    ) -> nn.Embedding | nn.Parameter:
+        if transfer_embed is None:
+            logger.info(f'Found no weights to transfer for {embed_name}.')
+            return
+        if new_attrs == old_attrs:
+            self.try_transfer(embed_name, transfer_embed)
+            return
+        if not hasattr(self, embed_name):
+            return
+        embed = getattr(self, embed_name)
+        if not old_attrs:
+            logger.info(f'New {embed_name} weights.')
+            return
+        if not new_attrs:
+            logger.warning(f"No {embed_name} provided in new model despite old model dependency. HIGH CHANCE OF ERROR.")
+            return
+        num_reassigned = 0
+        def get_param(embed):
+            if isinstance(embed, nn.Parameter):
+                return embed
+            return getattr(embed, 'weight')
+        # Backport pre: package enum to string (enums from old package aren't equal to enums from new package)
+        old_attrs = [str(a) for a in old_attrs]
+        for n_idx, target in enumerate(new_attrs):
+            if str(target) in old_attrs:
+                get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(str(target))]
+                num_reassigned += 1
+        # for n_idx, target in enumerate(new_attrs):
+        #     if target in old_attrs:
+        #         get_param(embed).data[n_idx] = get_param(transfer_embed).data[old_attrs.index(target)]
+        #         num_reassigned += 1
+        logger.info(f'Reassigned {num_reassigned} of {len(new_attrs)} {embed_name} weights.')
+        if num_reassigned == 0:
+            logger.warning(f'No {embed_name} weights reassigned. HIGH CHANCE OF ERROR.')
+        if num_reassigned < len(new_attrs):
+            logger.warning(f'Incomplete {embed_name} weights reassignment, accelerating learning of all.')
+
+    def transfer_weights(self, transfer_model: Self, transfer_data_attrs: Optional[DataAttrs] = None):
+        self.try_transfer_embed(
+            'session_embed', self.data_attrs.context.session, transfer_data_attrs.context.session,
+            getattr(transfer_model, 'session_embed', None)
+        )
+        try:
+            self.try_transfer_embed(
+                'subject_embed', self.data_attrs.context.subject, transfer_data_attrs.context.subject,
+                getattr(transfer_model, 'subject_embed', None)
+            )
+            self.try_transfer_embed(
+                'task_embed', self.data_attrs.context.task, transfer_data_attrs.context.task,
+                getattr(transfer_model, 'task_embed', None)
+            )
+            self.try_transfer_embed(
+                'array_embed', self.data_attrs.context.array, transfer_data_attrs.context.array,
+                getattr(transfer_model, 'array_embed', None)
+            )
+        except:
+            print("Failed extra embed transfer, likely no impt reason (model e.g. didn't have.)")
+
+        self.try_transfer('session_flag', getattr(transfer_model, 'session_flag', None))
+        try:
+            self.try_transfer('subject_flag', getattr(transfer_model, 'subject_flag', None))
+            self.try_transfer('task_flag', getattr(transfer_model, 'task_flag', None))
+            self.try_transfer('array_flag', getattr(transfer_model, 'array_flag', None))
+        except:
+            print("Failed extra embed transfer, likely no impt reason (model e.g. didn't have.)")
 
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
