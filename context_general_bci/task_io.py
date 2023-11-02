@@ -1040,10 +1040,16 @@ class ReturnInfill(ReturnContext):
         eval_mode=False,
         loss_mask=None,
     ) -> Dict[BatchKey, torch.Tensor]:
+        has_outputs = Output.return_logits in self.cfg.outputs
+        if has_outputs or compute_metrics:
+            pred = self.out(backbone_features)
+            target = batch[DataKey.task_return.name].flatten()
+        batch_out = {}
+        if has_outputs:
+            batch_out[Output.return_logits] = pred
+            batch_out[Output.return_target] = target
         if not compute_metrics:
-            return {}
-        target = batch[DataKey.task_return.name].flatten()
-        pred = self.out(backbone_features)
+            return batch_out
         loss = F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.decode_label_smooth)
         if loss_mask is not None:
             loss_mask = loss_mask & ~backbone_padding

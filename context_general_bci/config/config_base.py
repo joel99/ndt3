@@ -66,6 +66,8 @@ class Output(Enum):
     poisson_loss = 'poisson_loss'
     features = 'features'
     spikes = 'spikes' # for debugging
+    return_logits = 'return_logits'
+    return_target = 'return_target'
 
     behavior = 'behavior'
     behavior_pred = 'behavior_pred' # pred, not logits (in classification case)

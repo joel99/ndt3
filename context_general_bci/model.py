@@ -638,6 +638,7 @@ class BrainBertInterface(pl.LightningModule):
         for k in [MetaKey.session, MetaKey.subject, MetaKey.task, DataKey.covariate_labels.name]:
             if k in batch:
                 batch_out[k] = batch[k]
+
         if Output.spikes in self.cfg.task.outputs:
             assert self.data_attrs.serve_tokens_flat or not self.data_attrs.serve_tokens, "Not implemented, needs assembling"
             batch_out[Output.spikes] = unflatten(batch[DataKey.spikes.name], batch[DataKey.time.name], batch[DataKey.position.name])
@@ -655,21 +656,27 @@ class BrainBertInterface(pl.LightningModule):
             if self.cfg.eval.icl_invert:
                 batch[DataKey.bhvr_vel.name] = real_kin
             # There are only certain tokens I want model predictions for - the tokens that have kinematic modality targets.
-            to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk == 'kinematic_infill'], device=space.device)
+            to_infer_indices = torch.tensor([i for i, tk in enumerate(tks) if tk in ['kinematic_infill', 'return_infill']], device=space.device)
             to_infer_mask = torch.isin(modalities, to_infer_indices)
+
             if self.cfg.eval.limit_timesteps: # Evaluating full length is slow with KV cache, we need to iterate faster
-                # logger.warning('Assuming even batches for cropped prediction!!!')
-                first_step_time = ((times >= self.cfg.eval.limit_timesteps) & (times != self.data_attrs.max_trial_length)).any(0)
-                if first_step_time.any():
-                    first_step_time = first_step_time.nonzero()[0][0].item()
-                    to_infer_mask[:, first_step_time:] = False
+                limit_in_batch = ((times >= self.cfg.eval.limit_timesteps) & (times != self.data_attrs.max_trial_length)).any(0)
+                if limit_in_batch.any():
+                    limit_in_batch = limit_in_batch.nonzero()[0][0].item()
+                    to_infer_mask[:, limit_in_batch:] = False
+
             proc_step = 0
             raw_stream = []
-            stream_mask = []
-            cue_mask = [torch.zeros_like(to_infer_mask[:, 0])] # initially not student cue
-            main_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel.name].dtype) # B T
-            main_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel.name].flatten()
             target_stream = []
+            cue_mask = [torch.zeros_like(to_infer_mask[:, 0])] # is "student" i.e. need legitimate
+
+            # Target seq tracks all plausible candidates we want to keep - since full batch might not be relevant, stream_mask keeps finer grained mask
+            target_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel.name].dtype) # B T
+            stream_mask = [] # TODO need to make, modality_mask
+            target_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel.name].flatten() # Flatten is allowed since kinematic dim = 1
+            if DataKey.task_return.name in batch:
+                target_seq[modalities == tks.index('return_infill')] = batch[DataKey.task_return.name].flatten() # Flatten is allowed since kinematic dim = 1
+            breakpoint()
             predicted_to = 0 # Exclusive, do we have a prediction up till this step?
             predict_until = 0 # The goalpost hasn't been set yet.
             need_student_slice = (times >= self.cfg.eval.teacher_timesteps).any(0)
@@ -686,7 +693,7 @@ class BrainBertInterface(pl.LightningModule):
                     & is_kinematic_input
                 pipeline_context[blacklist_kin_times] = 0
 
-            if self.cfg.eval.maskout_last_n:
+            if self.cfg.eval.maskout_last_n: # This implies we want to use student
                 # We don't immediately load student, so we need to keep a copy on hand. For convenience, we copy full stream
                 student_stream = pipeline_context.clone()
                 # Identify the kinematics up to n steps before the first student slice, and zero it out
@@ -696,6 +703,7 @@ class BrainBertInterface(pl.LightningModule):
                     & (times >= self.cfg.eval.teacher_timesteps - self.cfg.eval.maskout_last_n) \
                     & is_kinematic_input
                 pipeline_context[blacklist_kin_times] = 0
+
             while proc_step < times.size(1):
                 # Jump to the next inferrable step
                 if not to_infer_mask[:, proc_step].any():
@@ -733,7 +741,7 @@ class BrainBertInterface(pl.LightningModule):
                 raw_pred = decode[Output.behavior_pred]
                 # breakpoint()
                 raw_stream.append(raw_pred)
-                target_stream.append(main_seq[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
+                target_stream.append(target_seq[:, proc_step:proc_step+1]) # Keep targets for step
                 stream_mask.append(to_infer_mask[:, proc_step:proc_step+1]) # Mark relevant tokens in timestep
 
                 # Need to decode and quantize again... (redundant work but IDRC)
@@ -778,14 +786,11 @@ class BrainBertInterface(pl.LightningModule):
                             to_infer_mask[:, proc_step] & should_student
                         ]
                 proc_step += 1
-                # if True or proc_step % 100 == 0:
-                    # print(f'Inferred {proc_step} of {times.size(1)} steps.')
             raw_stream = torch.cat(raw_stream, 1) # B T
-            stream_mask = torch.cat(stream_mask, 1) # B T
             target_stream = torch.cat(target_stream, 1) # B T
             cue_mask = torch.stack(cue_mask, 1) # B T
-            if cue_mask.size(1) > stream_mask.size(1): # crop last step
-                cue_mask = cue_mask[:, :stream_mask.size(1)]
+            stream_mask = torch.cat(stream_mask, 1) # B T
+            cue_mask = cue_mask[:, :stream_mask.size(1)] # Crop if excess
 
             # In order to ID the right raws across batches, track behavior in flat datastream timeline
             # breakpoint()
