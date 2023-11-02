@@ -8,7 +8,6 @@ from matplotlib import pyplot as plt
 import numpy as np
 import seaborn as sns
 import torch
-from torch.utils.data import DataLoader
 import lightning.pytorch as pl
 
 from sklearn.metrics import r2_score
@@ -53,10 +52,15 @@ else:
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
+
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_2', # Ortho
         # 'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
-        'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
-        'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
+        'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
+        'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
 
         # 'rouse.*',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
@@ -139,9 +143,12 @@ model.cfg.eval.use_student = False
 
 # Interventions
 modifier = 'zero_reward'
+modifier = 'three_return'
 modifier = ''
 if modifier == 'zero_reward':
     model.cfg.eval.zero_reward = True
+elif modifier == 'three_return':
+    model.cfg.eval.const_return = 3 # Counterfactually high - the natural range is 1-2
 else:
     model.cfg.eval.zero_reward = False
 

@@ -284,6 +284,7 @@ class EvalConfig:
 
     icl_invert: bool = False # Invert kinematic inputs, to see if we can invert kinematic outputs
     zero_reward: bool = False
+    const_return: int = 0 # if > 0, counterfactual return setting. Just a sanity test.
 
 
 @dataclass

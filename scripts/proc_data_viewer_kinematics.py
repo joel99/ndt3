@@ -49,7 +49,10 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
-    'pitt_broad_pitt_co_CRS02bLab_1942_6',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
+
+    'pitt_broad_pitt_co_CRS02bLab_1942_7',
+    'pitt_broad_pitt_co_CRS02bLab_1942_8',
     # Force
     # 'pitt_test_pitt_co_CRS07Home_108_1',
     # 'pitt_test_pitt_co_CRS07Lab_95_6',
@@ -152,8 +155,8 @@ trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to
 # trial_indices = np.arange(12)+24+12
 # trial_indices = np.arange(5)
 # trial_indices = np.arange(3)+24+26
-# trial_indices = range(4)
-trial_indices = range(2)
+trial_indices = range(4)
+# trial_indices = range(2)
 USE_CONSTRAINT = False
 USE_RETURN = False
 USE_RETURN = True
@@ -246,8 +249,8 @@ def plot_rewards(ax_row, dataset, col, trial):
     rewards = dataset[trial][DataKey.task_reward]
     times = dataset[trial][DataKey.task_return_time]
     prep_plt(ax_row[col], size="huge")
-    ax_row[col].scatter(times, returns[:, 0], label='return', marker='|', s=1000)
-    ax_row[col].scatter(times, rewards[:, 0] + 0.25, label='reward', marker='|', s=1000) # Offset for visibility
+    ax_row[col].scatter(times, returns[:, 0], label='return', marker='^', s=1000)
+    ax_row[col].scatter(times, rewards[:, 0] + 0.25, label='reward', marker='^', s=1000) # Offset for visibility
     # ax_row[col].set_ylim(-0.1, 8.1)
     # Put minor gridlines every 1
     ax_row[col].yaxis.set_minor_locator(plt.MultipleLocator(1))

@@ -629,8 +629,10 @@ class BrainBertInterface(pl.LightningModule):
                 continue
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
         if getattr(self.cfg.eval, 'zero_reward'):
-            batch[DataKey.task_reward.name] = torch.zeros_like(batch[DataKey.task_reward.name])
-            batch[DataKey.task_return.name] = torch.zeros_like(batch[DataKey.task_return.name])
+            batch[DataKey.task_reward.name] = torch.zeros_like(batch[DataKey.task_reward.name]) + 1 # note +1 since 0 is reserved for padding
+            batch[DataKey.task_return.name] = torch.zeros_like(batch[DataKey.task_return.name]) + 1 # note +1 since 0 is reserved for padding
+        elif getattr(self.cfg.eval, 'const_return'):
+            batch[DataKey.task_return.name] = torch.full_like(batch[DataKey.task_return.name], self.cfg.eval.const_return)
         batch_out: Dict[str | DataKey | MetaKey | Output, torch.Tensor] = {}
         # auto-debug
         for k in [MetaKey.session, MetaKey.subject, MetaKey.task, DataKey.covariate_labels.name]:
