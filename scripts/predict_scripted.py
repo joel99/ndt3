@@ -136,6 +136,7 @@ def icl_eval(
     is_student = outputs[Output.behavior_query_mask]
     is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
     valid = is_student_rolling > model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name])
+    print(f"Computing metrics over {valid.sum()} samples")
     # Compute R2
     # r2 = r2_score(target, prediction)
     mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)

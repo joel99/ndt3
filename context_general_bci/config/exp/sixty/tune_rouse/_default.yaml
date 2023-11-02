@@ -1,0 +1,109 @@
+# @package _global_
+# Updated with low-hanging infrastructural updates. Remove a few norms, add rotary, add SwiGLU, Flash 2, QK norm
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+    - largescale
+  - /model/task:
+    - decode_flat_v2 # spcify individually
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - largescale # for the main runs, not debuggin runs
+model:
+  max_neuron_count: 61 # !
+
+  arch: Architecture.flash_ndt
+  lr_ramp_steps: 100
+  lr_decay_steps: 2000
+  lr_init: 1e-4 # Not rigorously, I find this better for tuning
+  lr_interval: step
+  lr_schedule: cosine_timm
+
+  next_step_prediction: True
+  kinematic_token_maskout_schedule: "random"
+  kinematic_token_maskout_start: 1.0
+  kinematic_token_maskout: 0.5
+  task:
+    context_prompt_time_thresh: -50 # 1s
+    context_prompt_time_thresh_min: -5
+    prefix_ratio: 0.25
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [1.0, 1.0, 0., 0.]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    encode_constraints: True
+    use_constraint_cls: False # No need
+    decode_quantize_classes: 512
+  transformer:
+    initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
+    activation: swiglu
+    rotary_position: True
+    rotary_position_torch: True
+    use_biases: False
+    learnable_norm: False
+    n_layers: 6
+    max_trial_length: 1500 # Up to 30s
+    n_heads: 8
+  hidden_size: 1024
+  use_full_encode: True
+  decoder_context_integration: 'cross_attn' # Literally not even used
+dataset:
+  pack_dense: True
+  bin_size_ms: 60 #
+  max_tokens: 16384 # For subsequent curricula!
+  max_length_ms: 45000
+  max_trial_length: 1500 # 1.5s at 60ms bin rate
+  odoherty_rtt:
+    chop_size_ms: 45000
+  pitt_co:
+    chop_size_ms: 45000
+  miller:
+    chop_size_ms: 45000
+  dyer_co:
+    chop_size_ms: 45000
+  gallego_co:
+    chop_size_ms: 45000
+  rouse:
+    chop_size_ms: 45000
+  churchland_misc:
+    chop_size_ms: 45000
+  delay_reach:
+    chop_size_ms: 45000
+  churchland_maze:
+    chop_size_ms: 45000
+  max_channels: 320
+  max_arrays: 2
+
+  datasets:
+  - rouse.*
+  eval_datasets:
+  - rouse.*
+  scale_limit_per_eval_session: 4 # 60s
+  eval_ratio: 0.25
+
+  tokenize_covariates: True
+  sparse_constraints: True
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
+  data_keys:
+  - DataKey.spikes
+  - DataKey.constraint
+  - DataKey.bhvr_vel
+  - DataKey.task_return
+train:
+  autoscale_batch_size: False
+  # batch_size: 4 # 40G
+  # batch_size: 16
+  batch_size: 16 # Single GPUs
+  # effective_batch_size: 64
+  # effective_batch_size: 512
+  patience: 50
+inherit_exp: sixty
+save_r2: True # R2 doesn't track infill loss and we don't quite know why yet
