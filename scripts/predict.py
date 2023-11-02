@@ -52,8 +52,9 @@ else:
         # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
-        'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
-        'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
+
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
         'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
         'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
 
@@ -124,16 +125,25 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 
 CUE_LENGTH_S = 1
-CUE_LENGTH_S = 4
-CUE_LENGTH_S = 9
-CUE_LENGTH_S = 30
+CUE_LENGTH_S = 3
+# CUE_LENGTH_S = 9
+# CUE_LENGTH_S = 30
 
 EVAL_GAP_S = 45 - CUE_LENGTH_S - 6 # TAIL
+EVAL_GAP_S = 45 - CUE_LENGTH_S - 40 # TAIL
 
 model.cfg.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
 model.cfg.eval.student_gap = int(EVAL_GAP_S * 1000 / cfg.dataset.bin_size_ms)
 model.cfg.eval.use_student = True
 model.cfg.eval.use_student = False
+
+# Interventions
+modifier = 'zero_reward'
+modifier = ''
+if modifier == 'zero_reward':
+    model.cfg.eval.zero_reward = True
+else:
+    model.cfg.eval.zero_reward = False
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
@@ -151,17 +161,14 @@ target = outputs[Output.behavior]
 is_student = outputs[Output.behavior_query_mask]
 # Compute R2
 r2 = r2_score(target, prediction)
-# r2_student = r2_score(target[is_student], prediction[is_student])
-#%%
-print(model.cfg.eval.teacher_timesteps)
-print(is_student)
-print(dataset[0][DataKey.time][:10])
-print(dataset[0][DataKey.covariate_time][:10])
+# print(dataset[0][DataKey.covariate_time][-100:])
 is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-# plt.plot(is_student_rolling)
-valid = is_student_rolling > model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name])
+plt.plot(is_student_rolling)
+valid = is_student_rolling > (model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
+print(model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
+plt.hlines(model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]), 0, 1000, )
+plt.plot(valid * 1000)
 
-#%%
 print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
 mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
 r2_student = r2_score(target[valid], prediction[valid])
@@ -183,7 +190,7 @@ ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
 # robust_r2_student = r2_score(target_student, prediction_student)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
-ax.set_title(f'{query} {data_label} R2 Student: {r2_student:.2f}')
+ax.set_title(f'{query} {data_label} {modifier} R2: {r2_student:.2f}')
 #%%
 palette = sns.color_palette(n_colors=2)
 camera_label = {
@@ -198,8 +205,8 @@ camera_label = {
     'EMG_EDCr': 'EDCr',
 }
 xlim = [0, 1500]
-# xlim = [0, 750]
-xlim = [0, 3000]
+xlim = [0, 750]
+# xlim = [0, 3000]
 # xlim = [0, 5000]
 # xlim = [3000, 4000]
 subset_cov = []

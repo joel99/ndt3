@@ -19,10 +19,7 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest, unflatten
 
-sample_query = "pitt_monkey-a1yiwczo"
-sample_query = 'pitt_monkey_16k-sq9jr9d0'
-
-sample_query = 'pitt_monkey_4k_16k-co20cwij'
+sample_query = "pitt_monkey_cond_return-b77cdokm"
 
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
@@ -42,7 +39,7 @@ cfg.dataset.pitt_co.arrays=[
 run_cfg.datasets = [
     # 'pitt_broad_pitt_co_BMI01Lab_231.*',
     # 'pitt_broad_pitt_co_BMI01Lab_1_.*',
-    'pitt_broad_pitt_co_BMI01Lab_97_16.*',
+    # 'pitt_broad_pitt_co_BMI01Lab_97_16.*',
     # 'pitt_broad_pitt_co_BMI01Lab_296.*',
     # FBC Helicopter
 
@@ -52,7 +49,7 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
     # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
-    # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
+    'pitt_broad_pitt_co_CRS02bLab_1942_6',
     # Force
     # 'pitt_test_pitt_co_CRS07Home_108_1',
     # 'pitt_test_pitt_co_CRS07Lab_95_6',
@@ -159,6 +156,7 @@ trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to
 trial_indices = range(2)
 USE_CONSTRAINT = False
 USE_RETURN = False
+USE_RETURN = True
 def plot_covs(
         ax,
         trial_cov,

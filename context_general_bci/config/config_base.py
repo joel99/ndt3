@@ -283,6 +283,7 @@ class EvalConfig:
     offset_kin_hotfix: int = 0 # Offset post-spike modalities position by this much. Needed as position of post-spike dimensions are 1 lower than they used to be, quick hotfix so I can still use those checkpoitns. Break ~https://github.com/joel99/ndt3/commit/7f29a564b080864d362b43dffe06c123b82ce75d
 
     icl_invert: bool = False # Invert kinematic inputs, to see if we can invert kinematic outputs
+    zero_reward: bool = False
 
 
 @dataclass

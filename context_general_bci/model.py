@@ -628,6 +628,9 @@ class BrainBertInterface(pl.LightningModule):
             if k == DataKey.covariate_labels.name:
                 continue
             batch[k], pack_info[k] = pack([batch[k]], batch_shapes[k])
+        if getattr(self.cfg.eval, 'zero_reward'):
+            batch[DataKey.task_reward.name] = torch.zeros_like(batch[DataKey.task_reward.name])
+            batch[DataKey.task_return.name] = torch.zeros_like(batch[DataKey.task_return.name])
         batch_out: Dict[str | DataKey | MetaKey | Output, torch.Tensor] = {}
         # auto-debug
         for k in [MetaKey.session, MetaKey.subject, MetaKey.task, DataKey.covariate_labels.name]:
@@ -638,10 +641,9 @@ class BrainBertInterface(pl.LightningModule):
             batch_out[Output.spikes] = unflatten(batch[DataKey.spikes.name], batch[DataKey.time.name], batch[DataKey.position.name])
             batch_out[DataKey.time.name] = batch[DataKey.time.name].clone() # pre mask
             batch_out[DataKey.position.name] = batch[DataKey.position.name].clone() # pre mask
-
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=eval_mode)
-
+        # breakpoint()
         if self.cfg.next_step_prediction:
             if self.cfg.eval.icl_invert:
                 real_kin = batch[DataKey.bhvr_vel.name].clone()
