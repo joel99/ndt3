@@ -1027,7 +1027,7 @@ class ReturnInfill(ReturnContext):
             data_attrs=data_attrs
         )
         self.out = nn.Linear(backbone_out_size, self.max_return)
-        # TODO - we should merge this pipeline with covariate into a generic classification pipeline.
+        # TODO - maybe merge with CovariateInfill... but I think this would be more cost than benefit.
 
     def forward(
         self,

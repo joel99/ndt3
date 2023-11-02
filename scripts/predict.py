@@ -1,8 +1,8 @@
 #%%
 # Autoregressive inference procedure, for generalist model
 import os
-# os.environ['CUDA_VISIBLE_DEVICES'] = '3'
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '3'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0'
 
 from matplotlib import pyplot as plt
 import numpy as np
@@ -24,7 +24,7 @@ from context_general_bci.analyze_utils import (
     data_label_to_target
 )
 
-query = 'pitt_monkey_4k_16k_kmu_0_1-aqlof55a'
+query = 'pitt_monkey_cond_return-b77cdokm'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -35,19 +35,28 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.outputs = [
     Output.behavior,
     Output.behavior_pred,
-    # Output.
 ]
 
 
 # data_label ='indy'
 data_label = ''
 data_label = 'crs08_grasp'
-data_label = 'miller'
-# data_label = ''
+# data_label = 'miller'
+data_label = ''
 if data_label:
     target = data_label_to_target(data_label)
 else:
     target = [
+
+        # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
+        'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
+        'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
+        'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
+        'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
+
         # 'rouse.*',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
         # 'pitt_broad_pitt_co_CRS07Home_108_.*',
@@ -143,10 +152,16 @@ is_student = outputs[Output.behavior_query_mask]
 # Compute R2
 r2 = r2_score(target, prediction)
 # r2_student = r2_score(target[is_student], prediction[is_student])
+#%%
+print(model.cfg.eval.teacher_timesteps)
+print(is_student)
+print(dataset[0][DataKey.time][:10])
+print(dataset[0][DataKey.covariate_time][:10])
 is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-
+# plt.plot(is_student_rolling)
 valid = is_student_rolling > model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name])
 
+#%%
 print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
 mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
 r2_student = r2_score(target[valid], prediction[valid])

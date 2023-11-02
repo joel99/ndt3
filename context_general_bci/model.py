@@ -1049,7 +1049,7 @@ class BrainBertInterface(pl.LightningModule):
             # out['lr_scheduler'] = scheduler
             out['lr_scheduler'] = {
                 'scheduler': scheduler, # https://lightning.ai/docs/pytorch/stable/common/lightning_module.html#configure-optimizers
-                'interval': getattr(self.cfg, 'lr_interval', 'epoch')
+                'interval': self.cfg.lr_interval
             }
         return out
 
