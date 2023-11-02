@@ -699,11 +699,12 @@ class BrainBertInterface(pl.LightningModule):
                         non_pad_times = times.clone()
                         non_pad_times[pipeline_padding] = -1
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
-                        # if not mask.any():
-                        #     breakpoint()
+                        if not mask.any():
+                            breakpoint()
                         mask = mask & (times_from_end >= sample_thresh)
-                        # if not mask.any():
-                        #     breakpoint()
+                        if not mask.any():
+                            breakpoint()
+                            # ? I still don't really get why this happens, waiting to trigger again
                     mask = is_kinematic_input & mask
                     # if not mask.any():
                     #     breakpoint()

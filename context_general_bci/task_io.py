@@ -1025,7 +1025,6 @@ class ReturnInfill(ReturnContext):
             cfg=cfg,
             data_attrs=data_attrs
         )
-        # TODO - we need return targets that are appropriately in range in preproc. Don't use this task until we have sanitized return data.
         self.out = nn.Linear(backbone_out_size, self.max_return)
         # TODO - we should merge this pipeline with covariate into a generic classification pipeline.
 
@@ -1037,16 +1036,31 @@ class ReturnInfill(ReturnContext):
         backbone_space: torch.Tensor,
         backbone_padding: torch.Tensor,
         compute_metrics=True,
-        eval_mode=False
-    ) -> torch.Tensor:
+        eval_mode=False,
+        loss_mask=None,
+    ) -> Dict[BatchKey, torch.Tensor]:
         if not compute_metrics:
             return {}
         target = batch[DataKey.task_return.name].flatten()
         pred = self.out(backbone_features)
-        return {
-            'loss': F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.decode_label_smooth)[~backbone_padding].mean()
-        }
-
+        loss = F.cross_entropy(pred, target, reduction='none', label_smoothing=self.cfg.decode_label_smooth)
+        if loss_mask is not None:
+            loss_mask = loss_mask & ~backbone_padding
+        else:
+            loss_mask = ~backbone_padding
+        batch_out = {}
+        loss = loss[loss_mask].mean()
+        if not loss_mask.any():
+            batch_out['loss'] = torch.zeros_like(loss)
+        else:
+            batch_out['loss'] = loss
+        if Metric.return_acc in self.cfg.metrics:
+            acc = (pred.argmax(1) == target)
+            if not loss_mask.any():
+                batch_out[Metric.return_acc.value] = torch.zeros_like(acc).float().mean()
+            else:
+                batch_out[Metric.return_acc.value] = acc[loss_mask].float().mean()
+        return batch_out
 
 class CovariateReadout(DataPipeline, ConstraintPipeline):
     r"""

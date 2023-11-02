@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  kinematic_token_maskout: 0.0
+dataset:
+  max_tokens: 4092 # For subsequent curricula
+train:
+  batch_size: 24 # 40G
+
+notes: "Standard return conditioning, just re-running to compare as data changed"

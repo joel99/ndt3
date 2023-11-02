@@ -53,6 +53,7 @@ class Metric(Enum):
     kinematic_r2_thresh = 'kinematic_r2_thresh' # a clone that will threshold out extremely low velocities to match Pitt settings
     kinematic_acc = 'kinematic_acc'
     kinematic_mse = 'kinematic_mse'
+    return_acc = 'return_acc'
     all_loss = 'all_loss'
 
 class Output(Enum):
