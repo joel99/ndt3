@@ -11,6 +11,7 @@ from context_general_bci.config import DatasetConfig
 from context_general_bci.subjects import SubjectArrayRegistry, SubjectInfo, SubjectName
 from context_general_bci.subjects.pitt_chicago import CRS02b, CRS07
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskRegistry, churchland_misc
+from context_general_bci.tasks.preproc_utils import crop_subject_handles
 
 # FYI: Inherited dataclasses don't call parent's __init__ by default. This is a known issue/feature:
 # https://bugs.python.org/issue43835
@@ -349,10 +350,7 @@ class BCIContextInfo(ReachingContextInfo):
                 blacklist_check_key = f'{subject}_session_{session}_set_{session_set}'
                 if blacklist_check_key in pitt_metadata:
                     session_type = pitt_metadata[blacklist_check_key]
-            if subject.endswith('Home'):
-                subject = subject[:-4]
-            elif subject.endswith('Lab'):
-                subject = subject[:-3]
+            subject = crop_subject_handles(subject)
             alias = f'{task_map.get(session_type, ExperimentalTask.unstructured).value}_{alias}'
             # print(f"registering {alias} with type {session_type}, {task_map.get(session_type)}")
             return BCIContextInfo(

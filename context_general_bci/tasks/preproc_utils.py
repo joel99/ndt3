@@ -9,6 +9,13 @@ from context_general_bci.config import DataKey
 
 T = TypeVar('T', torch.Tensor, None)
 
+def crop_subject_handles(subject: str):
+    if subject.endswith('Home'):
+        subject = subject[:-4]
+    elif subject.endswith('Lab'):
+        subject = subject[:-3]
+    return subject
+
 def get_minmax_norm(covariates: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     r"""
         Get min/max normalization for covariates
