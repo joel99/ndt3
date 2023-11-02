@@ -821,7 +821,6 @@ class BrainBertInterface(pl.LightningModule):
                 Output.behavior_query_mask: cue_mask[modality_mask == tks.index('kinematic_infill')],
             }
             if ModelTask.return_infill in self.cfg.task.tasks:
-                breakpoint()
                 batch_out[Output.return_logits] = return_logits_stream[modality_mask == tks.index('return_infill')]
                 batch_out[Output.return_target] = target_stream[modality_mask == tks.index('return_infill')]
             # Check covariate labels all the same

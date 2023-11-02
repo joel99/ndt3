@@ -164,7 +164,38 @@ outputs = stack_batch(trainer.predict(model, dataloader))#%%
 print(outputs[Output.behavior_pred].shape)
 print(outputs[Output.behavior].shape)
 print(outputs[DataKey.covariate_labels.name])
-breakpoint()
+#%%
+print(outputs.keys())
+
+return_logits = outputs[Output.return_logits].to(dtype=float)#.numpy() # Shape N x K
+return_target = outputs[Output.return_target].to(dtype=float)#.numpy() # Shape N
+
+return_logits = return_logits[:, 1:5]
+# Assuming 'return_logits' is a PyTorch tensor of shape (N, K)
+THRESHOLD = 0.0  # Set your threshold probability here.
+# We simply set a nucleus of 0.3
+# THRESHOLD = 0.3 # enough to get rid of absurd returns on a spot check.
+# OK - note that not all of these are actually _returns_ some of these are just reward tokens, no?
+# Hmm...
+# THRESHOLD = 0.0  # Set your threshold probability here
+
+# Apply softmax to convert logits to probabilities
+probabilities = torch.softmax(return_logits, dim=1)
+
+# Convert to numpy for visualization
+probabilities_np = probabilities.cpu().detach().numpy()
+
+# Normalize the probabilities
+probabilities_normalized = (probabilities_np - probabilities_np.min()) / (probabilities_np.max() - probabilities_np.min())
+
+# Mask values below the threshold
+probabilities_masked = np.where(probabilities_normalized >= THRESHOLD, probabilities_normalized, np.nan)
+
+# Create the heatmap with the masked array
+plt.figure(figsize=(10, 8))
+ax = sns.heatmap(probabilities_masked, annot=False, cmap='viridis', mask=np.isnan(probabilities_masked))
+ax.set_title(f'Heatmap of return probabilities (threshold={THRESHOLD})')
+ax.set_xlabel(f'Return to Go (100 timesteps / {100 * cfg.dataset.bin_size_ms} ms)')
 #%%
 prediction = outputs[Output.behavior_pred]
 target = outputs[Output.behavior]
