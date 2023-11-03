@@ -549,6 +549,7 @@ class DatasetConfig:
     # TODO what we really need are a suite of eval tasks/callbacks...
 
     eval_split_continuous: bool = False # For comparison with rEFH - make eval a continuous block that comes later in training.
+    train_val_split_continuous: bool = False # Assumes eval_split_continuous, makes val the last N% of training data, rather than IID samples
 
     r"""
         `data_keys` and `meta_keys` specify the attributes of the dataset are served.

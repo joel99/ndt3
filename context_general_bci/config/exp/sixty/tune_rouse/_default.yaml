@@ -1,5 +1,13 @@
 # @package _global_
-# Updated with low-hanging infrastructural updates. Remove a few norms, add rotary, add SwiGLU, Flash 2, QK norm
+# Doing FT recipe development in a high signal environment.
+# TODO repeat with CRS08 blanket spread.
+# Axes of variation
+# Schedule
+# - Number of steps
+# - Max LR
+# - LR Schedule
+# Batch size
+# LORA
 defaults:
   - /model:
     - flat_enc_dec
@@ -16,11 +24,11 @@ model:
   max_neuron_count: 61 # !
 
   arch: Architecture.flash_ndt
-  lr_ramp_steps: 100
-  lr_decay_steps: 2000
-  lr_init: 1e-4 # Not rigorously, I find this better for tuning
-  lr_interval: step
-  lr_schedule: cosine_timm
+  lr_ramp_steps: 4 # ? TODO 10%
+  lr_decay_steps: 40
+  lr_init: 1e-4 # To sweep
+  lr_interval: epoch
+  lr_schedule: cosine_timm # To sweep
 
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
@@ -98,12 +106,9 @@ dataset:
   - DataKey.bhvr_vel
   - DataKey.task_return
 train:
+  epochs: 100
+  patience: 10
   autoscale_batch_size: False
-  # batch_size: 4 # 40G
-  # batch_size: 16
-  batch_size: 16 # Single GPUs
-  # effective_batch_size: 64
-  # effective_batch_size: 512
-  patience: 50
+  batch_size: 4
+  effective_batch_size: 4
 inherit_exp: sixty
-save_r2: True # R2 doesn't track infill loss and we don't quite know why yet

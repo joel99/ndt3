@@ -5,6 +5,15 @@
 # Formatted according to expectations in `halton.py`
 
 sweep_space = {
+    "ndt3_ft": {
+        "model.lr_init": {
+            'feasible_points': [1e-5, 3e-5, 1e-4]
+        },
+        "lr_schedule": {
+            "feasible_points": ["cosine_timm", "linear_warmup", "fixed"]
+        },
+    },
+
     "simpler_lr_sweep": {
         "model.lr_init": {
             'feasible_points': [4e-5, 7e-5, 1e-4]
