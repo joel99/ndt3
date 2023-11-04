@@ -29,19 +29,39 @@ wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
-# src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_kinematic_r2')
 
 cfg.model.task.outputs = [
     Output.behavior,
     Output.behavior_pred,
 ]
 
+if True:
+    backbone_wandb = cfg.init_from_id
+    backbone_wandb_run = wandb_query_latest(backbone_wandb, allow_running=True, use_display=True)[0]
+    backbone_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 
-data_label ='indy'
-# data_label = ''
+def ensemble_weights(model_a, model_b, alpha):
+    # https://github.com/mlfoundations/wise-ft/blob/master/src/wise_ft.py
+    # alpha - how much of model_b. model_b should be backbone
+    # ? not on same device?
+    model_a = model_a.to('cpu')
+    model_b = model_b.to('cpu')
+    # model has some extra state that doesn't clone
+    theta_0 = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in model_a.state_dict().items()}
+    theta_1 = {k: v.clone() if isinstance(v, torch.Tensor) else v for k, v in model_b.state_dict().items()}
+    new_weights = {}
+    for k in theta_0.keys():
+        if isinstance(theta_0[k], torch.Tensor):
+            new_weights[k] = alpha * theta_0[k] + (1 - alpha) * theta_1[k]
+        else:
+            new_weights[k] = theta_0[k]
+    return new_weights
+
+
+# data_label ='indy'
 # data_label = 'crs08_grasp'
 # data_label = 'miller'
-# data_label = ''
+data_label = ''
 if data_label:
     target = data_label_to_target(data_label)
 else:
@@ -57,8 +77,8 @@ else:
 
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2', # Ortho
         # 'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
-        'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
-        'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
         # 'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
         # 'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
 
@@ -67,6 +87,11 @@ else:
         # 'odoherty_rtt-Indy-20161005_06',
         # 'odoherty_rtt-Indy-20161026_03',
         # 'odoherty_rtt-Indy-20170131_02',
+        "miller_Jango-Jango_20150730_001",
+        "miller_Jango-Jango_20150731_001",
+        "miller_Jango-Jango_20150801_001",
+        "miller_Jango-Jango_20150805_001",
+
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
     # data_label = 'grasp'
@@ -74,9 +99,15 @@ else:
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 print(cfg.dataset.eval_ratio)
-if cfg.dataset.eval_ratio > 0 and cfg.dataset.eval_ratio < 1: # i.e. brand new dataset, not monitored during training
+if cfg.dataset.eval_ratio > 0 and cfg.dataset.eval_ratio < 1:
     # Not super robust... we probably want to make this more like... expand datasets and compute whether overlapped
     dataset = SpikingDataset(cfg.dataset) # Make as original
+
+
+    # ? Why are the miller datasets not showing up...?
+
+
+
     dataset.subset_split(splits=['eval'], keep_index=True)
     TARGET_DATASETS = [context_registry.query(alias=td) for td in target]
     FLAT_TARGET_DATASETS = []
@@ -96,389 +127,46 @@ else:
     dataset = SpikingDataset(cfg.dataset)
 pl.seed_everything(0)
 print("Eval length: ", len(dataset))
+
 data_attrs = dataset.get_data_attrs()
 print(data_attrs)
-
-model = transfer_model(src_model, cfg.model, data_attrs)
-
+print("here")
+#%%
 CUE_LENGTH_S = 1
-CUE_LENGTH_S = 3
-# CUE_LENGTH_S = 9
+# CUE_LENGTH_S = 3
+CUE_LENGTH_S = 9
 # CUE_LENGTH_S = 30
 
 EVAL_GAP_S = 45 - CUE_LENGTH_S - 6 # TAIL
 EVAL_GAP_S = 45 - CUE_LENGTH_S - 40 # TAIL
 
-model.cfg.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
-model.cfg.eval.student_gap = int(EVAL_GAP_S * 1000 / cfg.dataset.bin_size_ms)
-model.cfg.eval.use_student = True
-model.cfg.eval.use_student = False
+cfg.model.eval.teacher_timesteps = int(CUE_LENGTH_S * 1000 / cfg.dataset.bin_size_ms)
+cfg.model.eval.student_gap = int(EVAL_GAP_S * 1000 / cfg.dataset.bin_size_ms)
+cfg.model.eval.use_student = True
+cfg.model.eval.use_student = False
 
 trainer = pl.Trainer(
     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
     precision='bf16-mixed',
 )
 dataloader = get_dataloader(dataset, batch_size=16, num_workers=16)
-# dataloader = get_dataloader(dataset, batch_size=128, num_workers=16)
-# metrics = trainer.test(model, dataloader)
-outputs = stack_batch(trainer.predict(model, dataloader))#%%
-print(outputs[Output.behavior_pred].shape)
-print(outputs[Output.behavior].shape)
-print(outputs[DataKey.covariate_labels.name])
-#%%
-prediction = outputs[Output.behavior_pred]
-target = outputs[Output.behavior]
-is_student = outputs[Output.behavior_query_mask]
-# Compute R2
-r2 = r2_score(target, prediction)
-# print(dataset[0][DataKey.covariate_time][-100:])
-is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-plt.plot(is_student_rolling)
-valid = is_student_rolling > (model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
-print(model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
-plt.hlines(model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]), 0, 1000, )
-plt.plot(valid * 1000)
 
-print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
-mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
-r2_student = r2_score(target[valid], prediction[valid])
+results = []
+alpha_range = np.linspace(0, 1, 6)
+for alpha in alpha_range:
+    model = transfer_model(src_model, cfg.model, data_attrs)
+    model.load_state_dict(ensemble_weights(model, backbone_model, alpha))
 
-print(f'R2: {r2:.4f}')
-print(f'R2 Student: {r2_student:.4f}')
-print(model.cfg.eval)
-
-
-f = plt.figure(figsize=(10, 10))
-ax = prep_plt(f.gca(), big=True)
-palette = sns.color_palette(n_colors=2)
-colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
-ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
-# target_student = target[is_student]
-# prediction_student = prediction[is_student]
-# target_student = target_student[prediction_student.abs() < 0.8]
-# prediction_student = prediction_student[prediction_student.abs() < 0.8]
-# robust_r2_student = r2_score(target_student, prediction_student)
-ax.set_xlabel('True')
-ax.set_ylabel('Pred')
-ax.set_title(f'{query} {data_label} {modifier} R2: {r2_student:.2f}')
-#%%
-palette = sns.color_palette(n_colors=2)
-camera_label = {
-    'x': 'Vel X',
-    'y': 'Vel Y',
-    'z': 'Vel Z',
-    'EMG_FCU': 'FCU',
-    'EMG_ECRl': 'ECRl',
-    'EMG_FDP': 'FDP',
-    'EMG_FCR': 'FCR',
-    'EMG_ECRb': 'ECRb',
-    'EMG_EDCr': 'EDCr',
-}
-xlim = [0, 1500]
-xlim = [0, 750]
-# xlim = [0, 3000]
-# xlim = [0, 5000]
-# xlim = [3000, 4000]
-subset_cov = []
-# subset_cov = ['EMG_FCU', 'EMG_ECRl']
-
-def plot_prediction_spans(ax, is_student, prediction, color, model_label):
-    # Convert boolean tensor to numpy for easier manipulation
-    is_student_np = is_student.cpu().numpy()
-
-    # Find the changes in the boolean array
-    change_points = np.where(is_student_np[:-1] != is_student_np[1:])[0] + 1
-
-    # Include the start and end points for complete spans
-    change_points = np.concatenate(([0], change_points, [len(is_student_np)]))
-
-    # Initialize a variable to keep track of whether the first line is plotted
-    first_line = True
-
-    # Plot the lines
-    for start, end in zip(change_points[:-1], change_points[1:]):
-        if is_student_np[start]:  # Check if the span is True
-            label = model_label if first_line else None  # Label only the first line
-            ax.plot(
-                np.arange(start, end),
-                prediction[start:end],
-                color=color,
-                label=label,
-                alpha=.8,
-                linestyle='-',
-                linewidth=2,
-            )
-            first_line = False  # Update the flag as the first line is plotted
-
-def plot_target_pred_overlay(
-        target,
-        prediction,
-        is_student,
-        valid_pred,
-        label,
-        model_label="Pred",
-        ax=None,
-        palette=palette,
-        plot_xlabel=False,
-        xlim=None,
-):
-    ax = prep_plt(ax, big=True)
-    palette[0] = 'k'
-    r2_subset = r2_score(target[valid_pred], prediction[valid_pred])
-    is_student = valid_pred
-    if xlim:
-        target = target[xlim[0]:xlim[1]]
-        prediction = prediction[xlim[0]:xlim[1]]
-        is_student = is_student[xlim[0]:xlim[1]]
-    # Plot true and predicted values
-    ax.plot(target, label=f'True', linestyle='-', alpha=0.5, color=palette[0])
-    # ax.plot(prediction, label=f'pred', linestyle='--', alpha=0.75)
-
-    # ax.scatter(
-    #     is_student.nonzero(),
-    #     prediction[is_student],
-    #     label=f'Pred',
-    #     alpha=0.5,
-    #     color=palette[1],
-    #     s=5,
-    # )
-    model_label = f'{model_label} ({r2_subset:.2f})'
-    plot_prediction_spans(
-        ax, is_student, prediction, palette[1], model_label
-    )
-    if xlim is not None:
-        ax.set_xlim(0, xlim[1] - xlim[0])
-    xticks = ax.get_xticks()
-    ax.set_xticks(xticks)
-    ax.set_xticklabels(xticks * cfg.dataset.bin_size_ms / 1000)
-    if plot_xlabel:
-        ax.set_xlabel('Time (s)')
-
-    ax.set_yticks([-1, 0, 1])
-    # Set minor y-ticks
-    ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
-    # Enable minor grid lines
-    ax.grid(which='minor', linestyle=':', linewidth='0.5', color='gray', alpha=0.3)
-    ax.set_ylabel(f'{camera_label.get(label, label)} (au)')
-
-    legend = ax.legend(
-        loc='upper center',  # Positions the legend at the top center
-        bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
-        ncol=len(palette),  # Sets the number of columns equal to the length of the palette to display horizontally
-        frameon=False,
-        fontsize=20
-    )
-    # Make text in legend colored accordingly
-    for color, text in zip(palette, legend.get_texts()):
-        text.set_color(color)
-
-    # ax.get_legend().remove()
-
-labels = outputs[DataKey.covariate_labels.name]
-num_dims = len(labels)
-if subset_cov:
-    subset_dims = [i for i in range(num_dims) if labels[i] in subset_cov]
-    labels = [labels[i] for i in subset_dims]
-else:
-    subset_dims = range(num_dims)
-fig, axs = plt.subplots(
-    len(subset_dims), 1, figsize=(8, 2.5 * len(subset_dims)),
-    sharex=True, sharey=True
-)
-
-for i, dim in enumerate(subset_dims):
-    plot_target_pred_overlay(
-        target[dim::num_dims],
-        prediction[dim::num_dims],
-        is_student[dim::num_dims],
-        valid[dim::num_dims],
-        label=labels[i],
-        ax=axs[i],
-        plot_xlabel=i == subset_dims[-1], xlim=xlim
-    )
-
-plt.tight_layout()
-
-
-data_label_camera = {
-    'odoherty': "O'Doherty",
-    'miller': 'IsoEMG',
-}
-# fig.suptitle(
-#     f'{data_label_camera.get(data_label, data_label)} 0-Shot $R^2$ ($\\uparrow$)',
-#     fontsize=20,
-#     # offset
-#     x=0.35,
-#     y=0.99,
-# )
-# fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
+    metrics = trainer.test(model, dataloader)
+    if len(metrics) > 1:
+        raise ValueError("Multiple metrics returned")
+    metrics = metrics[0]
+    print(f'Test loss: {metrics["test_kinematic_infill_loss"]}')
+    results.append({'alpha': alpha, 'eval_kin_loss': metrics['test_kinematic_infill_loss']})
 
 #%%
-# ICL_CROP = 2 * 50 * 2 # Quick hack to eval only a certain portion of data. 2s x 50 bins/s x 2 dims
-# ICL_CROP = 3 * 50 * 2 # Quick hack to eval only a certain portion of data. 3s x 50 bins/s x 2 dims
-# ICL_CROP = 0
-
-# from context_general_bci.config import DEFAULT_KIN_LABELS
-# pred = outputs[Output.behavior_pred]
-# true = outputs[Output.behavior]
-# positions = outputs[f'{DataKey.covariate_space}_target']
-# padding = outputs[f'covariate_{DataKey.padding}_target']
-
-# if ICL_CROP:
-#     if isinstance(pred, torch.Tensor):
-#         pred = pred[:, -ICL_CROP:]
-#         true = true[:, -ICL_CROP:]
-#         positions = positions[:,-ICL_CROP:]
-#         padding = padding[:, -ICL_CROP:]
-#     else:
-#         print(pred[0].shape)
-#         pred = [p[-ICL_CROP:] for p in pred]
-#         print(pred[0].shape)
-#         true = [t[-ICL_CROP:] for t in true]
-#         positions = [p[-ICL_CROP:] for p in positions]
-#         padding = [p[-ICL_CROP:] for p in padding]
-
-# # print(outputs[f'{DataKey.covariate_space}_target'].unique())
-# # print(outputs[DataKey.covariate_labels])
-
-# def flatten(arr):
-#     return np.concatenate(arr) if isinstance(arr, list) else arr.flatten()
-# flat_padding = flatten(padding)
-
-# if model.data_attrs.semantic_covariates:
-#     flat_space = flatten(positions)
-#     flat_space = flat_space[~flat_padding]
-#     coords = [DEFAULT_KIN_LABELS[i] for i in flat_space]
-# else:
-#     # remap position to global space
-#     coords = []
-#     labels = outputs[DataKey.covariate_labels]
-#     for i, trial_position in enumerate(positions):
-#         coords.extend(np.array(labels[i])[trial_position])
-#     coords = np.array(coords)
-#     coords = coords[~flat_padding]
-
-# df = pd.DataFrame({
-#     'pred': flatten(pred)[~flat_padding].flatten(), # Extra flatten - in list of tensors path, there's an extra singleton dimension
-#     'true': flatten(true)[~flat_padding].flatten(),
-#     'coord': coords,
-# })
-# # plot marginals
-# subdf = df
-# # subdf = df[df['coord'].isin(['y'])]
-
-# g = sns.jointplot(x='true', y='pred', hue='coord', data=subdf, s=3, alpha=0.4)
-# # Recompute R2 between pred / true
-# from sklearn.metrics import r2_score
-# r2 = r2_score(subdf['true'], subdf['pred'])
-# mse = np.mean((subdf['true'] - subdf['pred'])**2)
-# # set title
-# g.fig.suptitle(f'{query} {mode} {str(target)[:20]} Velocity R2: {r2:.2f}, MSE: {mse:.4f}')
-
-#%%
-# f = plt.figure(figsize=(10, 10))
-# ax = prep_plt(f.gca(), big=True)
-# trials = 4
-# trials = 1
-# trials = min(trials, len(outputs[Output.behavior_pred]))
-# trials = range(trials)
-
-# colors = sns.color_palette('colorblind', df.coord.nunique())
-# label_unique = list(df.coord.unique())
-# # print(label_unique)
-# def plot_trial(trial, ax, color, label=False):
-#     vel_true = outputs[Output.behavior][trial]
-#     vel_pred = outputs[Output.behavior_pred][trial]
-#     dims = outputs[f'{DataKey.covariate_space}_target'][trial]
-#     pad = outputs[f'covariate_{DataKey.padding}_target'][trial]
-#     vel_true = vel_true[~pad]
-#     vel_pred = vel_pred[~pad]
-#     dims = dims[~pad]
-#     for i, dim in enumerate(dims.unique()):
-#         dim_mask = dims == dim
-#         true_dim = vel_true[dim_mask]
-#         pred_dim = vel_pred[dim_mask]
-#         dim_label = DEFAULT_KIN_LABELS[dim] if model.data_attrs.semantic_covariates else outputs[DataKey.covariate_labels][trial][dim]
-#         if dim_label != 'f':
-#             true_dim = true_dim.cumsum(0)
-#             pred_dim = pred_dim.cumsum(0)
-#         color = colors[label_unique.index(dim_label)]
-#         ax.plot(true_dim, label=f'{dim_label} true' if label else None, linestyle='-', color=color)
-#         ax.plot(pred_dim, label=f'{dim_label} pred' if label else None, linestyle='--', color=color)
-
-#     # ax.plot(pos_true[:,0], pos_true[:,1], label='true' if label else '', linestyle='-', color=color)
-#     # ax.plot(pos_pred[:,0], pos_pred[:,1], label='pred' if label else '', linestyle='--', color=color)
-#     # ax.set_xlabel('X-pos')
-#     # ax.set_ylabel('Y-pos')
-#     # make limits square
-#     # ax.set_aspect('equal', 'box')
-
-
-# for i, trial in enumerate(trials):
-#     plot_trial(trial, ax, colors[i], label=i==0)
-# ax.legend()
-# ax.set_title(f'{mode} {str(target)[:20]} Trajectories')
-# # ax.set_ylabel(f'Force (minmax normalized)')
-# # xticks - 1 bin is 20ms. Express in seconds
-# ax.set_xticklabels(ax.get_xticks() * cfg.dataset.bin_size_ms / 1000)
-# # express in seconds
-# ax.set_xlabel('Time (s)')
-
-# #%%
-# # Look for the raw data
-# from pathlib import Path
-# from context_general_bci.tasks.rtt import ODohertyRTTLoader
-# mins = []
-# maxes = []
-# raw_mins = []
-# raw_maxes = []
-# bhvr_vels = []
-# bhvr_pos = []
-# for i in dataset.meta_df[MetaKey.session].unique():
-#     # sample a trial
-#     trial = dataset.meta_df[dataset.meta_df[MetaKey.session] == i].iloc[0]
-#     print(trial.path)
-#     # Open the processed payload, print minmax
-#     payload = torch.load(trial.path)
-#     print(payload['cov_min'])
-#     print(payload['cov_max'])
-#     # append and plot
-#     mins.extend(payload['cov_min'].numpy())
-#     maxes.extend(payload['cov_max'].numpy())
-#     # open the original payload
-#     path_pieces = Path(trial.path).parts
-#     og_path = Path(path_pieces[0], *path_pieces[2:-1])
-#     spike_arr, bhvr_raw, _ = ODohertyRTTLoader.load_raw(og_path, cfg.dataset, ['Indy-M1', 'Loco-M1'])
-#     bhvr_vel = bhvr_raw[DataKey.bhvr_vel].flatten()
-#     bhvr_vels.append(bhvr_vel)
-#     # bhvr_pos.append(bhvr_raw['position'])
-#     raw_mins.append(bhvr_vel.min().item())
-#     raw_maxes.append(bhvr_vel.max().item())
-# ax = prep_plt()
-# ax.set_title(f'{query} Raw MinMax bounds')
-# ax.scatter(mins, maxes)
-# ax.scatter(raw_mins, raw_maxes)
-# ax.set_xlabel('Min')
-# ax.set_ylabel('Max')
-# # ax.plot(mins, label='min')
-# # ax.plot(maxes, label='max')
-# # ax.legend()
-# #%%
-# print(bhvr_pos[0][:,1:3].shape)
-# # plt.plot(bhvr_pos[0][:, 1:3])
-# # plt.plot(bhvr_vels[3])
-# # plt.plot(bhvr_vels[2])
-# # plt.plot(bhvr_vels[1])
-# # plt.plot(bhvr_vels[0])
-# import scipy.signal as signal
-# def resample(data):
-#     covariate_rate = cfg.dataset.odoherty_rtt.covariate_sampling_rate
-#     base_rate = int(1000 / cfg.dataset.bin_size_ms)
-#     # print(base_rate, covariate_rate, base_rate / covariate_rate)
-#     return torch.tensor(
-#         # signal.resample(data, int(len(data) / cfg.dataset.odoherty_rtt.covariate_sampling_rate / (cfg.dataset.bin_size_ms / 1000))) # This produces an edge artifact
-#         signal.resample_poly(data, base_rate, covariate_rate, padtype='line')
-#     )
-# # 250Hz to 5Hz - > 2000
-# # plt.plot(bhvr_pos[0][:, 1:3])
-# plt.plot(resample(bhvr_pos[0][:, 1:3]))
+# Plot the curve
+import pandas as pd
+import seaborn as sns
+results = pd.DataFrame(results)
+sns.lineplot(data=results, x='alpha', y='eval_kin_loss')

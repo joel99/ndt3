@@ -264,7 +264,14 @@ class SpikingDataset(Dataset):
         if sorted(eval_ids) != sorted(eval_pool[MetaKey.session].unique()):
             raise Exception(f"Requested datasets {sorted(eval_ids)} not all found. Found {sorted(eval_pool[MetaKey.session].unique())}")
         if self.cfg.eval_split_continuous:
-            eval_subset = eval_pool.iloc[-int(self.cfg.eval_ratio * len(eval_pool)):] # take tail end, and we'll take head for train split
+            logger.info("Computing per session eval split in time/preproc order")
+            sessions = eval_pool[MetaKey.session].unique()
+            eval_subsets = []
+            for s in sessions:
+                sub_session_df = eval_pool[eval_pool[MetaKey.session] == s]
+                eval_subsets.append(sub_session_df.iloc[-int(self.cfg.eval_ratio * len(sub_session_df)):])
+            eval_subset = pd.concat(eval_subsets) # take tails
+
         else:
             if self.cfg.eval_ratio < 1:
                 eval_subset = eval_pool.sample(frac=self.cfg.eval_ratio, random_state=self.cfg.eval_seed)
@@ -862,6 +869,7 @@ class SpikingDataset(Dataset):
         """
         if self.context_index is None:
             self.build_context_index()
+        assert (self.meta_df['split'] == 'eval').sum() == 0, "Eval data should not be used for TV dataset creation, please subset out"
         train_keys, val_keys = self.tv_split_by_split_key(**kwargs)
         train = copy.deepcopy(self)
         train.subset_by_key(train_keys, key=self.cfg.split_key, keep_index=True, message_prefix="Train:")

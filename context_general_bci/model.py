@@ -963,7 +963,7 @@ class BrainBertInterface(pl.LightningModule):
         **kwargs
     ):
         for m in metrics:
-            if 'loss' in m:
+            if 'loss' in str(m):
                 # if 'val' in prefix:
                     # print(f'{prefix}_{m}', metrics[m], kwargs)
                 # print(f'{prefix}_{m}', metrics[m], kwargs)
