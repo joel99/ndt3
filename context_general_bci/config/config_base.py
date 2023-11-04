@@ -679,7 +679,7 @@ class RootConfig:
 
     # Meta config - will initiate multiple derivative runs, all handled in `run.py`
     sweep_cfg: str = "" # See `hp_sweep_space.py`
-    sweep_trials: int = 8
+    sweep_trials: int = 8 # Number of trials to sample if not grid search
     sweep_mode: str = 'random' # or grid, which is implicitly exhaustive
     sweep_tag: str = "" # * don't specify this, we use this to track in wandb
 
@@ -700,6 +700,8 @@ class RootConfig:
     init_ckpt: str = "" # fallback for above, for portable runs
     load_from_id: str = "" # for resuming training. takes precedent over init_from_id
     init_tag: str = "val_loss"
+
+    weight_space_ensemble_alpha = 0.0 # Ensemble back to backbone - uses load_from_id or init_from_id if available
     save_r2: bool = False # save r2 ckpts
 
     # orchestration

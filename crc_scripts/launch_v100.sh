@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=ndt2
+#SBATCH --job-name=ndt3
 #SBATCH --cluster gpu
 #SBATCH -p v100
 #SBATCH --gres gpu:1

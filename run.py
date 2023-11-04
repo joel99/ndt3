@@ -79,7 +79,7 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
     if 'mind' in socket.gethostname():
         launch_script = 'launch.sh'
     else:
-        launch_script = './crc_scripts/launch_v100.sh' # assumed tiny runs if on crc?
+        launch_script = './crc_scripts/launch_nvlink.sh' # These are quick jobs. Try not to burn our budget.
     assembled_flags = [*init_args, *additional_cli_flags, *meta_flags]
     unique_flags = []
     seen_keys = []
@@ -122,6 +122,7 @@ def launcher(cfg: RootConfig, init_args, additional_cli_flags, meta_flags):
         subprocess.run(['python', 'run.py', *unique_flags])
     else:
         subprocess.run(['sbatch', launch_script, *unique_flags])
+        # breakpoint()
 
 @hydra.main(version_base=None, config_path='context_general_bci/config', config_name="config")
 def run_exp(cfg : RootConfig) -> None:

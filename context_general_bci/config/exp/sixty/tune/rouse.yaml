@@ -1,4 +1,10 @@
 # @package _global_
 defaults:
   - _default
+
+dataset:
+  datasets:
+  - rouse.*
+  eval_datasets:
+  - rouse.*
 inherit_tag: pitt_monkey_4k_kmu_0_1

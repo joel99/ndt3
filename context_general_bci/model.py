@@ -212,6 +212,9 @@ class BrainBertInterface(pl.LightningModule):
             'lr_ramp_init_factor',
             'lr_decay_steps',
             'lr_min',
+            'lr_interval',
+            'kinematic_token_maskout',
+            'token_maskout',
             'accelerate_new_params',
             'tune_decay',
             'val_iters',
@@ -368,8 +371,11 @@ class BrainBertInterface(pl.LightningModule):
                     # However, the padding is automatically put at the very last token, and kin is last modality - so that token is never used as input.
                     # It's the token that will get rolled and cancelled immediately below.
                     # Symmetric to this special case, however, is the notion that the first kinematic token is always valid, we have no prior that makes it trivial.
-                    is_kinematic_input = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
-                    is_kinematic_input[:, 0] = False
+                    # Meaning of `is_kin_mask` - is a kinematic input that should have received kin input that was masked out?
+                    is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
+                    is_kin_mask[:, 0] = False
+                    # if not is_kin_mask.any():
+                        # is_kin_mask[:, -1] = True
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < kin_maskout
                     if prefix and self.cfg.task.context_prompt_time_thresh > 0:
                         # Essentially - maskout only begins at timestamps past prompt threshold.
@@ -399,9 +405,9 @@ class BrainBertInterface(pl.LightningModule):
                         if not mask.any():
                             breakpoint()
                             # ? I still don't really get why this happens, waiting to trigger again
-                    mask = is_kinematic_input & mask
+                    mask = is_kin_mask & mask
                     # if not mask.any():
-                    #     breakpoint()
+                        # breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
 
@@ -548,7 +554,8 @@ class BrainBertInterface(pl.LightningModule):
                     # Restrict loss to only compute on tokens that will mask out. This is a heuristic for tokens that themselves, aren't receiving kinematic input. Only valid if we mask continuous spans, as in ICL.
                     # TBH I doubt this masking is necessary - the masking and increased difficulty will upweight the loss naturally.
                     target_will_mask = zero_mask.roll(-1, dims=1)
-                    # target_will_mask[:, -1] = True # Last token is always a kinematic one, turn it on # ! This is clearly a bug
+                    if not target_will_mask.any():
+                        target_will_mask[:, -1] = True # Last token is always a kinematic one, turn it on - needed for setting with no kin targets and only padding tokens that were rolled off in zero mask.
                     sub_loss_mask = target_will_mask[modalities == i]
                 else:
                     sub_loss_mask = None
@@ -680,7 +687,7 @@ class BrainBertInterface(pl.LightningModule):
             target_seq = torch.zeros_like(times, dtype=batch[DataKey.bhvr_vel.name].dtype) # B T
             modality_mask = []
             target_seq[modalities == tks.index('kinematic_infill')] = batch[DataKey.bhvr_vel.name].flatten() # Flatten is allowed since kinematic dim = 1
-            if DataKey.task_return.name in batch:
+            if 'return_infill' in tks:
                 target_seq[modalities == tks.index('return_infill')] = batch[DataKey.task_return.name].to(target_seq.dtype).flatten() # Flatten is allowed since kinematic dim = 1
 
             predicted_to = 0 # Do we have a prediction up till this step (Exclusive)?
@@ -809,7 +816,8 @@ class BrainBertInterface(pl.LightningModule):
                 proc_step += 1
             cov_stream = torch.cat(cov_stream, 1) # B T
             target_stream = torch.cat(target_stream, 1) # B T
-            return_logits_stream = torch.cat(return_logits_stream, 1)
+            if ModelTask.return_infill in self.cfg.task.tasks:
+                return_logits_stream = torch.cat(return_logits_stream, 1)
             cue_mask = torch.stack(cue_mask, 1) # B T
             modality_mask = torch.cat(modality_mask, 1) # B T
             cue_mask = cue_mask[:, :modality_mask.size(1)] # Crop if excess
@@ -1098,7 +1106,7 @@ class BrainBertInterface(pl.LightningModule):
 # === Model loading ===
 def transfer_cfg(src_cfg: ModelConfig, target_cfg: ModelConfig):
     r"""
-        Copy src_cfg into target_cfg
+        Copy src_cfg into target_cfg - used for importing configs - generally dangerous and we shouldn't do this.
         Motivation: Some cfg we don't want to bother repeatedly specifying; just take from the init-ing ckpt.
         Should be mutually exclusive from `diff_cfg` list.
     """

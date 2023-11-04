@@ -830,14 +830,28 @@ class SpikingDataset(Dataset):
         self.subsetted = True
         self.cache = {}
 
-    def tv_split_by_split_key(self, train_ratio=0.8, seed=None):
+    def tv_split_by_split_key(
+            self, train_ratio=0.8, seed=None
+    ):
         keys = self.split_keys
         if seed is None:
             seed = self.cfg.dataset_seed
         pl.seed_everything(seed)
-        np.random.shuffle(keys)
-        tv_cut = int(train_ratio * len(keys))
-        train_keys, val_keys = keys[:tv_cut], keys[tv_cut:]
+        if self.cfg.train_val_split_continuous:
+            logger.info("Doing per session train/val split in time/preproc order (ignoring split key)")
+            sessions = self.meta_df[MetaKey.session].unique()
+            train_keys = [] # Take train_ratio from each session
+            val_keys = []
+            for s in sessions:
+                session_df = self.meta_df[self.meta_df[MetaKey.session] == s]
+                session_keys = session_df[self.cfg.split_key]
+                tv_cut = int(train_ratio * len(session_keys))
+                train_keys.extend(session_keys[:tv_cut])
+                val_keys.extend(session_keys[tv_cut:])
+        else:
+            np.random.shuffle(keys)
+            tv_cut = int(train_ratio * len(keys))
+            train_keys, val_keys = keys[:tv_cut], keys[tv_cut:]
         return train_keys, val_keys
 
     def create_tv_datasets(self, **kwargs):

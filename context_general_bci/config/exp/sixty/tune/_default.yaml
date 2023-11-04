@@ -90,12 +90,14 @@ dataset:
   max_channels: 320
   max_arrays: 2
 
-  datasets:
-  - rouse.*
-  eval_datasets:
-  - rouse.*
+  datasets: []
+  eval_datasets: []
+  # TBD
   scale_limit_per_eval_session: 4 # 60s
   eval_ratio: 0.25
+
+  eval_split_continuous: True
+  train_val_split_continuous: True
 
   tokenize_covariates: True
   sparse_constraints: True
@@ -107,8 +109,11 @@ dataset:
   - DataKey.task_return
 train:
   epochs: 100
-  patience: 10
+  patience: 40
   autoscale_batch_size: False
   batch_size: 4
   effective_batch_size: 4
 inherit_exp: sixty
+
+sweep_cfg: 'ndt3_ft'
+sweep_mode: 'grid'

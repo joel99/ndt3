@@ -9,7 +9,7 @@ sweep_space = {
         "model.lr_init": {
             'feasible_points': [1e-5, 3e-5, 1e-4]
         },
-        "lr_schedule": {
+        "model.lr_schedule": {
             "feasible_points": ["cosine_timm", "linear_warmup", "fixed"]
         },
     },
