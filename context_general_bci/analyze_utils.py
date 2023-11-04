@@ -91,6 +91,22 @@ def data_label_to_target(data_label: str):
             # 'pitt_broad_pitt_co_CRS08Lab_14_.*',
             # 'pitt_broad_pitt_co_CRS08Lab_36_.*',
         ]
+    elif data_label == 'crs08':
+        target = [
+            'pitt_broad_pitt_co_CRS08.*',
+        ]
+    elif data_label == 'indy_miller':
+        target = [
+            'odoherty_rtt-Indy-20160407_02', # First indy session
+            'odoherty_rtt-Indy-20160627_01', # Original
+            'odoherty_rtt-Indy-20161005_06',
+            'odoherty_rtt-Indy-20161026_03',
+            'odoherty_rtt-Indy-20170131_02',
+            "miller_Jango-Jango_20150730_001",
+            "miller_Jango-Jango_20150731_001",
+            "miller_Jango-Jango_20150801_001",
+            "miller_Jango-Jango_20150805_001",
+        ]
     else:
         raise ValueError(f"Unknown data label: {data_label}")
     return target

@@ -509,7 +509,7 @@ class BrainBertInterface(pl.LightningModule):
             And moreover, any task-specific _input_ steps (such as masking/shifting) is not well interfaced right now
             (currently overloading `batch` variable, think more clearly either by studying HF repo or considering other use cases)
         """
-        # breakpoint()
+        breakpoint()
         batch_out: Dict[BatchKey | Output, torch.Tensor] = {}
         # if Output.spikes in self.cfg.task.outputs:
         #     batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
@@ -1017,12 +1017,12 @@ class BrainBertInterface(pl.LightningModule):
         )
 
     @torch.inference_mode()
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch, batch_idx, dataloader_idx=0):
         r"""
             Note test step isn't capable of returning non-metrics. (use `predict` to get outputs)
         """
 
-        metrics = self._step(batch, eval_mode=False)
+        metrics = self._step(batch, eval_mode=False, use_prefix=True)
             # kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
         # )
         # metrics = self._step(batch, eval_mode=True)

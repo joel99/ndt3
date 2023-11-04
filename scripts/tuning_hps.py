@@ -12,7 +12,7 @@ from context_general_bci.utils import wandb_query_latest
 from context_general_bci.analyze_utils import prep_plt
 
 filter_kwargs = {
-    "config.experiment_set": "sixty/tune"
+    "config.experiment_set": "sixty/tune2"
 }
 exp = "rouse-sweep"
 exp = "indy_miller-sweep"
@@ -68,8 +68,14 @@ def plot_validation_curves(runs):
     sns.scatterplot(data=all_run_histories, x=f'val_kinematic_{metric}', y=f'eval_kinematic_{metric}',
                     hue='lr_init', style='lr_schedule',
                     alpha=1.0)
-    # Plot y=x
-    ax.plot([0, 1], [0, 1], transform=ax.transAxes, ls="--", c=".3")
+    # Plot y=x in the coordinate system
+    min_x, max_x = ax.get_xlim()
+    min_y, max_y = ax.get_ylim()
+    min_xy = min(min_x, min_y)
+    max_xy = max(max_x, max_y)
+    ax.plot([min_xy, max_xy], [min_xy, max_xy], ls="--", c=".3")
+    ax.set_xlim(min_xy, max_xy)
+    ax.set_ylim(min_xy, max_xy)
 
     plt.suptitle(exp)
     plt.tight_layout()
