@@ -1,0 +1,28 @@
+# @package _global_
+defaults:
+  - _default
+
+dataset:
+  datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+  - miller_Jango-Jango_20150730_001
+  - miller_Jango-Jango_20150731_001
+  - miller_Jango-Jango_20150801_001
+  - miller_Jango-Jango_20150805_001
+
+  eval_datasets:
+  - odoherty_rtt-Indy-20160407_02 # First indy session
+  - odoherty_rtt-Indy-20160627_01 # Original
+  - odoherty_rtt-Indy-20161005_06
+  - odoherty_rtt-Indy-20161026_03
+  - odoherty_rtt-Indy-20170131_02
+  - miller_Jango-Jango_20150730_001
+  - miller_Jango-Jango_20150731_001
+  - miller_Jango-Jango_20150801_001
+  - miller_Jango-Jango_20150805_001
+
+inherit_tag: pitt_monkey_4k_kmu_0_1

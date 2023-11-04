@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - _default
+
+dataset:
+  datasets:
+  - CRS08.*
+  eval_datasets:
+  - CRS08.*
+inherit_tag: pitt_monkey_4k_kmu_0_1
