@@ -325,7 +325,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                 payload['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
                 payload['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
                 covariates = covariates - covariates.mean(0)
-                NOISE_THRESHOLDS = torch.full_like(payload['cov_min'], 0.001)
+                NOISE_THRESHOLDS = torch.full_like(payload['cov_min'], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
                 # Threshold for force is much higher based on spotchecks. Better to allow noise, than to drop true values? IDK.
                 if 'force' in payload: # Force is appended if available
                     NOISE_THRESHOLDS[-covariate_force.size(1):] = 0.008
@@ -416,7 +416,7 @@ class PittCOLoader(ExperimentalTaskLoader):
                         chopped_constraints,
                         repeat(chopped_constraints[..., -1:], 'trial t dim one -> trial t dim (one r)', r=covariates.size(-1) - chopped_constraints.size(-1))
                     ], -1)
-                # ! If we ever extend beyond 9 dims, all dims > 6 all belong to the grasp domain: src - Jeff Weiss. Change the above line to reflect this.
+                    # ! all dims > 6 all belong to the grasp domain: src - Jeff Weiss. Change the above line to reflect this.
                 if override_assist is not None:
                     # breakpoint() # assuming override dimension is Trial T (domain 3) after chop
                     if override_assist.size(-1) != chopped_constraints.size(-1):

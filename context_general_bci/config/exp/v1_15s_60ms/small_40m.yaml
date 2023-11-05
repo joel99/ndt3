@@ -6,3 +6,4 @@ dataset:
   max_tokens: 4092 # For subsequent curricula
 train:
   batch_size: 32
+notes: "40M sparse reward"

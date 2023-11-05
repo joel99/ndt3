@@ -4,7 +4,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from omegaconf import MISSING
 
-DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'gx', 'gy', 'f', 'null'] # Null dimension only used for padding in tokenized case
+DEFAULT_KIN_LABELS = ['x', 'y', 'z', 'rx', 'ry', 'rz', 'g1', 'g2', 'g3', 'g4', 'g5', 'g6', 'g7', 'g8', 'f', 'null'] # Null dimension only used for padding in tokenized case
 REACH_DEFAULT_KIN_LABELS = ['y', 'z']
 REACH_DEFAULT_3D_KIN_LABELS = ['x', 'y', 'z']
 EMG_CANON_LABELS = ['EMG_FCU', 'EMG_EDCr', 'EMG_ECU', 'EMG_ECRb', 'EMG_ECRl', 'EMG_FDP', 'EMG_FCR'] # Just an order pulled from xds tutorial: https://github.com/limblab/adversarial_BCI/blob/main/xds_tutorial.ipynb.

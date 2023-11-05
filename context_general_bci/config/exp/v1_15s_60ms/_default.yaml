@@ -63,6 +63,7 @@ dataset:
   odoherty_rtt:
     chop_size_ms: 15000
   pitt_co:
+    limit_kin_dims: 15 # We scrape up to 14 pos dims and force, rarely expect all to be active
     chop_size_ms: 15000
   miller:
     chop_size_ms: 15000
@@ -92,7 +93,12 @@ dataset:
   - flint.*
   - rouse.*
   eval_datasets:
-  # - CRS08.* # Pitt eval - held out subject.
+  # - CRS08.* # Pitt eval - we hold out a few sessions this time instead of the full subject
+  - CRS08Home_3_.*
+  - CRS08Home_4_.*
+  - CRS08Home_5_.*
+  - CRS08Home_6_.*
+  - CRS08Home_8_.*
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
   - odoherty_rtt-Indy-20161005_06
