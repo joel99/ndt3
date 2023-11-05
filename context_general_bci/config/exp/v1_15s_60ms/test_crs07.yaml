@@ -11,6 +11,6 @@ dataset:
   # - miller.*
   # - odoherty_rtt.*
   # - delay.*
-  - pitt_broad_pitt_co_CRS02bLab_1.*
+  - pitt_broad_pitt_co_CRS07.*
 train:
   batch_size: 32

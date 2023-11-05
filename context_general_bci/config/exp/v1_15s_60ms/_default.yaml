@@ -16,7 +16,7 @@ model:
   arch: Architecture.flash_ndt
   max_neuron_count: 61 # !
 
-  lr_ramp_steps: 500 # Note these will be auto-adjusted based on accumulation. About 25 epochs.
+  lr_ramp_steps: 1000
   lr_decay_steps: 10000
   lr_interval: step
   lr_schedule: cosine_timm
@@ -24,7 +24,7 @@ model:
   next_step_prediction: True
   kinematic_token_maskout_schedule: "random"
   kinematic_token_maskout_start: 1.0
-  kinematic_token_maskout: 0.5
+  kinematic_token_maskout: 0.0  # 0.1
   task:
     context_prompt_time_thresh: -50 # 1s
     context_prompt_time_thresh_min: -2 # The fewer HPs the better.
@@ -57,7 +57,7 @@ model:
 dataset:
   pack_dense: True
   bin_size_ms: 60 #
-  max_tokens: 4092 # For subsequent curricula!
+  max_tokens: 4092 # Really don't expect to exceed 4K tokens at 60ms for 15s -> 250 timesteps, allows 16 dimensions per step
   max_length_ms: 15000 # Actually, we don't need 45s.
   max_trial_length: 1500 # 1.5s at 60ms bin rate
   odoherty_rtt:
@@ -92,8 +92,7 @@ dataset:
   - flint.*
   - rouse.*
   eval_datasets:
-  - CRS08.* # Pitt eval - held out subject.
-  - dyer_co_chewie_2 # Low resource task. Only 1 other session given.
+  # - CRS08.* # Pitt eval - held out subject.
   - odoherty_rtt-Indy-20160407_02 # First indy session
   - odoherty_rtt-Indy-20160627_01 # Original
   - odoherty_rtt-Indy-20161005_06
@@ -119,3 +118,4 @@ train:
   batch_size: 8
   effective_batch_size: 4096
   patience: 50
+notes: "40M sparse"

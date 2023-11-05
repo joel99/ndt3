@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  sparse_rewards: False
+train:
+  batch_size: 32

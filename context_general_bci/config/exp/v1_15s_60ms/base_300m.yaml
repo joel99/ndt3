@@ -1,0 +1,8 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  max_tokens: 4092 # For subsequent curricula
+train:
+  batch_size: 32
