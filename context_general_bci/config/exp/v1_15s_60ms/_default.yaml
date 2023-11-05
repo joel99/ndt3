@@ -54,6 +54,7 @@ model:
   hidden_size: 1024
   use_full_encode: True
   decoder_context_integration: 'cross_attn' # Literally not even used
+  max_spatial_position: 42
 dataset:
   pack_dense: True
   bin_size_ms: 60 #

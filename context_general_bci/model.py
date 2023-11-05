@@ -318,7 +318,7 @@ class BrainBertInterface(pl.LightningModule):
         pipeline_space = [pipeline_space[i] for i in filtered]
         pipeline_padding = [pipeline_padding[i] for i in filtered]
 
-
+        # breakpoint()
         # Merge context into single seq (in NDT3, data/neuro is not revealed to backbone)
         if self.cfg.next_step_prediction:
             # Update positions for later subsequent canonical order, before we pack and lose track of which modalities are which
@@ -510,8 +510,8 @@ class BrainBertInterface(pl.LightningModule):
             (currently overloading `batch` variable, think more clearly either by studying HF repo or considering other use cases)
         """
         batch_out: Dict[BatchKey | Output, torch.Tensor] = {}
-        # if Output.spikes in self.cfg.task.outputs:
-        #     batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]
+        # print(batch[DataKey.task_return.name].shape)
+        # breakpoint()
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
         if use_prefix: # commanded externally, e.g. for eval

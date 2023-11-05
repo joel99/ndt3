@@ -299,7 +299,11 @@ class PittCOLoader(ExperimentalTaskLoader):
                     # breakpoint()
                     covariates = PittCOLoader.ReFIT(payload['position'], payload['target'], bin_ms=cfg.bin_size_ms)
                 else:
-                    covariates = PittCOLoader.get_velocity(payload['position'], kernel=kernel)
+                    try:
+                        covariates = PittCOLoader.get_velocity(payload['position'], kernel=kernel)
+                    except:
+                        logger.info(f"Failed to get velocity for {datapath}")
+                        covariates = None
             else:
                 covariates = None
 

@@ -8,5 +8,5 @@ model:
     n_heads: 16
   hidden_size: 2048
 train:
-  batch_size: 32
+  batch_size: 16 # on 80G
 notes: "300M sparse reward"
