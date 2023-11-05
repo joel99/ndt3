@@ -601,6 +601,7 @@ class BrainBertInterface(pl.LightningModule):
         """
         assert self.data_attrs.serve_tokens_flat, "Not implemented"
         # there are data keys and meta keys, that might be coming in unbatched
+        breakpoint()
         batch_shapes = {
             DataKey.spikes.name: '* t token_chan h',
             DataKey.heldout_spikes.name: '* t c h',
