@@ -375,7 +375,7 @@ class BCIContextInfo(ReachingContextInfo):
             subject, _, session = alias.split('.')
             session_set = 0
             session_type = pitt_metadata.get(alias, 'default')
-        else: # matlab file
+        elif datapath.suffix == '.mat': # matlab file
             alias = datapath.stem
             pieces = alias.split('_')
             pieces = list(filter(lambda x: x != '', pieces))
@@ -403,6 +403,8 @@ class BCIContextInfo(ReachingContextInfo):
                         task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
                     else:
                         task = task_map.get('default', ExperimentalTask.unstructured)
+        else:
+            return None # Ignore
         arrs = [
             'lateral_s1', 'medial_s1',
             'lateral_m1', 'medial_m1',
@@ -431,6 +433,17 @@ class BCIContextInfo(ReachingContextInfo):
             return []
         infos = map(lambda x: cls.make_info(x, task_map=task_map, alias_prefix=alias_prefix, simple=simple), Path(root).glob("*"))
         return filter(lambda x: x is not None, infos)
+
+    @classmethod
+    def build_from_nested_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], alias_prefix='', simple=False):
+        if not Path(root).exists():
+            logger.warning(f"Datapath not found, skipping ({root})")
+            return []
+        for path in Path(root).glob("*"):
+            if path.is_dir() and 'CRS' in path.name:
+                infos = map(lambda x: cls.make_info(x, task_map=task_map, alias_prefix=alias_prefix, simple=simple), path.glob("*"))
+                yield from filter(lambda x: x is not None, infos)
+
 
 # Not all have S1 - JY would prefer registry to always be right rather than detecting this post-hoc during loading
 # So we do a pre-sweep and log down which sessions have which arrays here

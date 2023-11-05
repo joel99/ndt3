@@ -119,6 +119,9 @@ r"""
     Look in wandb lineage with pointed experiment set for a run sharing the tag. Use that run's checkpoint.
 """
 def get_wandb_lineage(cfg: RootConfig):
+    r"""
+        Find the most recent run in the lineage of the current run.
+    """
     assert cfg.inherit_exp, "Must specify experiment set to inherit from"
     api = wandb.Api()
     lineage_query = cfg.tag

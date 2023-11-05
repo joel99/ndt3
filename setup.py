@@ -31,6 +31,7 @@ setup(
         'mat73',
         'dacite',
         'gdown',
+        'timm',
         'pyrtma', # For realtime Pitt infra
         'transformers', # Flash Attn
         'packaging', # Flash Attn https://github.com/Dao-AILab/flash-attention

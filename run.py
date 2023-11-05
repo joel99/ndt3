@@ -341,7 +341,7 @@ def run_exp(cfg : RootConfig) -> None:
     init_wandb(cfg, wandb_logger) # needed for checkpoint to save under wandb dir, for some reason wandb api changed.
 
     is_distributed = (torch.cuda.device_count() > 1) or cfg.nodes > 1
-    default_strat = 'auto' if pl.__version__.startswith('2.0') else None
+    default_strat = 'auto' if pl.__version__.startswith('2.') else None
     precision = 'bf16-mixed' if cfg.model.half_precision else 32
     strategy = DDPStrategy(find_unused_parameters=len(cfg.model.task.covariate_blacklist_dims) > 0 and not cfg.dataset.tokenize_covariates) if is_distributed else default_strat
     if cfg.train.strategy != "":

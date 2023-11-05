@@ -274,6 +274,7 @@ class BaseDataConfig(DatasetConfig):
             "CRS07-lateral_m1", "CRS07-medial_m1",
             "CRS08-lateral_m1", "CRS08-medial_m1",
             "BMI01-lateral_m1", "BMI01-medial_m1",
+            "CRSTest-lateral_m1", "CRSTest-medial_m1",
         ]
     ))
 
@@ -397,6 +398,7 @@ class ScaleHistoryDatasetConfig(FlatDataConfig):
             "CRS07-lateral_m1", "CRS07-medial_m1",
             "CRS08-lateral_m1", "CRS08-medial_m1",
             "BMI01-lateral_m1", "BMI01-medial_m1",
+            "CRSTest-lateral_m1", "CRSTest-medial_m1",
         ],
         chop_size_ms=15000,
     ))

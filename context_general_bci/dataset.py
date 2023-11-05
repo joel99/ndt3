@@ -251,13 +251,13 @@ class SpikingDataset(Dataset):
             return [context_registry.query_by_datapath(session_path_or_alias)]
 
     def mark_eval_split_if_exists(self):
-        if not self.cfg.eval_datasets:
-            return
-        assert self.loaded, "Must load meta_df before loading eval datasets"
         if 'split' not in self.meta_df:
             self.meta_df['split'] = 'train'
         else:
             self.meta_df['split'] = self.meta_df['split'].fillna('train')
+        if not self.cfg.eval_datasets:
+            return
+        assert self.loaded, "Must load meta_df before loading eval datasets"
         eval_metas = self.list_alias_to_contexts(self.cfg.eval_datasets)
         eval_ids = [m.id for m in eval_metas]
         eval_pool = self.meta_df[(self.meta_df[MetaKey.session].isin(eval_ids)) & (self.meta_df['split'] == 'train')]

@@ -509,7 +509,6 @@ class BrainBertInterface(pl.LightningModule):
             And moreover, any task-specific _input_ steps (such as masking/shifting) is not well interfaced right now
             (currently overloading `batch` variable, think more clearly either by studying HF repo or considering other use cases)
         """
-        breakpoint()
         batch_out: Dict[BatchKey | Output, torch.Tensor] = {}
         # if Output.spikes in self.cfg.task.outputs:
         #     batch_out[Output.spikes] = batch[DataKey.spikes][..., 0]

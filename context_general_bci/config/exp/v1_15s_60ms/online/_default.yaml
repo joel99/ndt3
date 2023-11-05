@@ -89,7 +89,7 @@ train:
   batch_size: 4
   effective_batch_size: 4
 inherit_exp: v1_15s_60ms
-inherit_explicit_dir: './data/pretrained' # Copy wandb ckpts from ./data/runs/ndt3 into ./data/pretrained/ndt3
+# inherit_explicit_dir: './data/pretrained' # Copy wandb ckpts from ./data/runs/ndt3 into ./data/pretrained/ndt3. Actually, we'll just use `runs` after all.
 
 # sweep_cfg: 'ndt3_ft'
 # sweep_mode: 'grid'
