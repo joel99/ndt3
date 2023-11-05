@@ -368,60 +368,68 @@ class BCIContextInfo(ReachingContextInfo):
         infos = map(make_info, Path(root).glob("*"))
         return filter(lambda x: x is not None, infos)
 
+    @classmethod
+    def make_info(cls, datapath: Path, task_map: Dict = {}, alias_prefix="", simple=False):
+        if datapath.is_dir():
+            alias = datapath.name
+            subject, _, session = alias.split('.')
+            session_set = 0
+            session_type = pitt_metadata.get(alias, 'default')
+        else: # matlab file
+            alias = datapath.stem
+            pieces = alias.split('_')
+            pieces = list(filter(lambda x: x != '', pieces))
+            if len(pieces) == 5:
+                # broad pull
+                subject, _, session, _, session_set = pieces
+                alias = f'{alias_prefix}{ExperimentalTask.pitt_co.value}_{subject}_{session}_{session_set}'
+                task = ExperimentalTask.pitt_co
+                # Note we now include location in alias
+            else:
+                subject, _, session, _, session_set, _, *session_type, control = pieces
+                session_type = '_'.join(session_type)
+                task = None
+                blacklist_check_key = f'{subject}_session_{session}_set_{session_set}'
+                if blacklist_check_key in pitt_metadata:
+                    session_type = pitt_metadata[blacklist_check_key]
+                    control = 'default'
+                subject = subject[:3].upper() + subject[3:]
+                if simple:
+                    alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}'
+                    task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
+                else:
+                    alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
+                    if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
+                        task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
+                    else:
+                        task = task_map.get('default', ExperimentalTask.unstructured)
+        arrs = [
+            'lateral_s1', 'medial_s1',
+            'lateral_m1', 'medial_m1',
+        ] if 'BMI01' not in subject else ['lateral_m1', 'medial_m1']
+        return BCIContextInfo(
+            subject=SubjectArrayRegistry.query_by_subject(subject),
+            task=task,
+            _arrays=arrs,
+            alias=alias,
+            session=int(session),
+            session_set=int(session_set),
+            datapath=datapath,
+        )
 
     @classmethod
-    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], arrays=["main"], alias_prefix='', simple=False):
+    def canonical_path_to_alias(cls, canonical_filename: str):
+        # in: <Subject>_session_<Session>_set_<Set>
+        # out <Subject>_<Session>_<Set>
+        subject, _, session, _, session_set = canonical_filename.split('_')
+        return f'{subject}_{session}_{session_set}'
+
+    @classmethod
+    def build_from_dir(cls, root: str, task_map: Dict[str, ExperimentalTask], alias_prefix='', simple=False):
         if not Path(root).exists():
             logger.warning(f"Datapath not found, skipping ({root})")
             return []
-        def make_info(datapath: Path):
-            if datapath.is_dir():
-                alias = datapath.name
-                subject, _, session = alias.split('.')
-                session_set = 0
-                session_type = pitt_metadata.get(alias, 'default')
-            else: # matlab file
-                alias = datapath.stem
-                pieces = alias.split('_')
-                pieces = list(filter(lambda x: x != '', pieces))
-                if len(pieces) == 5:
-                    # broad pull
-                    subject, _, session, _, session_set = pieces
-                    alias = f'{alias_prefix}{ExperimentalTask.pitt_co.value}_{subject}_{session}_{session_set}'
-                    task = ExperimentalTask.pitt_co
-                    # Note we now include location in alias
-                else:
-                    subject, _, session, _, session_set, _, *session_type, control = pieces
-                    session_type = '_'.join(session_type)
-                    task = None
-                    blacklist_check_key = f'{subject}_session_{session}_set_{session_set}'
-                    if blacklist_check_key in pitt_metadata:
-                        session_type = pitt_metadata[blacklist_check_key]
-                        control = 'default'
-                    subject = subject[:3].upper() + subject[3:]
-                    if simple:
-                        alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}'
-                        task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
-                    else:
-                        alias = f'{alias_prefix}{task_map.get(control, ExperimentalTask.pitt_co).value}_{subject}_{session}_{session_set}_{session_type}'
-                        if any(i in session_type for i in ['2d_cursor_center', '2d_cursor_pursuit', '2d+click_cursor_pursuit']) or alias_prefix == 'pitt_misc_':
-                            task = task_map.get(control, task_map.get('default', ExperimentalTask.unstructured))
-                        else:
-                            task = task_map.get('default', ExperimentalTask.unstructured)
-            arrs = [
-                'lateral_s1', 'medial_s1',
-                'lateral_m1', 'medial_m1',
-            ] if 'BMI01' not in subject else ['lateral_m1', 'medial_m1']
-            return BCIContextInfo(
-                subject=SubjectArrayRegistry.query_by_subject(subject),
-                task=task,
-                _arrays=arrs,
-                alias=alias,
-                session=int(session),
-                session_set=int(session_set),
-                datapath=datapath,
-            )
-        infos = map(make_info, Path(root).glob("*"))
+        infos = map(lambda x: cls.make_info(x, task_map=task_map, alias_prefix=alias_prefix, simple=simple), Path(root).glob("*"))
         return filter(lambda x: x is not None, infos)
 
 # Not all have S1 - JY would prefer registry to always be right rather than detecting this post-hoc during loading

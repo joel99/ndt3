@@ -7,6 +7,3 @@ model:
     n_layers: 12
     n_heads: 16
   hidden_size: 2048
-train:
-  batch_size: 32
-notes: "300M sparse reward"

@@ -707,6 +707,14 @@ class RootConfig:
     # orchestration
     inherit_exp: str = "" # hunt wandb for the relevant experiment, presumed same tag name.
     inherit_tag: str = "" # override same tag inheritance
+
+    # If provided - changes inheritance routing from using wandb directory to looking for explicit checkpoints in this directory.
+    # HOWEVER, will still use wandb routing to identify the checkpoints to use, within this directory.
+    # Used to ease setup of online experiments where we are training on new node.
+    # Copy wandb ckpts from ./data/runs/ndt3
+    inherit_explicit_dir: str = ""
+
+
     inherit_orchestrate: bool = False # Trigger some hardcoded tag lookups for sweeping etc.
     serial_run: bool = False # for launchers..
 

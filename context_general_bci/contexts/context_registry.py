@@ -152,11 +152,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
         #     'default': ExperimentalTask.pitt_co,
         #     'unk': ExperimentalTask.pitt_co,
         # }),
-        # *BCIContextInfo.build_from_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={
-        #     'obs': ExperimentalTask.observation,
-        #     'ortho': ExperimentalTask.ortho,
-        #     'fbc': ExperimentalTask.fbc,
-        # }, alias_prefix='closed_loop_'),
+        *BCIContextInfo.build_from_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={}, alias_prefix='closed_loop_'),
         # *BCIContextInfo.build_from_dir(f'./data/pitt_full', task_map={
         #     'obs': ExperimentalTask.observation,
         #     'ortho': ExperimentalTask.ortho,

@@ -1,0 +1,95 @@
+# @package _global_
+defaults:
+  - /model:
+    - flat_enc_dec
+    - scale_history
+    - largescale
+  - /model/task:
+    - decode_flat_v2 # spcify individually
+  - /dataset:
+    - flat
+    - scale_history
+  - /train:
+    - largescale # for the main runs, not debuggin runs
+model:
+  max_neuron_count: 61 # !
+
+  arch: Architecture.flash_ndt
+  lr_ramp_steps: 4 # ? TODO 10%
+  lr_decay_steps: 40
+  lr_init: 1e-4 # To sweep
+  lr_interval: epoch
+  lr_schedule: cosine_timm # To sweep
+
+  next_step_prediction: True
+  kinematic_token_maskout_schedule: "random"
+  kinematic_token_maskout_start: 1.0
+  kinematic_token_maskout: 0.5
+  task:
+    context_prompt_time_thresh: -50 # 1s
+    context_prompt_time_thresh_min: -5
+    prefix_ratio: 0.25
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_context
+    task_weights: [1.0, 1.0, 0., 0.]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    encode_constraints: True
+    use_constraint_cls: False # No need
+    decode_quantize_classes: 512
+  transformer:
+    initializer_range: 0.0 # Match torch native empirical init std, though they don't use Gaussian
+    activation: swiglu
+    rotary_position: True
+    rotary_position_torch: True
+    use_biases: False
+    learnable_norm: False
+    n_layers: 6
+    max_trial_length: 1500 # Up to 30s
+    n_heads: 8
+  hidden_size: 1024
+  use_full_encode: True
+  decoder_context_integration: 'cross_attn' # Literally not even used
+dataset:
+  pack_dense: True
+  bin_size_ms: 60 #
+  max_tokens: 4092 # For subsequent curricula!
+  max_length_ms: 15000
+  max_trial_length: 1500 # 1.5s at 60ms bin rate
+  pitt_co:
+    chop_size_ms: 15000
+  max_channels: 320
+  max_arrays: 2
+
+  datasets: [] # TBD
+  eval_datasets: []
+  exclude_datasets: []
+  scale_limit_per_eval_session: 4 # 60s
+  eval_ratio: 0.25
+
+  eval_split_continuous: True
+  train_val_split_continuous: True
+
+  tokenize_covariates: True
+  sparse_constraints: True
+  behavior_dim: 10 # Force is here, include +1 for padding, etc.
+  data_keys:
+  - DataKey.spikes
+  - DataKey.constraint
+  - DataKey.bhvr_vel
+  - DataKey.task_return
+train:
+  epochs: 100
+  patience: 40
+  autoscale_batch_size: False
+  batch_size: 4
+  effective_batch_size: 4
+inherit_exp: v1_15s_60ms
+inherit_explicit_dir: './data/pretrained' # Copy wandb ckpts from ./data/runs/ndt3 into ./data/pretrained/ndt3
+
+# sweep_cfg: 'ndt3_ft'
+# sweep_mode: 'grid'

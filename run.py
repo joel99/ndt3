@@ -242,7 +242,7 @@ def run_exp(cfg : RootConfig) -> None:
     if cfg.init_from_id:
         init_ckpt = get_best_ckpt_from_wandb_id(
             cfg.wandb_project, cfg.init_from_id,
-            tag=cfg.init_tag
+            tag=cfg.init_tag, wandb_dir=cfg.inherit_explicit_dir
         )
         logger.info(f"Initializing from {init_ckpt}")
         model = load_from_checkpoint(init_ckpt, cfg=cfg.model, data_attrs=data_attrs)
@@ -469,7 +469,7 @@ def run_exp(cfg : RootConfig) -> None:
 
     trainer.fit(
         model, datamodule=data_module,
-        ckpt_path=get_best_ckpt_from_wandb_id(cfg.wandb_project, cfg.load_from_id) if cfg.load_from_id else None
+        ckpt_path=get_best_ckpt_from_wandb_id(cfg.wandb_project, cfg.load_from_id, wandb_dir=cfg.inherit_explicit_dir) if cfg.load_from_id else None
     )
     logger.info('Run complete')
 
