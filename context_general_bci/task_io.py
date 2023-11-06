@@ -1969,9 +1969,9 @@ class CovariateInfill(ClassificationMixin):
         self,
         batch,
         backbone_features: torch.Tensor,
-        backbone_times: torch.Tensor,
-        backbone_space: torch.Tensor,
-        backbone_padding: torch.Tensor,
+        backbone_times: torch.Tensor | None = None,
+        backbone_space: torch.Tensor | None = None,
+        backbone_padding: torch.Tensor | None = None,
         loss_mask: torch.Tensor | None = None, # subset loss if provided
         compute_metrics=True,
         eval_mode=False,

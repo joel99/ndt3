@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectName, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, compute_return_to_go
 
 # CLAMP_MAX = 15
 NORMATIVE_MAX_FORCE = 25 # Our prior on the full Pitt dataset. Some FBC data reports exponentially large force
@@ -32,14 +32,6 @@ NORMATIVE_EFFECTOR_BLACKLIST = {
 r"""
     Dev note to self: Pretty unclear how the .mat payloads we're transferring seem to be _smaller_ than n_element bytes. The output spike trials, ~250 channels x ~100 timesteps are reasonably, 25K. But the data is only ~10x this for ~100x the trials.
 """
-def compute_return_to_go(rewards: torch.Tensor, horizon=100):
-    # rewards: T
-    if horizon:
-        padded_reward = F.pad(rewards, (0, horizon - 1), value=0)
-        return padded_reward.unfold(0, horizon, 1)[..., 1:].sum(-1) # T. Don't include current timestep
-    reversed_rewards = torch.flip(rewards, [0])
-    returns_to_go_reversed = torch.cumsum(reversed_rewards, dim=0)
-    return torch.flip(returns_to_go_reversed, [0])
 
 def extract_ql_data(ql_data):
     # ql_data: .mat['iData']['QL']['Data']
@@ -378,15 +370,13 @@ class PittCOLoader(ExperimentalTaskLoader):
             override_assist = cast_constraint('override_assist') # Override is sub-domain specific active assist, used for partial domain control e.g. in robot tasks
 
             # * Reward and return!
-            passed = payload.get('passed', None)
-            trial_num: torch.Tensor = payload['trial_num']
+            passed = payload.get('passed', None) # Not dense
+            trial_num: torch.Tensor = payload['trial_num'] # Dense
             if passed is not None and trial_num.max() > 1: # Heuristic - single trial means this is probably not a task-based dataset
                 trial_change_step = (trial_num.roll(-1, dims=0) != trial_num).nonzero()[:,0] # * end of episode timestep.
                 # * Since this marks end of episode, it also marks when reward is provided
 
                 per_trial_pass = torch.cat([passed[:1], torch.diff(passed)]).to(dtype=int)
-                # if (per_trial_pass < 0).any():
-                    # breakpoint()
                 per_trial_pass = torch.clamp(per_trial_pass, min=0, max=1) # Literally, clamp that. What does > 1 reward even mean? (It shows up sometimes...)
                 # In some small # of datasets, num_passed randomly drops (significantly, i.e. not decrement of 1). JY assuming this means some task change to reset counter
                 # e.g. CRS02bLab_245_12

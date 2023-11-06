@@ -586,6 +586,98 @@ class BrainBertInterface(pl.LightningModule):
         return batch_out
 
     @torch.inference_mode()
+    def predict_simple(
+        self,
+        spikes: torch.Tensor,
+        # position: torch.Tensor,
+        # time: torch.Tensor,
+        cov: torch.Tensor,
+        # cov_space: torch.Tensor,
+        # cov_time: torch.Tensor,
+        # constraint: torch.Tensor,
+        # constraint_space: torch.Tensor,
+        # constraint_time: torch.Tensor,
+        task_reward: torch.Tensor,
+        task_return: torch.Tensor,
+        # task_return_time: torch.Tensor,
+    ):
+        r"""
+            Assumes single item prediction, no padding.
+            PREDICTS NEXT STEP OF KINEMATIC AND RETURN IF NEEDED
+
+            Supporting real time inference
+            spikes: Time (at token bin size) x Channel
+            cov: Time (at token bin size) x Cov dim
+
+            to_predict_modality dictates which token is expected to be predicted next
+            DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
+        """
+        # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
+        pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
+        pad_spikes = F.pad(spikes, (0, pad_amount))
+        tokenized_spikes = pad_spikes.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # Time x Token x Intra-Patch
+        token_time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1)
+        tokenized_spikes = rearrange(tokenized_spikes, 'time space neurons 1 -> 1 (time space) neurons')
+        times = repeat(torch.arange(spikes.size(0), device=spikes.device), 'time -> 1 (time space)', space=token_space)
+        positions = repeat(torch.arange(token_space, device=spikes.device), 'space -> 1 (time space)', time=token_time)
+
+
+        assert cov.size(0) == token_time - 1, f"Model should be running next step prediction, but given cov time {cov.size(0)} and neural time {token_time}"
+        # Extend the blank covariate to match the length of spikes, effectively our query
+        # cov = F.pad(cov, (0, 0, 0, 1)) # Don't need explicit pad, we draw at system level
+        cov_query_length = cov.size(1) # Number of tokens to draw
+        cov_time = repeat(torch.arange(cov.size(0), device=spikes.device), 't -> (t s)', s=cov.size(1))
+        cov_space = repeat(torch.arange(cov.size(1), device=spikes.device), 's -> (t s)', t=cov.size(0))
+        cov = rearrange(cov, 'time space -> 1 (time space)')
+        cov_time = rearrange(cov_time, 'time  -> 1 (time)')
+        cov_space = rearrange(cov_space, 'space -> 1 (space)')
+
+        # TODO reward - two part sampling?
+
+        # - to normalize cov i'll just lock the statistics of the calibration task - happens at rtndt level
+        task_return_time = torch.arange(token_time, device=spikes.device)
+
+        # TODO support constraint from RTNDT - right now we just add minimal padding
+        constraint = torch.zeros((1, 3, cov_query_length), device=spikes.device) # Time x 3 x Cov
+        constraint_time = torch.zeros([0], device=spikes.device)
+
+        # Tokenize constraints
+        constraint_space = repeat(torch.arange(cov_query_length, device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
+        constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(1))
+        constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
+        batch: Dict[BatchKey, torch.Tensor] = {
+            DataKey.spikes.name: tokenized_spikes,
+            DataKey.time.name: times,
+            DataKey.position.name: positions,
+            DataKey.covariate_time.name: cov_time,
+            DataKey.covariate_space.name: cov_space,
+            DataKey.bhvr_vel.name: cov,
+            DataKey.task_return.name: task_return,
+            DataKey.task_return_time.name: task_return_time,
+            DataKey.task_reward.name: task_reward,
+            DataKey.constraint.name: constraint,
+            DataKey.constraint_space.name: constraint_space,
+            DataKey.constraint_time.name: constraint_time,
+        }
+
+        for k in self.cfg.task.tasks:
+            self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
+        tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
+        outputs = self.backbone(
+            pipeline_context,
+            times=times,
+            positions=space,
+        ) # B x T x H. All at once, not autoregressive single step sampling
+
+        # The order of logic here is following the order dictated in the task pipeline
+        cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
+        raw_pred = cov_query[Output.behavior_pred]
+        return {
+            DataKey.bhvr_vel: rearrange(raw_pred, 'cov_dim 1 -> 1 cov_dim').numpy(),
+            DataKey.task_return: None,
+        }
+
+    @torch.inference_mode()
     def predict(
         self, batch: Dict[BatchKey, torch.Tensor], transform_logrates=True, mask=True,
         eval_mode=True,

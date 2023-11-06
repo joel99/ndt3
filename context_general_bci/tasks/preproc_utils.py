@@ -3,11 +3,22 @@ from pathlib import Path
 import math
 import numpy as np
 import torch
+import torch.nn.functional as F
 from einops import rearrange, reduce
 
 from context_general_bci.config import DataKey
 
 T = TypeVar('T', torch.Tensor, None)
+
+def compute_return_to_go(rewards: torch.Tensor, horizon=100):
+    # Mainly for PittCO
+    # rewards: T
+    if horizon:
+        padded_reward = F.pad(rewards, (0, horizon - 1), value=0)
+        return padded_reward.unfold(0, horizon, 1)[..., 1:].sum(-1) # T. Don't include current timestep
+    reversed_rewards = torch.flip(rewards, [0])
+    returns_to_go_reversed = torch.cumsum(reversed_rewards, dim=0)
+    return torch.flip(returns_to_go_reversed, [0])
 
 def crop_subject_handles(subject: str):
     if subject.endswith('Home'):

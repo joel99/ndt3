@@ -611,7 +611,6 @@ class DatasetConfig:
     # pad_time_value: int = 400 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
     pad_spike_value: int = 0 # extra thing just for spikes, which we can typically afford to keep low w/o consequence. Sometimes above pad value (which applies for time/space values) needs to be set higher than 0 to avoid nan attn, typically for co-bps
     # pad_value: int = 20
-    pad_position_value: int = 32 # Should match maximal space tokens per timestep (across all modalities) for next step prediction specifically
 
     # Experimental Task configuration - matching registered names
     # Note - we choose to put task specific things here rather than ModelConfig as model will read the relevant variables
