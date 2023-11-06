@@ -231,7 +231,7 @@ class PittCOLoader(ExperimentalTaskLoader):
 
         new_velocities = torch.stack((magnitudes * torch.cos(angles), magnitudes * torch.sin(angles)), dim=1)
         new_velocities[:reaction_lag_ms // bin_ms] = torch.nan  # We don't know what the goal is before the reaction lag, so we clip it
-        # new_velocities[reaction_lag_ms // bin_ms:] = empirical[reaction_lag_ms // bin_ms:]  # Replace clipped velocities with original ones, for rolled time periods
+        # new_velocities[reaction_lag_ms // bin_ms:] = empirical[rea~ction_lag_ms // bin_ms:]  # Replace clipped velocities with original ones, for rolled time periods
         return new_velocities
 
     @classmethod
