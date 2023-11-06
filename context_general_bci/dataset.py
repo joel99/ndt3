@@ -382,7 +382,6 @@ class SpikingDataset(Dataset):
                 ])
             else:
                 meta_items[k] = torch.tensor(self.context_index[k.name].index(trial[k])) # Casting in collater might be faster?
-
         r"""
             Currently we store spikes in a split-array format as a dict of tensors T C H.
             We must use the IDs to reconstruct the stack we want.
