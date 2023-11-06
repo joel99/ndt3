@@ -307,6 +307,7 @@ class BrainBertInterface(pl.LightningModule):
                 - mask: Was kinematic _input_ zeroed at this timestep?
         """
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
+        breakpoint()
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
@@ -641,18 +642,17 @@ class BrainBertInterface(pl.LightningModule):
 
         # TODO support constraint from RTNDT - right now we just add minimal padding
         constraint = torch.zeros((1, 3, cov_query_length), device=spikes.device) # Time x 3 x Cov
-        constraint_time = torch.zeros([0], device=spikes.device)
+        constraint_time = torch.tensor([0], device=spikes.device)
 
         # Tokenize constraints
         constraint_space = repeat(torch.arange(cov_query_length, device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
-        constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(1))
+        constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
 
         if reference:
             time_offset = reference[DataKey.time].max() + 1
             def batchify(t: torch.Tensor):
                 return t.unsqueeze(0).to(device=tokenized_spikes.device)
-            breakpoint()
             tokenized_spikes = torch.cat([
                 batchify(reference[DataKey.spikes]), tokenized_spikes
             ], dim=1)
@@ -661,9 +661,9 @@ class BrainBertInterface(pl.LightningModule):
             cov_time = torch.cat([batchify(reference[DataKey.covariate_time]), cov_time + time_offset], dim=1)
             cov_space = torch.cat([batchify(reference[DataKey.covariate_space]), cov_space], dim=1)
             cov = torch.cat([batchify(reference[DataKey.bhvr_vel]), cov], dim=1)
-            task_return = torch.cat([batchify(reference[DataKey.task_return]), task_return], dim=1)
+            task_return = torch.cat([batchify(reference[DataKey.task_return]), task_return], dim=1)[..., 0] # no hidden dim
             task_return_time = torch.cat([batchify(reference[DataKey.task_return_time]), task_return_time + time_offset], dim=1)
-            task_reward = torch.cat([batchify(reference[DataKey.task_reward]), task_reward], dim=1)
+            task_reward = torch.cat([batchify(reference[DataKey.task_reward]), task_reward], dim=1)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
             # constraint not dealt with or even offset for now
             # constraint_time = torch.cat([reference[DataKey.constraint_time].unsqueeze(0), constraint_time + time_offset], dim=1)
             # constraint_space = torch.cat([reference[DataKey.constraint_space].unsqueeze(0), constraint_space], dim=1)
