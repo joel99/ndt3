@@ -56,6 +56,7 @@ def wandb_query_latest(
     wandb_user='joelye9',
     wandb_project='ndt3',
     exact=False,
+    allow_states=["finished", "crashed", "failed"],
     allow_running=False,
     use_display=False, # use exact name
     **filter_kwargs
@@ -65,12 +66,11 @@ def wandb_query_latest(
     # Default sort order is newest to oldest, which is what we want.
     api = wandb.Api()
     target = name_kw if exact else {"$regex": name_kw}
-    states = ["finished", "crashed", "failed"]
-    if allow_running:
-        states.append("running")
+    if allow_running and 'running' not in allow_states:
+        allow_states.append("running")
     filters = {
         "display_name" if use_display else "config.tag": target,
-        "state": {"$in": states}, # crashed == timeout
+        "state": {"$in": allow_states}, # crashed == timeout
         **filter_kwargs
     }
     runs = api.runs(
