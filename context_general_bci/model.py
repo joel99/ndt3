@@ -596,7 +596,7 @@ class BrainBertInterface(pl.LightningModule):
         constraint_time: torch.Tensor, # sparse # Event
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
-        # task_return_time: torch.Tensor,
+        task_return_time: torch.Tensor,
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
         kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
         # blacklist_kin_time=-5, # in bins, mirroring zero mask
@@ -639,7 +639,7 @@ class BrainBertInterface(pl.LightningModule):
         # Dense
         task_reward = rearrange(task_reward, 'time -> 1 time 1')
         task_return = rearrange(task_return, 'time -> 1 time 1')
-        task_return_time = torch.arange(token_time, device=spikes.device).unsqueeze(0)
+        task_return_time = rearrange(task_return_time, 'time -> 1 time')
 
         # Tokenize constraints
         constraint_space = repeat(torch.arange(constraint.size(-1), device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
@@ -674,9 +674,9 @@ class BrainBertInterface(pl.LightningModule):
             DataKey.covariate_time.name: cov_time,
             DataKey.covariate_space.name: cov_space,
             DataKey.bhvr_vel.name: cov,
-            DataKey.task_return.name: task_return,
+            DataKey.task_return.name: task_return + 1, # +1 for padding, see dataloader
             DataKey.task_return_time.name: task_return_time,
-            DataKey.task_reward.name: task_reward,
+            DataKey.task_reward.name: task_reward + 1, # +1 for padding, see dataloader
             DataKey.constraint.name: constraint,
             DataKey.constraint_space.name: constraint_space,
             DataKey.constraint_time.name: constraint_time,
@@ -703,6 +703,8 @@ class BrainBertInterface(pl.LightningModule):
         # The order of logic here is following the order dictated in the task pipeline
         cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
         raw_pred = cov_query[Output.behavior_pred]
+        # return_query = self.task_pipelines[ModelTask.return_infill.value]
+        # Oh... I didn't actually train any return queries.
         return {
             DataKey.bhvr_vel: raw_pred,
             DataKey.task_return: None,
