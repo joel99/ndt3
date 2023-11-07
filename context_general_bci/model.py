@@ -591,10 +591,9 @@ class BrainBertInterface(pl.LightningModule):
     def predict_simple(
         self,
         spikes: torch.Tensor, # Time x Channel
-        cov: torch.Tensor,
-        # constraint: torch.Tensor, # sparse
-        # constraint_space: torch.Tensor, # sparse
-        # constraint_time: torch.Tensor, # sparse
+        cov: torch.Tensor, # Time x CovDim
+        constraint: torch.Tensor, # sparse, # Event x 3 x CovDim
+        constraint_time: torch.Tensor, # sparse # Event
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         # task_return_time: torch.Tensor,
@@ -644,12 +643,8 @@ class BrainBertInterface(pl.LightningModule):
         task_return = rearrange(task_return, 'time -> 1 time 1')
         task_return_time = torch.arange(token_time, device=spikes.device).unsqueeze(0)
 
-        # TODO support constraint from RTNDT - right now we just add minimal padding
-        constraint = torch.zeros((1, 3, cov_query_length), device=spikes.device) # Time x 3 x Cov
-        constraint_time = torch.tensor([0], device=spikes.device)
-
         # Tokenize constraints
-        constraint_space = repeat(torch.arange(cov_query_length, device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
+        constraint_space = repeat(torch.arange(constraint.size(-1), device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
         constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
 
@@ -671,9 +666,9 @@ class BrainBertInterface(pl.LightningModule):
             task_reward = torch.cat([batchify(reference[DataKey.task_reward]), task_reward], dim=1)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
             task_return_time = torch.cat([batchify(reference[DataKey.task_return_time]), task_return_time + time_offset], dim=1)
             # constraint not dealt with or even offset for now
-            # constraint_time = torch.cat([reference[DataKey.constraint_time].unsqueeze(0), constraint_time + time_offset], dim=1)
-            # constraint_space = torch.cat([reference[DataKey.constraint_space].unsqueeze(0), constraint_space], dim=1)
-            # constraint = torch.cat([reference[DataKey.constraint].unsqueeze(0), constraint], dim=1)
+            constraint_time = torch.cat([batchify(reference[DataKey.constraint_time]), constraint_time + time_offset], dim=1)
+            constraint_space = torch.cat([batchify(reference[DataKey.constraint_space]), constraint_space], dim=1)
+            constraint = torch.cat([batchify(reference[DataKey.constraint]), constraint], dim=1)
         batch: Dict[BatchKey, torch.Tensor] = {
             DataKey.spikes.name: tokenized_spikes,
             DataKey.time.name: times,
