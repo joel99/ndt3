@@ -609,7 +609,7 @@ class BrainBertInterface(pl.LightningModule):
 
             Supporting real time inference
             spikes: Time (at token bin size) x Channel
-            cov: Time (at token bin size) x Cov dim
+            cov: Time (at token bin size) x Cov dim - comes in normalized, normalization happens at dataloader level
 
             blacklist_kin_time: List of time bins in working block to zero out
 
@@ -635,9 +635,7 @@ class BrainBertInterface(pl.LightningModule):
         cov_space = rearrange(cov_space, 'space -> 1 (space)')
 
         # TODO reward - two part sampling?
-        # ! For now we discard reward as well
 
-        # - to normalize cov i'll just lock the statistics of the calibration task - happens at rtndt level
         # Dense
         task_reward = rearrange(task_reward, 'time -> 1 time 1')
         task_return = rearrange(task_return, 'time -> 1 time 1')
