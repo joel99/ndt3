@@ -307,7 +307,7 @@ class BrainBertInterface(pl.LightningModule):
                 - mask: Was kinematic _input_ zeroed at this timestep?
         """
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
-        breakpoint()
+        # breakpoint()
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
@@ -587,21 +587,22 @@ class BrainBertInterface(pl.LightningModule):
         return batch_out
 
     @torch.inference_mode()
+    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
     def predict_simple(
         self,
         spikes: torch.Tensor, # Time x Channel
-        # position: torch.Tensor,
-        # time: torch.Tensor,
         cov: torch.Tensor,
-        # cov_space: torch.Tensor,
-        # cov_time: torch.Tensor,
-        # constraint: torch.Tensor,
-        # constraint_space: torch.Tensor,
-        # constraint_time: torch.Tensor,
+        # constraint: torch.Tensor, # sparse
+        # constraint_space: torch.Tensor, # sparse
+        # constraint_time: torch.Tensor, # sparse
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         # task_return_time: torch.Tensor,
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
+        kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
+        # blacklist_kin_time=-5, # in bins, mirroring zero mask
+        # blacklist_kin_time=torch.arange(5) * -1, # Nope
+        # blacklist_kin_time=None, # Nope
     ):
         r"""
             Assumes single item prediction, no padding.
@@ -610,6 +611,8 @@ class BrainBertInterface(pl.LightningModule):
             Supporting real time inference
             spikes: Time (at token bin size) x Channel
             cov: Time (at token bin size) x Cov dim
+
+            blacklist_kin_time: List of time bins in working block to zero out
 
             to_predict_modality dictates which token is expected to be predicted next
             DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
@@ -633,6 +636,7 @@ class BrainBertInterface(pl.LightningModule):
         cov_space = rearrange(cov_space, 'space -> 1 (space)')
 
         # TODO reward - two part sampling?
+        # ! For now we discard reward as well
 
         # - to normalize cov i'll just lock the statistics of the calibration task - happens at rtndt level
         # Dense
@@ -651,6 +655,8 @@ class BrainBertInterface(pl.LightningModule):
 
         if reference:
             time_offset = reference[DataKey.time].max() + 1
+            if kin_mask_timesteps is not None:
+                kin_mask_timesteps += time_offset
             def batchify(t: torch.Tensor):
                 return t.unsqueeze(0).to(device=tokenized_spikes.device)
             tokenized_spikes = torch.cat([
@@ -662,8 +668,8 @@ class BrainBertInterface(pl.LightningModule):
             cov_space = torch.cat([batchify(reference[DataKey.covariate_space]), cov_space], dim=1)
             cov = torch.cat([batchify(reference[DataKey.bhvr_vel]), cov], dim=1)
             task_return = torch.cat([batchify(reference[DataKey.task_return]), task_return], dim=1)[..., 0] # no hidden dim
-            task_return_time = torch.cat([batchify(reference[DataKey.task_return_time]), task_return_time + time_offset], dim=1)
             task_reward = torch.cat([batchify(reference[DataKey.task_reward]), task_reward], dim=1)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
+            task_return_time = torch.cat([batchify(reference[DataKey.task_return_time]), task_return_time + time_offset], dim=1)
             # constraint not dealt with or even offset for now
             # constraint_time = torch.cat([reference[DataKey.constraint_time].unsqueeze(0), constraint_time + time_offset], dim=1)
             # constraint_space = torch.cat([reference[DataKey.constraint_space].unsqueeze(0), constraint_space], dim=1)
@@ -686,6 +692,15 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
+
+        if kin_mask_timesteps is not None:
+            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input
+            is_kin_mask[:, 0] = False # First token is always valid
+            zero_mask = torch.isin(times, kin_mask_timesteps)
+
+            zero_mask &= is_kin_mask
+            pipeline_context[zero_mask] = 0
+
         outputs = self.backbone(
             pipeline_context,
             times=times,
@@ -696,7 +711,7 @@ class BrainBertInterface(pl.LightningModule):
         cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
         raw_pred = cov_query[Output.behavior_pred]
         return {
-            DataKey.bhvr_vel: rearrange(raw_pred, 'cov_dim 1 -> 1 cov_dim').numpy(),
+            DataKey.bhvr_vel: raw_pred,
             DataKey.task_return: None,
         }
 

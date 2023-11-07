@@ -73,6 +73,10 @@ class ContextRegistry:
         } for item in items]
         return pd.DataFrame(index)
 
+    def clear(self):
+        self._registry = {}
+        self.search_index = pd.DataFrame()
+
     # ! Note, current pattern is to put all experiments in a big list below; not use this register handle.
     def register(self, context_info: List[ContextInfo | None]):
         context_info = [item for item in context_info if item is not None]
