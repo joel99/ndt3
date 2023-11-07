@@ -435,7 +435,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                 labels = DEFAULT_KIN_LABELS
                 if covariates is not None:
                     for i, cov in enumerate(covariates.T):
-                        if cov.any(): # i.e. nonempty
+                        if (cov.any() and not cfg.force_active_dims) or\
+                            i in cfg.force_active_dims: # i.e. nonempty
                             covariate_dims.append(labels[i])
                             covariate_reduced.append(cov)
                             if chopped_constraints is not None:

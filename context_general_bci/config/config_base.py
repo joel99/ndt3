@@ -640,6 +640,8 @@ class DatasetConfig:
         'BMI01-lateral_m1', 'BMI01-medial_m1',
     ]))
 
+    force_active_dims: List[int] = field(default_factory=lambda: []) # list of dims to include during decoding,. Used for forcing specific dims for online eval, during tuning
+
     # pitt_bmi01: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
     # ], native_resolution_ms=30)) # Easier just to hardcode the check for BMI01 in the loader
 
