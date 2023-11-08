@@ -617,6 +617,7 @@ class BrainBertInterface(pl.LightningModule):
             DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
         """
         # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
+        # breakpoint()
         pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
         pad_spikes = F.pad(spikes, (0, pad_amount))
         tokenized_spikes = pad_spikes.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # Time x Token x Intra-Patch
@@ -637,8 +638,8 @@ class BrainBertInterface(pl.LightningModule):
         # TODO reward - two part sampling?
 
         # Dense
-        task_reward = rearrange(task_reward, 'time -> 1 time 1')
-        task_return = rearrange(task_return, 'time -> 1 time 1')
+        task_reward = rearrange(task_reward, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader
+        task_return = rearrange(task_return, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader (we don't offset reference since that's served from dataloader)
         task_return_time = rearrange(task_return_time, 'time -> 1 time')
 
         # Tokenize constraints
@@ -674,9 +675,9 @@ class BrainBertInterface(pl.LightningModule):
             DataKey.covariate_time.name: cov_time,
             DataKey.covariate_space.name: cov_space,
             DataKey.bhvr_vel.name: cov,
-            DataKey.task_return.name: task_return + 1, # +1 for padding, see dataloader
+            DataKey.task_return.name: task_return,
             DataKey.task_return_time.name: task_return_time,
-            DataKey.task_reward.name: task_reward + 1, # +1 for padding, see dataloader
+            DataKey.task_reward.name: task_reward,
             DataKey.constraint.name: constraint,
             DataKey.constraint_space.name: constraint_space,
             DataKey.constraint_time.name: constraint_time,
@@ -726,7 +727,7 @@ class BrainBertInterface(pl.LightningModule):
         """
         assert self.data_attrs.serve_tokens_flat, "Not implemented"
         # there are data keys and meta keys, that might be coming in unbatched
-        breakpoint()
+        # breakpoint()
         batch_shapes = {
             DataKey.spikes.name: '* t token_chan h',
             DataKey.heldout_spikes.name: '* t c h',
