@@ -73,6 +73,10 @@ class ContextRegistry:
         } for item in items]
         return pd.DataFrame(index)
 
+    def clear(self):
+        self._registry = {}
+        self.search_index = pd.DataFrame()
+
     # ! Note, current pattern is to put all experiments in a big list below; not use this register handle.
     def register(self, context_info: List[ContextInfo | None]):
         context_info = [item for item in context_info if item is not None]
@@ -115,6 +119,7 @@ class ContextRegistry:
 context_registry = ContextRegistry()
 
 if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
+    # Note we register closed loop dir here as well, maybe don't want that
     context_registry.register([
         *RTTContextInfo.build_several('./data/odoherty_rtt/', alias_prefix='odoherty_rtt'),
 
@@ -199,4 +204,8 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/nigel_multi_posture_dco_reaching', task=ExperimentalTask.marino_batista_mp_reaching),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/rocky_multi_posture_bci', task=ExperimentalTask.marino_batista_mp_bci),
         # *BatistaContextInfo.build_from_dir('./data/marino_batista/rocky_multi_posture_dco_reaching', task=ExperimentalTask.marino_batista_mp_reaching),
+    ])
+else:
+    context_registry.register([
+        *BCIContextInfo.build_from_nested_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={}, alias_prefix='closed_loop_'), # each dataset deposits into its own session folder
     ])

@@ -307,6 +307,7 @@ class BrainBertInterface(pl.LightningModule):
                 - mask: Was kinematic _input_ zeroed at this timestep?
         """
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
+        # breakpoint()
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
@@ -584,6 +585,130 @@ class BrainBertInterface(pl.LightningModule):
         # if use_prefix:
             # print(f"prefix loss: {batch_out['loss']}")
         return batch_out
+
+    @torch.inference_mode()
+    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
+    def predict_simple(
+        self,
+        spikes: torch.Tensor, # Time x Channel
+        cov: torch.Tensor, # Time x CovDim
+        constraint: torch.Tensor, # sparse, # Event x 3 x CovDim
+        constraint_time: torch.Tensor, # sparse # Event
+        task_reward: torch.Tensor,
+        task_return: torch.Tensor,
+        task_return_time: torch.Tensor,
+        reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
+        kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
+        # blacklist_kin_time=-5, # in bins, mirroring zero mask
+        # blacklist_kin_time=torch.arange(5) * -1, # Nope
+        # blacklist_kin_time=None, # Nope
+    ):
+        r"""
+            Assumes single item prediction, no padding.
+            PREDICTS NEXT STEP OF KINEMATIC AND RETURN IF NEEDED
+
+            Supporting real time inference
+            spikes: Time (at token bin size) x Channel
+            cov: Time (at token bin size) x Cov dim - comes in normalized, normalization happens at dataloader level
+
+            blacklist_kin_time: List of time bins in working block to zero out
+
+            to_predict_modality dictates which token is expected to be predicted next
+            DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
+        """
+        # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
+        pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
+        pad_spikes = F.pad(spikes, (0, pad_amount))
+        tokenized_spikes = pad_spikes.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # Time x Token x Intra-Patch
+        token_time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1)
+        tokenized_spikes = rearrange(tokenized_spikes, 'time space neurons -> 1 (time space) neurons 1')
+        times = repeat(torch.arange(spikes.size(0), device=spikes.device), 'time -> 1 (time space)', space=token_space)
+        positions = repeat(torch.arange(token_space, device=spikes.device), 'space -> 1 (time space)', time=token_time)
+
+        # Extend the blank covariate to match the length of spikes, effectively our query
+        # cov = F.pad(cov, (0, 0, 0, 1)) # Don't need explicit pad, we draw at system level
+        cov_query_length = cov.size(1) # Number of tokens to draw
+        cov_time = repeat(torch.arange(cov.size(0), device=spikes.device), 't -> (t s)', s=cov.size(1))
+        cov_space = repeat(torch.arange(cov.size(1), device=spikes.device), 's -> (t s)', t=cov.size(0))
+        cov = rearrange(cov, 'time space -> 1 (time space) 1')
+        cov_time = rearrange(cov_time, 'time  -> 1 (time)')
+        cov_space = rearrange(cov_space, 'space -> 1 (space)')
+
+        # TODO reward - two part sampling?
+
+        # Dense
+        task_reward = rearrange(task_reward, 'time -> 1 time 1')
+        task_return = rearrange(task_return, 'time -> 1 time 1')
+        task_return_time = rearrange(task_return_time, 'time -> 1 time')
+
+        # Tokenize constraints
+        constraint_space = repeat(torch.arange(constraint.size(-1), device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
+        constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
+        constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
+
+        if reference:
+            time_offset = reference[DataKey.time].max() + 1
+            if kin_mask_timesteps is not None:
+                kin_mask_timesteps += time_offset
+            def batchify(t: torch.Tensor):
+                return t.unsqueeze(0).to(device=tokenized_spikes.device)
+            tokenized_spikes = torch.cat([
+                batchify(reference[DataKey.spikes]), tokenized_spikes
+            ], dim=1)
+            times = torch.cat([batchify(reference[DataKey.time]), times + time_offset], dim=1)
+            positions = torch.cat([batchify(reference[DataKey.position]), positions], dim=1)
+            cov_time = torch.cat([batchify(reference[DataKey.covariate_time]), cov_time + time_offset], dim=1)
+            cov_space = torch.cat([batchify(reference[DataKey.covariate_space]), cov_space], dim=1)
+            cov = torch.cat([batchify(reference[DataKey.bhvr_vel]), cov], dim=1)
+            task_return = torch.cat([batchify(reference[DataKey.task_return]), task_return], dim=1)[..., 0] # no hidden dim
+            task_reward = torch.cat([batchify(reference[DataKey.task_reward]), task_reward], dim=1)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
+            task_return_time = torch.cat([batchify(reference[DataKey.task_return_time]), task_return_time + time_offset], dim=1)
+            # constraint not dealt with or even offset for now
+            constraint_time = torch.cat([batchify(reference[DataKey.constraint_time]), constraint_time + time_offset], dim=1)
+            constraint_space = torch.cat([batchify(reference[DataKey.constraint_space]), constraint_space], dim=1)
+            constraint = torch.cat([batchify(reference[DataKey.constraint]), constraint], dim=1)
+        batch: Dict[BatchKey, torch.Tensor] = {
+            DataKey.spikes.name: tokenized_spikes,
+            DataKey.time.name: times,
+            DataKey.position.name: positions,
+            DataKey.covariate_time.name: cov_time,
+            DataKey.covariate_space.name: cov_space,
+            DataKey.bhvr_vel.name: cov,
+            DataKey.task_return.name: task_return + 1, # +1 for padding, see dataloader
+            DataKey.task_return_time.name: task_return_time,
+            DataKey.task_reward.name: task_reward + 1, # +1 for padding, see dataloader
+            DataKey.constraint.name: constraint,
+            DataKey.constraint_space.name: constraint_space,
+            DataKey.constraint_time.name: constraint_time,
+        }
+
+        for k in self.cfg.task.tasks:
+            self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
+        tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
+
+        if kin_mask_timesteps is not None:
+            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input
+            is_kin_mask[:, 0] = False # First token is always valid
+            zero_mask = torch.isin(times, kin_mask_timesteps)
+
+            zero_mask &= is_kin_mask
+            pipeline_context[zero_mask] = 0
+
+        outputs = self.backbone(
+            pipeline_context,
+            times=times,
+            positions=space,
+        ) # B x T x H. All at once, not autoregressive single step sampling
+
+        # The order of logic here is following the order dictated in the task pipeline
+        cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
+        raw_pred = cov_query[Output.behavior_pred]
+        # return_query = self.task_pipelines[ModelTask.return_infill.value]
+        # Oh... I didn't actually train any return queries.
+        return {
+            DataKey.bhvr_vel: raw_pred,
+            DataKey.task_return: None,
+        }
 
     @torch.inference_mode()
     def predict(

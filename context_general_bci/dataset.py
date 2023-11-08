@@ -382,7 +382,6 @@ class SpikingDataset(Dataset):
                 ])
             else:
                 meta_items[k] = torch.tensor(self.context_index[k.name].index(trial[k])) # Casting in collater might be faster?
-
         r"""
             Currently we store spikes in a split-array format as a dict of tensors T C H.
             We must use the IDs to reconstruct the stack we want.
@@ -508,9 +507,9 @@ class SpikingDataset(Dataset):
                             data_items[DataKey.constraint_time] = change_steps
                         # breakpoint()
                         if self.cfg.tokenize_covariates:
-                            data_items[DataKey.constraint_space] = repeat(torch.arange(data_items[k].size(-1)), 'b -> (t b)', t=data_items[k].size(0))
-                            data_items[DataKey.constraint_time] = repeat(data_items[DataKey.constraint_time], 't -> (t b)', b=data_items[k].size(-1))
-                            data_items[k] = rearrange(data_items[k], 't c b -> (t b) c')
+                            data_items[DataKey.constraint_space] = repeat(torch.arange(data_items[k].size(-1)), 'cov -> (t cov)', t=data_items[k].size(0))
+                            data_items[DataKey.constraint_time] = repeat(data_items[DataKey.constraint_time], 't -> (t cov)', cov=data_items[k].size(-1))
+                            data_items[k] = rearrange(data_items[k], 't c cov -> (t cov) c')
                     else:
                         assert not self.cfg.tokenize_covariates, "Not implemented"
                         if k not in payload: # e.g. monkey data - assume native control

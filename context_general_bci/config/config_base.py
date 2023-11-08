@@ -611,7 +611,6 @@ class DatasetConfig:
     # pad_time_value: int = 400 # some reasonably high number to ensure we don't accidentally get padding tokens with padded time that can't attend to anything, but not so high that we're out of time range
     pad_spike_value: int = 0 # extra thing just for spikes, which we can typically afford to keep low w/o consequence. Sometimes above pad value (which applies for time/space values) needs to be set higher than 0 to avoid nan attn, typically for co-bps
     # pad_value: int = 20
-    pad_position_value: int = 32 # Should match maximal space tokens per timestep (across all modalities) for next step prediction specifically
 
     # Experimental Task configuration - matching registered names
     # Note - we choose to put task specific things here rather than ModelConfig as model will read the relevant variables
@@ -640,6 +639,8 @@ class DatasetConfig:
         'CRS08-lateral_m1', 'CRS08-medial_m1',
         'BMI01-lateral_m1', 'BMI01-medial_m1',
     ]))
+
+    force_active_dims: List[int] = field(default_factory=lambda: []) # list of dims to include during decoding,. Used for forcing specific dims for online eval, during tuning
 
     # pitt_bmi01: PittConfig = field(default_factory=lambda: PittConfig.create_with_arrays([
     # ], native_resolution_ms=30)) # Easier just to hardcode the check for BMI01 in the loader
