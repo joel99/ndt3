@@ -23,7 +23,7 @@ from context_general_bci.analyze_utils import (
     data_label_to_target
 )
 
-query = 'pitt_monkey_cond_return-b77cdokm'
+query = 'small_40m-6lk35hxs'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -39,7 +39,7 @@ cfg.model.task.outputs = [
 
 # data_label ='indy'
 data_label = ''
-data_label = 'crs08_grasp'
+# data_label = 'crs08_grasp'
 # data_label = 'miller'
 data_label = ''
 if data_label:

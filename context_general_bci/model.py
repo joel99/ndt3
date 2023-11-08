@@ -903,6 +903,21 @@ class BrainBertInterface(pl.LightningModule):
         if 'novel_params' in state:
             self.novel_params = state['novel_params']
 
+    def on_load_checkpoint(self, checkpoint):
+        # Resuming training e.g. for LR fallback
+        if checkpoint['global_step'] == 0: # i.e. autoscale "load_from_checkpoint"
+            return
+        # Explosion rollback policy
+        # Because we use TIMM LR scheduler dependent on global step, rather than internal state
+        # Simply overwriting the checkpoint LR scheduler is sufficient to update LR trajectory
+        if self.cfg.lr_schedule == 'cosine_timm' and \
+            self.cfg.lr_init != checkpoint['lr_schedulers'][0]['base_values'][0]:
+                if self.lr_schedulers() is None: # If we don't have autoscale this wasn't defined, honestly this case should always be good
+                    target_scheduler = self.configure_optimizers()['lr_scheduler']['scheduler']
+                else:
+                    target_scheduler = self.lr_schedulers()
+                checkpoint['lr_schedulers'][0] = target_scheduler.state_dict()
+
     # ==================== Utilities ====================
     def unpad_and_transform_rates(self, logrates: torch.Tensor, lengths: Optional[torch.Tensor] = None, channels: Optional[torch.Tensor] = None) -> torch.Tensor:
         r"""

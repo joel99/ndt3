@@ -7,6 +7,11 @@ model:
     n_layers: 12
     n_heads: 16
   hidden_size: 2048
+
+  # lr_init: 5e-4 # Explodes
+  lr_init: 4e-4 # For rollback load from base_300m-ojiubzux
+load_from_id: base_300m-ojiubzux
 train:
-  batch_size: 16 # on 80G
+  batch_size: 6 # on 40G
+  # batch_size: 16 # on 80G
 notes: "300M sparse reward"

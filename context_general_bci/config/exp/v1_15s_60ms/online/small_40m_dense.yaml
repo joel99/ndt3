@@ -2,5 +2,17 @@
 
 defaults:
   - _default
+model: # Only point in densifying return is so that we can sample it reliably. Let's do that here.
+  task:
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_infill
+    task_weights: [1.0, 1.0, 0., 1.0]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    - Metric.return_acc
 dataset:
   sparse_rewards: False
