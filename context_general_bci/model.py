@@ -599,6 +599,7 @@ class BrainBertInterface(pl.LightningModule):
         task_return_time: torch.Tensor,
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
         kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
+        # This is dense, I think
         # blacklist_kin_time=-5, # in bins, mirroring zero mask
         # blacklist_kin_time=torch.arange(5) * -1, # Nope
         # blacklist_kin_time=None, # Nope
@@ -647,10 +648,11 @@ class BrainBertInterface(pl.LightningModule):
         constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
 
+        if kin_mask_timesteps is not None:
+            # Make sparse, to index
+            kin_mask_timesteps = kin_mask_timesteps.nonzero()[0]
         if reference:
             time_offset = reference[DataKey.time].max() + 1
-            if kin_mask_timesteps is not None:
-                kin_mask_timesteps += time_offset
             def batchify(t: torch.Tensor):
                 return t.unsqueeze(0).to(device=tokenized_spikes.device)
             tokenized_spikes = torch.cat([
@@ -688,7 +690,8 @@ class BrainBertInterface(pl.LightningModule):
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
 
         if kin_mask_timesteps is not None:
-            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input
+            # * Risk point - we should examine this mask carefully.
+            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input?
             is_kin_mask[:, 0] = False # First token is always valid
             zero_mask = torch.isin(times, kin_mask_timesteps)
 

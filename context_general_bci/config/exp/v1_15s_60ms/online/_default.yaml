@@ -64,12 +64,12 @@ dataset:
   pitt_co:
     limit_kin_dims: 15 # We scrape up to 14 pos dims and force, rarely expect all to be active
     chop_size_ms: 15000
-    minmax: False # !
+      # minmax: False # !
   # force_active_dims: [1, 2, 6]
 
   # TODO these should be sent in by RTNDT module rolling inference, hardcoded while we train from CLI
-  z_score_default_mean: 0.
-  z_score_default_std: 0.014 # For CURSOR
+  # z_score_default_mean: 0.
+  # z_score_default_std: 0.014 # For CURSOR
 
   max_channels: 320
   max_arrays: 2
