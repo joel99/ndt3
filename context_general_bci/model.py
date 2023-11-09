@@ -599,6 +599,7 @@ class BrainBertInterface(pl.LightningModule):
         task_return_time: torch.Tensor,
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
         kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
+        # This is dense, I think
         # blacklist_kin_time=-5, # in bins, mirroring zero mask
         # blacklist_kin_time=torch.arange(5) * -1, # Nope
         # blacklist_kin_time=None, # Nope
@@ -617,6 +618,7 @@ class BrainBertInterface(pl.LightningModule):
             DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
         """
         # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
+        # breakpoint()
         pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
         pad_spikes = F.pad(spikes, (0, pad_amount))
         tokenized_spikes = pad_spikes.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # Time x Token x Intra-Patch
@@ -637,8 +639,8 @@ class BrainBertInterface(pl.LightningModule):
         # TODO reward - two part sampling?
 
         # Dense
-        task_reward = rearrange(task_reward, 'time -> 1 time 1')
-        task_return = rearrange(task_return, 'time -> 1 time 1')
+        task_reward = rearrange(task_reward, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader
+        task_return = rearrange(task_return, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader (we don't offset reference since that's served from dataloader)
         task_return_time = rearrange(task_return_time, 'time -> 1 time')
 
         # Tokenize constraints
@@ -646,10 +648,11 @@ class BrainBertInterface(pl.LightningModule):
         constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
 
+        if kin_mask_timesteps is not None:
+            # Make sparse, to index
+            kin_mask_timesteps = kin_mask_timesteps.nonzero()[0]
         if reference:
             time_offset = reference[DataKey.time].max() + 1
-            if kin_mask_timesteps is not None:
-                kin_mask_timesteps += time_offset
             def batchify(t: torch.Tensor):
                 return t.unsqueeze(0).to(device=tokenized_spikes.device)
             tokenized_spikes = torch.cat([
@@ -674,9 +677,9 @@ class BrainBertInterface(pl.LightningModule):
             DataKey.covariate_time.name: cov_time,
             DataKey.covariate_space.name: cov_space,
             DataKey.bhvr_vel.name: cov,
-            DataKey.task_return.name: task_return + 1, # +1 for padding, see dataloader
+            DataKey.task_return.name: task_return,
             DataKey.task_return_time.name: task_return_time,
-            DataKey.task_reward.name: task_reward + 1, # +1 for padding, see dataloader
+            DataKey.task_reward.name: task_reward,
             DataKey.constraint.name: constraint,
             DataKey.constraint_space.name: constraint_space,
             DataKey.constraint_time.name: constraint_time,
@@ -687,7 +690,8 @@ class BrainBertInterface(pl.LightningModule):
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
 
         if kin_mask_timesteps is not None:
-            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input
+            # * Risk point - we should examine this mask carefully.
+            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input?
             is_kin_mask[:, 0] = False # First token is always valid
             zero_mask = torch.isin(times, kin_mask_timesteps)
 
@@ -726,7 +730,7 @@ class BrainBertInterface(pl.LightningModule):
         """
         assert self.data_attrs.serve_tokens_flat, "Not implemented"
         # there are data keys and meta keys, that might be coming in unbatched
-        breakpoint()
+        # breakpoint()
         batch_shapes = {
             DataKey.spikes.name: '* t token_chan h',
             DataKey.heldout_spikes.name: '* t c h',
