@@ -307,7 +307,6 @@ class BrainBertInterface(pl.LightningModule):
                 - mask: Was kinematic _input_ zeroed at this timestep?
         """
         tks, tps = list(self.task_pipelines.keys()), list(self.task_pipelines.values())
-        # breakpoint()
         pipeline_context, pipeline_times, pipeline_space, pipeline_padding = zip(*[
             tp.get_context(batch) for tp in tps
         ])
@@ -636,11 +635,12 @@ class BrainBertInterface(pl.LightningModule):
         cov_time = rearrange(cov_time, 'time  -> 1 (time)')
         cov_space = rearrange(cov_space, 'space -> 1 (space)')
 
-        # TODO reward - two part sampling?
-
         # Dense
         task_reward = rearrange(task_reward, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader
-        task_return = rearrange(task_return, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader (we don't offset reference since that's served from dataloader)
+        task_return = rearrange(task_return, 'time -> 1 time 1')
+        if ModelTask.return_infill not in self.cfg.task.tasks or True:
+            task_return = task_return + 1 # +1 for padding, see dataloader (we don't offset reference since that's served from dataloader)
+            # Needed only if we're not drawing from the already offset model predictions
         task_return_time = rearrange(task_return_time, 'time -> 1 time')
 
         # Tokenize constraints
@@ -650,7 +650,11 @@ class BrainBertInterface(pl.LightningModule):
 
         if kin_mask_timesteps is not None:
             # Make sparse, to index
-            kin_mask_timesteps = kin_mask_timesteps.nonzero()[0]
+            if kin_mask_timesteps.any():
+                kin_mask_timesteps = kin_mask_timesteps.nonzero()[0]
+            else:
+                kin_mask_timesteps = None
+        # breakpoint()
         if reference:
             time_offset = reference[DataKey.time].max() + 1
             def batchify(t: torch.Tensor):
@@ -698,6 +702,9 @@ class BrainBertInterface(pl.LightningModule):
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
 
+        # print(f'Context: {pipeline_context.shape}')
+        # print(f'Times {times.shape, times.unique()}')
+        # print(f'Space {space.shape, space.unique()}')
         outputs = self.backbone(
             pipeline_context,
             times=times,
@@ -706,12 +713,31 @@ class BrainBertInterface(pl.LightningModule):
 
         # The order of logic here is following the order dictated in the task pipeline
         cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
+        if ModelTask.return_infill in self.cfg.task.tasks:
+            # breakpoint()
+            return_logits = self.task_pipelines[ModelTask.return_infill.value](
+                batch,
+                outputs[:, -cov_query_length-1:-cov_query_length],
+                compute_metrics=False
+            )[Output.return_logits][0,0]
+            probabilities = torch.softmax(return_logits, dim=-1)
+            # print(probabilities[:5]) # Hm... producing 3.
+            return_cond = (probabilities > 0.3)
+            if return_cond.any():
+                # get last one
+                return_cond = return_cond.nonzero()
+            else:
+                return_cond = torch.argmax(return_cond)
+            # return_cond = torch.ones_like(return_cond) # ! Overwrite.
+            return_cond = torch.zeros_like(return_cond) # ! Overwrite.
+        else:
+            return_cond = None
         raw_pred = cov_query[Output.behavior_pred]
         # return_query = self.task_pipelines[ModelTask.return_infill.value]
         # Oh... I didn't actually train any return queries.
         return {
             DataKey.bhvr_vel: raw_pred,
-            DataKey.task_return: None,
+            DataKey.task_return: return_cond,
         }
 
     @torch.inference_mode()
