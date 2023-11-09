@@ -1035,7 +1035,7 @@ class ReturnInfill(ReturnContext):
         backbone_features: torch.Tensor,
         backbone_times: torch.Tensor,
         backbone_space: torch.Tensor,
-        backbone_padding: torch.Tensor,
+        backbone_padding: torch.Tensor | None = None,
         compute_metrics=True,
         eval_mode=False,
         loss_mask=None,
