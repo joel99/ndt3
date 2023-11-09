@@ -637,9 +637,9 @@ class BrainBertInterface(pl.LightningModule):
 
         # Dense
         task_reward = rearrange(task_reward, 'time -> 1 time 1') + 1 # +1 for padding, see dataloader
-        task_return = rearrange(task_return, 'time -> 1 time 1')
-        if ModelTask.return_infill not in self.cfg.task.tasks or True:
-            task_return = task_return + 1 # +1 for padding, see dataloader (we don't offset reference since that's served from dataloader)
+        task_return = rearrange(task_return, 'time -> 1 time 1') + 1
+        # if ModelTask.return_infill not in self.cfg.task.tasks or True:
+            # task_return = task_return + 1 # +1 for padding, see dataloader (we don't offset reference since that's served from dataloader)
             # Needed only if we're not drawing from the already offset model predictions
         task_return_time = rearrange(task_return_time, 'time -> 1 time')
 
@@ -729,7 +729,7 @@ class BrainBertInterface(pl.LightningModule):
             else:
                 return_cond = torch.argmax(return_cond)
             # return_cond = torch.ones_like(return_cond) # ! Overwrite.
-            return_cond = torch.zeros_like(return_cond) # ! Overwrite.
+            return_cond = None # torch.zeros_like(return_cond) # ! Overwrite.
         else:
             return_cond = None
         raw_pred = cov_query[Output.behavior_pred]
