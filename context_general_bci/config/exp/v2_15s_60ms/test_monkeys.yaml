@@ -11,6 +11,7 @@ dataset:
   - rouse.*
   - flint.*
   - miller.*
+  - delay.*
   - odoherty_rtt.*
   # - delay.*
   # - pitt_broad.*
