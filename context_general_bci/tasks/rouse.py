@@ -24,7 +24,7 @@ from context_general_bci.utils import loadmat
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, get_minmax_norm
 
 def flatten_single(channel_spikes, offsets): # offset in seconds
     # print(channel_spikes)
@@ -108,14 +108,8 @@ class RouseLoader(ExperimentalTaskLoader):
             global_args[DataKey.covariate_labels] = canonical_labels
 
         if cfg.rouse.minmax:
-            # Aggregate velocities and get min/max
-            global_args['cov_mean'] = vel.mean(0)
-            global_args['cov_min'] = torch.quantile(vel, 0.001, dim=0) # sufficient in a quick notebook check.
-            global_args['cov_max'] = torch.quantile(vel, 0.999, dim=0)
-            rescale = global_args['cov_max'] - global_args['cov_min']
-            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
-            vel = (vel - global_args['cov_mean']) / rescale
-            vel = torch.clamp(vel, -1, 1)
+            vel, payload_norm = get_minmax_norm(vel, cfg.rouse.center)
+            global_args.update(payload_norm)
 
         # Directly chop trialized data as though continuous - borrowing from LM convention
         vel = chop_vector(vel, cfg.rouse.chop_size_ms, cfg.bin_size_ms) # T x H

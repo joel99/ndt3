@@ -18,7 +18,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
 
 @ExperimentalTaskRegistry.register
 class DelayReachLoader(ExperimentalTaskLoader):
@@ -94,11 +94,8 @@ class DelayReachLoader(ExperimentalTaskLoader):
                 if global_vel.shape[0] > int(1e6): # Too long for quantile, just crop with warning
                     logging.warning(f'Covariate length too long ({global_vel.shape[0]}) for quantile, cropping to 1M')
                     global_vel = global_vel[:int(1e6)]
-                global_args['cov_mean'] = global_vel.mean(0)
-                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0)
-                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
-                target_vel = (target_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
-                target_vel = torch.clamp(target_vel, -1, 1)
+                global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=task_cfg.center)
+                global_args.update(payload_norm)
 
             spikes = nwbfile.units.to_dataframe()
             # We assume one continuous observation, which should be the case

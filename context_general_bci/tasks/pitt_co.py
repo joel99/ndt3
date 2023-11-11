@@ -324,11 +324,11 @@ class PittCOLoader(ExperimentalTaskLoader):
                 covariates, payload_norm = get_minmax_norm(covariates, center_mean=exp_task_cfg.center)
                 # ! We already issue, but here's we're muting based on raws.
                 # ! Instead we mute based on norms, which we expect to be within a specific value
-                NOISE_THRESHOLDS = torch.full_like(payload['cov_max'], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
+                NOISE_THRESHOLDS = torch.full_like(payload_norm['cov_max'], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
                 # Threshold for force is much higher based on spotchecks. Better to allow noise, than to drop true values? IDK.
                 if 'force' in payload: # Force is appended if available
                     NOISE_THRESHOLDS[-covariate_force.size(1):] = 0.008
-                if payload['cov_min'] is not None:
+                if payload_norm['cov_min'] is not None:
                     covariates[:, (payload_norm['cov_max'] - payload_norm['cov_min']) < NOISE_THRESHOLDS] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
                 else:
                     covariates[:, payload_norm['cov_max'] < NOISE_THRESHOLDS // 2] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.

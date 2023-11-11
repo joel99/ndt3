@@ -36,7 +36,7 @@ from scipy.signal import decimate
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
 
 @ExperimentalTaskRegistry.register
 class GallegoCOLoader(ExperimentalTaskLoader):
@@ -86,11 +86,8 @@ class GallegoCOLoader(ExperimentalTaskLoader):
             # drop nans
             global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
             global_vel = torch.as_tensor(global_vel, dtype=torch.float)
-            global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
-            global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0) # sufficient in a quick notebook check.
-            global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
-            rescale = global_args['cov_max'] - global_args['cov_min']
-            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+            global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=cfg.gallego_co.center)
+            global_args.update(payload_norm)
         arrays_to_use = context_arrays
         print(f"Global args: {global_args}")
         if cfg.pack_dense:

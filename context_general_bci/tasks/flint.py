@@ -132,7 +132,7 @@ class FlintLoader(ExperimentalTaskLoader):
                 global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
 
             if exp_task_cfg.minmax:
-                global_vel, norm_dict = get_minmax_norm(global_vel)
+                global_vel, norm_dict = get_minmax_norm(global_vel, center_mean=exp_task_cfg.center)
                 global_args.update(norm_dict)
             # Hm... hard to use packer individually since we normalize in external function
 

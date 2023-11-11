@@ -20,7 +20,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, get_minmax_norm
 
 @ExperimentalTaskRegistry.register
 class ODohertyRTTLoader(ExperimentalTaskLoader):
@@ -135,19 +135,8 @@ class ODohertyRTTLoader(ExperimentalTaskLoader):
             for bhvr in [DataKey.bhvr_vel]:
                 bhvr_vars[bhvr] = chop_vector(bhvr_vars[bhvr], cfg.odoherty_rtt.chop_size_ms, cfg.bin_size_ms)
         if cfg.odoherty_rtt.minmax: # Note we apply after chop, which also includes binning
-            global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
-            # global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.0001, dim=0) # essentially guard for extreme outliers, but that's it.
-            global_args['cov_min'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.001, dim=0) # essentially guard for extreme outliers, but that's it.
-            global_args['cov_max'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.999, dim=0) # Just be consistent with pitt preproc.
-            # global_args['cov_max'] = torch.quantile(bhvr_vars[bhvr].flatten(end_dim=-2), 0.9999, dim=0)
-            rescale = global_args['cov_max'] - global_args['cov_min']
-            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
-            # if (bhvr_vars[bhvr] / rescale).max() > 0.9 or (bhvr_vars[bhvr] / rescale).min() < -0.9: # Looks like there's a long tail, sick.
-                # print(bhvr_vars[bhvr].max(), bhvr_vars[bhvr].min())
-                # breakpoint()
-            bhvr_vars[bhvr] = (bhvr_vars[bhvr] - global_args['cov_mean']) / rescale
-            bhvr_vars[bhvr] = torch.clamp(bhvr_vars[bhvr], -1, 1)
-
+            bhvr_vars[DataKey.bhvr_vel], payload_norm = get_minmax_norm(bhvr_vars[DataKey.bhvr_vel], center_mean=cfg.odoherty_rtt.center)
+            global_args.update(payload_norm)
         if cfg.tokenize_covariates:
             global_args[DataKey.covariate_labels] = REACH_DEFAULT_KIN_LABELS
         meta_payload = {}
