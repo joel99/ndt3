@@ -103,7 +103,10 @@ class GallegoCOLoader(ExperimentalTaskLoader):
                 vel[-1] = vel[-2] # last value is nan, but not easy to crop at same resolution as spikes, so we just roll
             vel = compress_vel(df.vel[trial_id])
             if cfg.gallego_co.minmax:
-                vel = (vel - global_args['cov_mean']) / rescale
+                if global_args['cov_min'] is not None:
+                    vel = (vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
+                else:
+                    vel = vel / global_args['cov_max']
                 vel = torch.clamp(vel, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
             single_payload = {
                 DataKey.spikes: spike_payload, # T x H x 1? IIRC?

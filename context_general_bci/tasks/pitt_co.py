@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectName, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, compute_return_to_go, get_minmax_norm
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, compute_return_to_go, get_minmax_norm, PackToChop
 
 # CLAMP_MAX = 15
 NORMATIVE_MAX_FORCE = 25 # Our prior on the full Pitt dataset. Some FBC data reports exponentially large force
