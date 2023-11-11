@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectName, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, compute_return_to_go
+from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, compute_return_to_go, get_minmax_norm
 
 # CLAMP_MAX = 15
 NORMATIVE_MAX_FORCE = 25 # Our prior on the full Pitt dataset. Some FBC data reports exponentially large force
@@ -314,33 +314,32 @@ class PittCOLoader(ExperimentalTaskLoader):
                 spikes = spikes[int(1000 / cfg.bin_size_ms):]
                 covariates = covariates[int(1000 / cfg.bin_size_ms):]
             # breakpoint()
-            # Apply a policy before normalization - if there's minor variance; these values are supposed to be relatively interpretable
-            # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
-            if covariates is not None:
-                payload['cov_mean'] = covariates.mean(0)
-                payload['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
-                payload['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
-                covariates = covariates - covariates.mean(0)
-                NOISE_THRESHOLDS = torch.full_like(payload['cov_min'], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
-                # Threshold for force is much higher based on spotchecks. Better to allow noise, than to drop true values? IDK.
-                if 'force' in payload: # Force is appended if available
-                    NOISE_THRESHOLDS[-covariate_force.size(1):] = 0.008
-                covariates[:, (payload['cov_max'] - payload['cov_min']) < NOISE_THRESHOLDS] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
-            else:
-                payload['cov_mean'] = None
-                payload['cov_min'] = None
-                payload['cov_max'] = None
-
-            # Ideally this should be done before, but I feel a bit jittery downsample before our noise suppression
+            # v2_15s_60ms - we move downsampling to before rescaling/noise suppression. We were worried about spreading around random noise spikes to make it look like actual data, which ruins dropping of nonmeaningful dimensions, but that mxsm wasn't ever reliable or complicated.
             if downsample > 1 and covariates is not None:
                 covariates = torch.as_tensor(resample_poly(covariates, 1, downsample, axis=0))
 
-            if exp_task_cfg.minmax and covariates is not None: # T x C
-                rescale = payload['cov_max'] - payload['cov_min']
-                rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
-                covariates = covariates / rescale # Think this rescales to a bit less than 1
-                covariates = torch.clamp(covariates, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
+            # Apply a policy before normalization - if there's minor variance; these values are supposed to be relatively interpretable
+            # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
+            if exp_task_cfg.minmax and covariates is not None:
+                covariates, payload_norm = get_minmax_norm(covariates, center_mean=exp_task_cfg.center)
+                # ! We already issue, but here's we're muting based on raws.
+                # ! Instead we mute based on norms, which we expect to be within a specific value
+                NOISE_THRESHOLDS = torch.full_like(payload['cov_max'], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
+                # Threshold for force is much higher based on spotchecks. Better to allow noise, than to drop true values? IDK.
+                if 'force' in payload: # Force is appended if available
+                    NOISE_THRESHOLDS[-covariate_force.size(1):] = 0.008
+                if payload['cov_min'] is not None:
+                    covariates[:, (payload_norm['cov_max'] - payload_norm['cov_min']) < NOISE_THRESHOLDS] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
+                else:
+                    covariates[:, payload_norm['cov_max'] < NOISE_THRESHOLDS // 2] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
+                # rescale = payload['cov_max'] - payload['cov_min']
+                # rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
+                # covariates = covariates / rescale # Think this rescales to a bit less than 1
+                # covariates = torch.clamp(covariates, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
                 # TODO we should really sanitize for severely abberant values in a more robust way... (we currently instead verify post-hoc in `sampler`)
+            else:
+                payload_norm = {'cov_mean': None, 'cov_min': None, 'cov_max': None}
+
             if 'effector' in payload and covariates is not None:
                 for k in NORMATIVE_EFFECTOR_BLACKLIST:
                     if k in payload['effector']:
@@ -435,7 +434,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                 labels = DEFAULT_KIN_LABELS
                 if covariates is not None:
                     for i, cov in enumerate(covariates.T):
-                        if (cov.any() and not cfg.force_active_dims) or\
+                        # Non-constant check
+                        if (not (cov == cov[0]).all() and not cfg.force_active_dims) or\
                             i in cfg.force_active_dims: # i.e. nonempty
                             covariate_dims.append(labels[i])
                             covariate_reduced.append(cov)
@@ -452,10 +452,8 @@ class PittCOLoader(ExperimentalTaskLoader):
             }
 
             global_args = {}
-            if exp_task_cfg.minmax:
-                global_args['cov_mean'] = payload['cov_mean']
-                global_args['cov_min'] = payload['cov_min']
-                global_args['cov_max'] = payload['cov_max']
+            if exp_task_cfg.minmax and covariates is not None:
+                global_args.update(payload_norm)
             if cfg.tokenize_covariates:
                 global_args[DataKey.covariate_labels] = covariate_dims
 

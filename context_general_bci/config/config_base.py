@@ -208,6 +208,9 @@ class TaskConfig:
     behavior_tolerance: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
     behavior_tolerance_ceil: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
 
+    # Return related items
+    return_mute: bool = False # Mute specifically return stream as a control while we figure out how to condition at test.
+
     decode_separate: bool = False # for bhvr decoding, use a separate transformer decoder? (Only compat with EmbedStrat.token)
     decode_time_pool: str = "" # none or 'mean'
     decode_strategy: EmbedStrat = EmbedStrat.project # or EmbedStrat.token
@@ -455,7 +458,8 @@ class ExperimentalConfig:
     """
     arrays: List[str] = field(default_factory=lambda: []) # Empty list means don't filter
     firing_hz_floor: float = 0.5
-    minmax: bool = True # rescale kinematics to -1, 1
+    center: bool = False # Mean-center the data. This was created and is a breaking change with experiments older than v2_15s_60ms
+    minmax: bool = True # rescale kinematics to -1, 1 based on max magnitude. Applies after centering if true.
     chop_size_ms: int = 15000 # Not universally used but enough that I'm putting it for NDT3
 
     def reproc_dict(self) -> Dict[str, List[str]]:

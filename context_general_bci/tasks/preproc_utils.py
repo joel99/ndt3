@@ -27,7 +27,7 @@ def crop_subject_handles(subject: str):
         subject = subject[:-3]
     return subject
 
-def get_minmax_norm(covariates: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+def get_minmax_norm(covariates: torch.Tensor, center_mean=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     r"""
         Get min/max normalization for covariates
         covariates: ... H  trailing dim is covariate dim
@@ -36,12 +36,21 @@ def get_minmax_norm(covariates: torch.Tensor) -> Tuple[torch.Tensor, Dict[str, t
     original_shape = covariates.shape
     covariates = covariates.flatten(start_dim=0, end_dim=-2)
     norm = {}
-    norm['cov_mean'] = covariates.mean(dim=0)
-    norm['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
-    norm['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
-    rescale = norm['cov_max'] - norm['cov_min']
-    rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
-    covariates = (covariates - norm['cov_mean']) / rescale
+    if center_mean:
+        norm['cov_mean'] = covariates.mean(dim=0)
+        norm['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
+        norm['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
+        rescale = norm['cov_max'] - norm['cov_min']
+        rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+        covariates = (covariates - norm['cov_mean']) / rescale
+    else:
+        magnitude = torch.quantile(covariates.abs(), 0.999, dim=0)
+        norm['cov_mean'] = None
+        norm['cov_min'] = None
+        norm['cov_max'] = magnitude
+        rescale = magnitude
+        rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+        covariates = covariates / magnitude
     covariates = torch.clamp(covariates, -1, 1)
     return covariates.reshape(original_shape), norm
 
