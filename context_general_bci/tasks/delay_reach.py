@@ -90,7 +90,6 @@ class DelayReachLoader(ExperimentalTaskLoader):
                 if global_vel.isnan().any():
                     logging.warning(f'{torch.isnan(global_vel).any(axis=1).sum()} nan steps found in velocity, masking out for global calculation')
                     global_vel = global_vel[~torch.isnan(global_vel).any(axis=1)]
-                global_vel = torch.as_tensor(global_vel, dtype=torch.float)
                 if global_vel.shape[0] > int(1e6): # Too long for quantile, just crop with warning
                     logging.warning(f'Covariate length too long ({global_vel.shape[0]}) for quantile, cropping to 1M')
                     global_vel = global_vel[:int(1e6)]

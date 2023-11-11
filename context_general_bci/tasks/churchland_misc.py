@@ -122,7 +122,6 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                 if np.isnan(global_vel).any():
                     logging.warning(f'{global_vel.isnan().sum()} nan values found in velocity, masking out for global calculation')
                     global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
-                global_vel = torch.as_tensor(global_vel, dtype=torch.float)
                 global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=cfg.churchland_misc.center)
                 global_args.update(payload_norm)
             return global_args

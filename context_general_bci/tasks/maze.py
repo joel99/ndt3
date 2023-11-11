@@ -84,6 +84,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
                 if global_vel.shape[0] > int(1e6): # Too long for quantile, just crop with warning
                     logging.warning(f'Covariate length too long ({global_vel.shape[0]}) for quantile, cropping to 1M')
                     global_vel = global_vel[:int(1e6)]
+                # Note it's actually 1D here, we normalize per dimension later
                 global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=task_cfg.center)
                 global_args.update(payload_norm)
 

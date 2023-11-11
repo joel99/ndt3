@@ -8,9 +8,9 @@ dataset:
   # - churchland.*
   - gallego.*
   - dyer_co.*
-  # - rouse.*
+  - rouse.*
   - flint.*
-  # - miller.*
+  - miller.*
   - odoherty_rtt.*
   # - delay.*
   # - pitt_broad.*

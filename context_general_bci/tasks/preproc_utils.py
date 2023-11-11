@@ -27,14 +27,16 @@ def crop_subject_handles(subject: str):
         subject = subject[:-3]
     return subject
 
-def get_minmax_norm(covariates: torch.Tensor, center_mean=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
+def get_minmax_norm(covariates: torch.Tensor | np.ndarray, center_mean=False) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:
     r"""
         Get min/max normalization for covariates
         covariates: ... H  trailing dim is covariate dim
         noise_suppression: H - clip away values under this magnitude
     """
+    covariates = torch.as_tensor(covariates, dtype=torch.float)
     original_shape = covariates.shape
-    covariates = covariates.flatten(start_dim=0, end_dim=-2)
+    if len(original_shape) > 2:
+        covariates = covariates.flatten(start_dim=0, end_dim=-2)
     norm = {}
     if center_mean:
         norm['cov_mean'] = covariates.mean(dim=0)
