@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    decode_quantize_classes: 256
+dataset:
+  sparse_rewards: False
+train:
+  batch_size: 32
+notes: "40M dense reward"

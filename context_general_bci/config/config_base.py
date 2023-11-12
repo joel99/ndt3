@@ -746,7 +746,7 @@ class RootConfig:
     nodes: int = 1
     debug: bool = False # for debugging, don't log to wandb, don't save ckpts, etc
 
-BatchKey = str | DataKey | MetaKey
+BatchKey = str | DataKey | MetaKey | Output
 
 def propagate_config(config: RootConfig):
     r"""

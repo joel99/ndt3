@@ -598,10 +598,7 @@ class BrainBertInterface(pl.LightningModule):
         task_return_time: torch.Tensor,
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
         kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
-        # This is dense, I think
-        # blacklist_kin_time=-5, # in bins, mirroring zero mask
-        # blacklist_kin_time=torch.arange(5) * -1, # Nope
-        # blacklist_kin_time=None, # Nope
+        temperature=0.,
     ):
         r"""
             Assumes single item prediction, no padding.
@@ -611,7 +608,7 @@ class BrainBertInterface(pl.LightningModule):
             spikes: Time (at token bin size) x Channel
             cov: Time (at token bin size) x Cov dim - comes in normalized, normalization happens at dataloader level
 
-            blacklist_kin_time: List of time bins in working block to zero out
+            kin_mask_timesteps: bool, true if masking timesteps
 
             to_predict_modality dictates which token is expected to be predicted next
             DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
@@ -688,9 +685,26 @@ class BrainBertInterface(pl.LightningModule):
             DataKey.constraint_space.name: constraint_space,
             DataKey.constraint_time.name: constraint_time,
         }
+        return self.predict_simple_batch(
+            batch,
+            kin_mask_timesteps=kin_mask_timesteps,
+            last_step_only=True,  # default for online prediction
+            temperature=temperature
+        )
 
+
+    @torch.inference_mode()
+    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
+    def predict_simple_batch(
+        self,
+        batch: Dict[BatchKey, torch.Tensor], # Should have batch=1 dimension
+        kin_mask_timesteps: torch.Tensor, # Time
+        last_step_only=False,
+        temperature=0.
+    ):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
+
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
 
         if kin_mask_timesteps is not None:
@@ -705,20 +719,31 @@ class BrainBertInterface(pl.LightningModule):
         # print(f'Context: {pipeline_context.shape}')
         # print(f'Times {times.shape, times.unique()}')
         # print(f'Space {space.shape, space.unique()}')
+        # breakpoint()
         outputs = self.backbone(
             pipeline_context,
             times=times,
             positions=space,
         ) # B x T x H. All at once, not autoregressive single step sampling
-
         # The order of logic here is following the order dictated in the task pipeline
-        cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
+        num_kin = len(batch[DataKey.covariate_space.name].unique())
+        cov_query = outputs[modalities == tks.index('kinematic_infill')]
+        if last_step_only:
+            cov_query = outputs[:, -num_kin:]
+        cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](
+            batch,
+            cov_query,
+            compute_metrics=False,
+            temperature=temperature
+        )
+
+        # Only last step supported atm
         if ModelTask.return_infill in self.cfg.task.tasks:
-            # breakpoint()
+            return_query = outputs[modalities == tks.index('return_infill')]
             return_logits = self.task_pipelines[ModelTask.return_infill.value](
                 batch,
-                outputs[:, -cov_query_length-1:-cov_query_length],
-                compute_metrics=False
+                return_query[:, -1:],
+                compute_metrics=False,
             )[Output.return_logits][0,0]
             probabilities = torch.softmax(return_logits, dim=-1)
             # print(probabilities[:5]) # Hm... producing 3.
@@ -732,13 +757,21 @@ class BrainBertInterface(pl.LightningModule):
             return_cond = None # torch.zeros_like(return_cond) # ! Overwrite.
         else:
             return_cond = None
-        raw_pred = cov_query[Output.behavior_pred]
         # return_query = self.task_pipelines[ModelTask.return_infill.value]
-        # Oh... I didn't actually train any return queries.
-        return {
-            DataKey.bhvr_vel: raw_pred,
-            DataKey.task_return: return_cond,
+
+        # Satisfy onlne eval interface
+        out: Dict[BatchKey, Any] = {
+            Output.behavior_pred: cov_query[Output.behavior_pred],
+            Output.return_logits: return_cond, # TODO make a new output type, these aren't logits, they're samples
         }
+        if not last_step_only:
+            # replicate `predict` offline eval infra
+            # breakpoint()
+            out[Output.behavior_query_mask] = repeat(~kin_mask_timesteps, 't -> (t b)', b=num_kin)
+
+            out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
+            out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name][0]
+        return out
 
     @torch.inference_mode()
     def predict(

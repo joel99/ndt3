@@ -32,18 +32,21 @@ from context_general_bci.analyze_utils import prep_plt
 dataset_name = 'odoherty_rtt-Loco-20170215_02'
 dataset_name = 'odoherty_rtt-Loco-20170213_02'
 # dataset_name = 'odoherty_rtt-Indy-20161005_06'
+dataset_name = 'pitt_broad_pitt_co_CRS02bLab_1942_7'
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_8',
 context = context_registry.query(alias=dataset_name)
 datapath = context.datapath
+session_paths = [context.datapath]
 # Use modes to alternate through a few different codepaths
-mode = 'rtt'
-mode = 'pitt'
-if mode == 'rtt':
-    ctxs = context_registry.query(task=ExperimentalTask.odoherty_rtt)
-else:
-    # ctxs = context_registry.query(task=ExperimentalTask.observation)
-    # ctxs = context_registry.query(task=ExperimentalTask.ortho)
-    ctxs = context_registry.query(task=ExperimentalTask.pitt_co)
-session_paths = [ctx.datapath for ctx in ctxs]
+# mode = 'rtt'
+# mode = 'pitt'
+# if mode == 'rtt':
+#     ctxs = context_registry.query(task=ExperimentalTask.odoherty_rtt)
+# else:
+#     # ctxs = context_registry.query(task=ExperimentalTask.observation)
+#     # ctxs = context_registry.query(task=ExperimentalTask.ortho)
+#     ctxs = context_registry.query(task=ExperimentalTask.pitt_co)
+# session_paths = [ctx.datapath for ctx in ctxs]
 print(f'Found {len(session_paths)} sessions.')
 
 sampling_rate = 1000
@@ -87,8 +90,10 @@ def load_bhvr_from_rtt(datapath, sample_strat=None):
 
 def load_bhvr_from_pitt(datapath, sample_strat=None):
     from context_general_bci.tasks.pitt_co import load_trial
-    trial_paths = list(datapath.glob("*.mat"))
-    payloads = [load_trial(trial_path) for trial_path in trial_paths]
+    print(datapath)
+    trial_paths = [datapath]
+    # trial_paths = list(datapath.glob("*.mat"))
+    payloads = [load_trial(trial_path, key='thin_data') for trial_path in trial_paths]
     return payloads
 
 def plot_trace_rtt(
@@ -117,6 +122,7 @@ def plot_trace_pitt(
 ):
     # plot 2 traces of x/y profiles, not the 2d trace (since paths are often stereotyped)
     # ax = prep_plt(ax)
+    print(bhvr_payload)
     bhvr_payload = bhvr_payload[trial]
     pos = bhvr_payload['position']
     pos = gaussian_filter1d(pos, 2.5, axis=0) # 2.5 bins = 50ms - this (by JY's judgment) gets rid of the system artifacts while relatively preserving most kinematic features
@@ -128,12 +134,12 @@ def plot_trace_pitt(
         # apply a gaussian kernel to smooth the readout position, which is spiky due to uninteresting system reasons
         # Without this, the velocity profiles are jagged
         vel = np.gradient(pos, axis=0)
-        ax.plot(vel[:, 0], label='x')
         ax.plot(vel[:, 1], label='y')
+        ax.plot(vel[:, 2], label='z')
     ax.legend()
     if title is not None:
         ax.set_title(title.stem)
-#%%
+
 tgt_session = session_paths[0]
 f, ax = plt.subplots(1, 1, figsize=(10, 10))
 ax = prep_plt(ax=ax)
@@ -145,7 +151,7 @@ strat = None
 key = DataKey.bhvr_vel
 # key = 'position'
 
-if mode == 'pitt':
+if mode == 'pitt' or True:
     bhvr_payload = load_bhvr_from_pitt(tgt_session, sample_strat=strat)
     plot_trace_pitt(
         ax, bhvr_payload, title=tgt_session, trial=0,

@@ -19,8 +19,7 @@ from context_general_bci.tasks import ExperimentalTask
 from context_general_bci.analyze_utils import prep_plt, load_wandb_run
 from context_general_bci.utils import wandb_query_latest, unflatten
 
-sample_query = "pitt_monkey_cond_return-b77cdokm"
-
+sample_query = 'small_40m_dense-72yzibgz'
 # wandb_run = wandb_query_latest(sample_query, exact=False, allow_running=True)[0]
 wandb_run = wandb_query_latest(sample_query, allow_running=True, use_display=True)[0]
 
@@ -29,12 +28,6 @@ _, cfg, _ = load_wandb_run(wandb_run, tag='val_loss', load_model=False)
 run_cfg = cfg.dataset
 cfg.dataset.eval_datasets = []
 cfg.dataset.exclude_datasets = []
-cfg.dataset.pitt_co.arrays=[
-    "CRS02b-lateral_m1", "CRS02b-medial_m1",
-    "CRS07-lateral_m1", "CRS07-medial_m1",
-    "CRS08-lateral_m1", "CRS08-medial_m1",
-    "BMI01-lateral_m1", "BMI01-medial_m1",
-]
 
 run_cfg.datasets = [
     # 'pitt_broad_pitt_co_BMI01Lab_231.*',
@@ -52,7 +45,8 @@ run_cfg.datasets = [
     # 'pitt_broad_pitt_co_CRS02bLab_1942_6',
 
     'pitt_broad_pitt_co_CRS02bLab_1942_7',
-    'pitt_broad_pitt_co_CRS02bLab_1942_8',
+    # 'pitt_broad_pitt_co_CRS02bLab_1942_8',
+
     # Force
     # 'pitt_test_pitt_co_CRS07Home_108_1',
     # 'pitt_test_pitt_co_CRS07Lab_95_6',
@@ -97,13 +91,11 @@ run_cfg.datasets = [
     # 'churchland_misc_jenkins.*',
     # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
     # 'churchland_maze_nitschke.*',
-    # 'churchland_misc_reggie-1-qq.*', # reggie covs sus
     # 'churchland_misc_reggie-1413.*',
     # 'churchland_misc_reggie-151n.*',
     # 'churchland_misc_reggie-19eu.*', # clear
     # 'churchland_misc_reggie-1TFV.*', # sus
     # 'churchland_misc_reggie-1eeP.*', # sus-ish. Magnitudes are so small!
-    # 'churchland_misc_reggie-1m8Y.*',
     # 'delay.*'
 ]
 
@@ -145,21 +137,19 @@ pprint(dimensions)
 #%%
 from pathlib import Path
 
-trial_indices = [0, 1, 2]  # Add the trial indices you want to plot
-trial_indices = [0, 1, 2, 3, 4, 5, 6, 7, 8]  # Add the trial indices you want to plot
 # trial_indices = range(40)
-# trial_indices = np.arange(6)
-# trial_indices = np.arange(2)
-# trial_indices = np.arange(12)+12
+# trial_indices = np.arange(0, 36, 9)
+trial_indices = np.arange(0, 27, 9)
+# trial_indices = np.arange(8)
 # trial_indices = np.arange(12)+24
 # trial_indices = np.arange(12)+24+12
 # trial_indices = np.arange(5)
 # trial_indices = np.arange(3)+24+26
-trial_indices = range(4)
+# trial_indices = range(4)
 # trial_indices = range(2)
 USE_CONSTRAINT = False
 USE_RETURN = False
-USE_RETURN = True
+# USE_RETURN = True
 def plot_covs(
         ax,
         trial_cov,
@@ -282,6 +272,7 @@ def plot_multiple_trials(trial_indices, dataset):
         # trial_name = dataset.meta_df.iloc[trial][MetaKey.unique]
         # test = torch.load(dataset.meta_df.iloc[trial]['path'])
         trial_name = '_'.join(Path(dataset.meta_df.iloc[trial]['path']).stem.split('_')[-4:-1])
+        # print(dataset.meta_df.iloc[trial]['path'])
         if trial_name != cur_trial_name:
             cur_trial_name = trial_name
             # Plot vertical, annotate with rotated trial name
