@@ -645,12 +645,6 @@ class BrainBertInterface(pl.LightningModule):
         constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
 
-        if kin_mask_timesteps is not None:
-            # Make sparse, to index
-            if kin_mask_timesteps.any():
-                kin_mask_timesteps = kin_mask_timesteps.nonzero()[0]
-            else:
-                kin_mask_timesteps = None
         # breakpoint()
         if reference:
             time_offset = reference[DataKey.time].max() + 1
@@ -698,7 +692,7 @@ class BrainBertInterface(pl.LightningModule):
     def predict_simple_batch(
         self,
         batch: Dict[BatchKey, torch.Tensor], # Should have batch=1 dimension
-        kin_mask_timesteps: torch.Tensor, # Time
+        kin_mask_timesteps: torch.Tensor, # Time, dense
         last_step_only=False,
         temperature=0.
     ):
@@ -706,13 +700,16 @@ class BrainBertInterface(pl.LightningModule):
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
-
         if kin_mask_timesteps is not None:
+            # Make sparse, to index
+            if kin_mask_timesteps.any():
+                kin_mask_timesteps_sparse = kin_mask_timesteps.nonzero()[0]
+                zero_mask = torch.isin(times, kin_mask_timesteps_sparse)
+            else:
+                raise ValueError("No kinematic mask timesteps provided")
             # * Risk point - we should examine this mask carefully.
             is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input?
             is_kin_mask[:, 0] = False # First token is always valid
-            zero_mask = torch.isin(times, kin_mask_timesteps)
-
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
 
@@ -767,7 +764,8 @@ class BrainBertInterface(pl.LightningModule):
         if not last_step_only:
             # replicate `predict` offline eval infra
             # breakpoint()
-            out[Output.behavior_query_mask] = repeat(~kin_mask_timesteps, 't -> (t b)', b=num_kin)
+            if kin_mask_timesteps is not None:
+                out[Output.behavior_query_mask] = repeat(~kin_mask_timesteps, 't -> (t b)', b=num_kin)
 
             out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
             out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name][0]

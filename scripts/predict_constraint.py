@@ -159,6 +159,8 @@ print(outputs[DataKey.covariate_labels.name])
 prediction = outputs[Output.behavior_pred].cpu()
 target = outputs[Output.behavior].cpu()
 is_student = outputs[Output.behavior_query_mask].cpu().bool()
+
+
 # Compute R2
 r2 = r2_score(target, prediction)
 # print(dataset[0][DataKey.covariate_time][-100:])
