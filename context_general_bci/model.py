@@ -713,7 +713,7 @@ class BrainBertInterface(pl.LightningModule):
 
         # The order of logic here is following the order dictated in the task pipeline
         cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](batch, outputs[:, -cov_query_length:], compute_metrics=False)
-        if ModelTask.return_infill in self.cfg.task.tasks:
+        if Output.return_logits in self.cfg.task.tasks:
             # breakpoint()
             return_logits = self.task_pipelines[ModelTask.return_infill.value](
                 batch,
@@ -729,7 +729,7 @@ class BrainBertInterface(pl.LightningModule):
             else:
                 return_cond = torch.argmax(return_cond)
             # return_cond = torch.ones_like(return_cond) # ! Overwrite.
-            return_cond = None # torch.zeros_like(return_cond) # ! Overwrite.
+            return_cond = torch.zeros_like(return_cond) # ! Overwrite.
         else:
             return_cond = None
         raw_pred = cov_query[Output.behavior_pred]
