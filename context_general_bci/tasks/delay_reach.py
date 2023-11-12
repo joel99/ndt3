@@ -146,7 +146,7 @@ class DelayReachLoader(ExperimentalTaskLoader):
                 trial_spikes[k] = v[-task_cfg.chop_size_ms // cfg.bin_size_ms:]
             trial_vel = trial_vel[-task_cfg.chop_size_ms // cfg.bin_size_ms:]
             if task_cfg.minmax:
-                trial_vel = apply_minmax_norm(trial_vel, global_args)
+                trial_vel, _norm = apply_minmax_norm(trial_vel, global_args)
             # Crop start if necessary
             # trial_vel = vel_dense[(t_start * sampling_rate).astype(int) - min_obs:(t_end * sampling_rate).astype(int) - min_obs]
 
