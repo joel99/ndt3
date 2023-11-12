@@ -514,6 +514,7 @@ class PittConfig(ExperimentalConfig):
     limit_kin_dims: int = 8 # First 8 dims are taken (historically idx 6 is grasp velocity, 7 is grasp force)
     native_resolution_ms: int = 20 # Recording resolution
     causal_smooth_ms: int = 300 # Visually prototyped in `pitt_scratch`, seems good enough to reduce aberrant visual feedback
+    try_stitch_norm: bool = False # Will apply stitching policy to figure normalization
     # clip_kinematics: float = 10.0 # we don't expect values outside this range. Something abberant is happening if we do, clip these.
 
 
@@ -583,6 +584,10 @@ class DatasetConfig:
     augmentations: List[str] = field(default_factory=lambda: [])
     randaug_num: int = 1
     # list of augmentations during dataloading.
+
+    augment_stitch_intrasession: bool = False # Manual dataloading augmentation strategy to introduce both calibration and brain control data in a single trial in dataset based dataloader
+    # This is a highly hacky, dataset-spanning hardcoding augmentation
+    # Mainly to debug whether non-mixed data is making online deployment more brittle
 
     # options: "" no z-scoring, session, global. See also model layer norm on input
 

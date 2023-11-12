@@ -67,6 +67,7 @@ dataset:
   odoherty_rtt:
     chop_size_ms: 15000
   pitt_co:
+    try_stitch_norm: True
     limit_kin_dims: 15 # We scrape up to 14 pos dims and force, rarely expect all to be active
     chop_size_ms: 15000
   miller:

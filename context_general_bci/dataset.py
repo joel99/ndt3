@@ -287,6 +287,13 @@ class SpikingDataset(Dataset):
             # TODO consider filtering meta df to be more lightweight (we don't bother right now because some nonessential attrs can be useful for analysis)
             os.makedirs(hash_dir, exist_ok=True)
             # Clear out the dir, we're regenerating
+            # No manual cache clearing mechanisms! We use a datetime check for now.
+            # Clear the norm cache IFF it's old i.e. we're regenerating the full dataset (this is a heuristic assuming continuity of preprocessing within 2 hours)
+            if context_meta.task == ExperimentalTask.pitt_co:
+                session_root = hash_dir.stem.split('_set')[0]
+                norm_path = hash_dir.parent / f'{session_root}_norm.pth'
+                if norm_path.exists() and (norm_path.stat().st_mtime < (hash_dir.stat().st_mtime - 7200)):
+                    norm_path.unlink()
             for f in os.listdir(hash_dir):
                 os.remove(hash_dir / f)
             meta = context_meta.load(self.cfg, hash_dir)

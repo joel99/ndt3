@@ -133,7 +133,10 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             trial_vel = resample_poly(trial_vel, 1,  cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if cfg.churchland_misc.minmax:
-                trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
+                if global_args['cov_mean'] is not None:
+                    trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
+                else:
+                    trial_vel = trial_vel / global_args['cov_max']
                 trial_vel = torch.clamp(trial_vel, -1, 1)
             return trial_vel
         try:

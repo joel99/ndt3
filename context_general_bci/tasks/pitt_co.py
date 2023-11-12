@@ -1,5 +1,5 @@
 #%%
-from typing import List
+from typing import List, Dict
 from pathlib import Path
 import math
 import numpy as np
@@ -17,7 +17,14 @@ logger = logging.getLogger(__name__)
 from context_general_bci.config import DataKey, DatasetConfig, PittConfig, DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectName, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import chop_vector, compress_vector, compute_return_to_go, get_minmax_norm, PackToChop
+from context_general_bci.tasks.preproc_utils import (
+    chop_vector,
+    compress_vector,
+    compute_return_to_go,
+    get_minmax_norm,
+    apply_minmax_norm,
+    PackToChop
+)
 
 # CLAMP_MAX = 15
 NORMATIVE_MAX_FORCE = 25 # Our prior on the full Pitt dataset. Some FBC data reports exponentially large force
@@ -235,6 +242,55 @@ class PittCOLoader(ExperimentalTaskLoader):
         return new_velocities
 
     @classmethod
+    def load_raw_covariates(
+        cls,
+        datapath: Path,
+        cfg: DatasetConfig,
+        subject: SubjectInfo,
+        task: ExperimentalTask,
+    ):
+        r"""
+            For enabling session-level normalization, we have to load raws
+        """
+        exp_task_cfg: PittConfig = getattr(cfg, task.value)
+        if subject.name == SubjectName.BMI01:
+            sample_bin_ms = 30
+        else:
+            sample_bin_ms = exp_task_cfg.native_resolution_ms
+        downsample = cfg.bin_size_ms / sample_bin_ms
+        if not datapath.is_dir() and datapath.suffix == '.mat': # payload style, preproc-ed/binned elsewhere
+            payload = load_trial(datapath, key='thin_data', limit_dims=exp_task_cfg.limit_kin_dims)
+            kernel = np.ones((int(exp_task_cfg.causal_smooth_ms / sample_bin_ms), 1)) / (exp_task_cfg.causal_smooth_ms / sample_bin_ms)
+            kernel[-kernel.shape[0] // 2:] = 0 # causal, including current timestep
+            if 'position' in payload: # We only "trust" in the labels provided by obs (for now)
+                try:
+                    covariates = PittCOLoader.get_velocity(payload['position'], kernel=kernel)
+                except:
+                    logger.info(f"Failed to get velocity for {datapath}")
+                    covariates = None
+            else:
+                covariates = None
+            # * Force
+            if 'force' in payload: # Force I believe is often strictly positive in our setting (grasp closure force)
+                if not (payload['force'][~payload['force'].isnan()] != 0).sum() > 10: # Some small number of non-zero, not interesting enough.
+                    print('dud force')
+                covariate_force = payload['force']
+                # clamp
+                covariate_force[covariate_force > NORMATIVE_MAX_FORCE] = NORMATIVE_MAX_FORCE
+                covariate_force[covariate_force < NORMATIVE_MIN_FORCE] = NORMATIVE_MIN_FORCE
+                covariate_force = PittCOLoader.smooth(covariate_force, kernel=kernel) # Gary doesn't compute velocity, just absolute. We follow suit.
+                covariates = torch.cat([covariates, covariate_force], 1) if covariates is not None else covariate_force
+                covariates = covariates[int(1000 / cfg.bin_size_ms):]
+            elif covariates is not None:
+                covariates = F.pad(covariates, (0, 1), value=0) # Pad with 0s, so we can still use the same codepath
+            # v2_15s_60ms - we move downsampling to before rescaling/noise suppression. We were worried about spreading around random noise spikes to make it look like actual data, which ruins dropping of nonmeaningful dimensions, but that mxsm wasn't ever reliable or complicated.
+            if downsample > 1 and covariates is not None:
+                covariates = torch.as_tensor(resample_poly(covariates, 1, downsample, axis=0))
+            return covariates
+        else:
+            raise NotImplementedError("Raw covariates only implemented for .mat files")
+
+    @classmethod
     def load(
         cls,
         datapath: Path, # path to matlab file
@@ -321,17 +377,39 @@ class PittCOLoader(ExperimentalTaskLoader):
             # Apply a policy before normalization - if there's minor variance; these values are supposed to be relatively interpretable
             # So tiny variance is just machine/env noise. Zero that out so we don't include those dims. Src: Gary Blumenthal
             if exp_task_cfg.minmax and covariates is not None:
-                covariates, payload_norm = get_minmax_norm(covariates, center_mean=exp_task_cfg.center)
+                if exp_task_cfg.try_stitch_norm:
+                    # check if norm file exists and make it if not
+                    # we assume the same dimensions are used in a session
+                    # Assumes that raw data .mats are of the format, <Subject>_session_<session>_set_<set>.mat. Aim is to crawl as session level, not subject level
+                    session_root = datapath.stem.split('_set')[0]
+                    norm_path = cache_root.parent / f'{session_root}_norm.pth'
+                    if not norm_path.exists():
+                        session_covs = []
+                        for file in sorted(datapath.parent.glob(f'{session_root}_*.mat')):
+                            session_covs.append(cls.load_raw_covariates(file, cfg, subject, task))
+                        filt_cov = [i for i in session_covs if i is not None]
+                        if len(filt_cov) == 0:
+                            torch.save({'cov_mean': None, 'cov_min': None, 'cov_max': None}, norm_path)
+                        else:
+                            session_covs = torch.cat(filt_cov, 0)
+                            session_covs, session_norm = get_minmax_norm(session_covs, center_mean=exp_task_cfg.center)
+                            torch.save(session_norm, norm_path)
+                    else:
+                        session_norm: Dict[str, torch.Tensor | None] = torch.load(norm_path)
+                    # TODO make up a tokenization check to remove above assumption
+                    covariates, payload_norm = apply_minmax_norm(covariates, session_norm)
+                else:
+                    covariates, payload_norm = get_minmax_norm(covariates, center_mean=exp_task_cfg.center)
                 # ! We already issue, but here's we're muting based on raws.
                 # ! Instead we mute based on norms, which we expect to be within a specific value
-                NOISE_THRESHOLDS = torch.full_like(payload_norm['cov_max'], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
+                NOISE_THRESHOLDS = torch.full_like(payload_norm['cov_max'][:covariates.size(-1)], 0.001) # THRESHOLD FOR FORCE IS HIGHER, BUT REALTIME PROCESSING CURRENTLY HAS NO PARITY
                 # Threshold for force is much higher based on spotchecks. Better to allow noise, than to drop true values? IDK.
                 if 'force' in payload: # Force is appended if available
                     NOISE_THRESHOLDS[-covariate_force.size(1):] = 0.008
                 if payload_norm['cov_min'] is not None:
-                    covariates[:, (payload_norm['cov_max'] - payload_norm['cov_min']) < NOISE_THRESHOLDS] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
+                    covariates[:, (payload_norm['cov_max'][:covariates.size(-1)] - payload_norm['cov_min'][:covariates.size(-1)]) < NOISE_THRESHOLDS] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
                 else:
-                    covariates[:, payload_norm['cov_max'] < NOISE_THRESHOLDS // 2] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
+                    covariates[:, payload_norm['cov_max'][:covariates.size(-1)] < NOISE_THRESHOLDS // 2] = 0 # Higher values are too sensitive! We see actual values ranges sometimes around 0.015, careful not to push too high.
                 # rescale = payload['cov_max'] - payload['cov_min']
                 # rescale[torch.isclose(rescale, torch.tensor(0.))] = 1 # avoid div by 0 for inactive dims
                 # covariates = covariates / rescale # Think this rescales to a bit less than 1
