@@ -1881,6 +1881,8 @@ class ClassificationMixin(QuantizeBehavior):
 
     def encode_cov(self, covariate: torch.Tensor):
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
+        # if covariate.max() > 1.0 or covariate.min() < -1.0:
+            # breakpoint()
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1, which is true in tokenized serving)
         # covariate = self.inp_norm(covariate)

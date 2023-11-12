@@ -18,7 +18,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm, apply_minmax_norm
 
 @ExperimentalTaskRegistry.register
 class DelayReachLoader(ExperimentalTaskLoader):
@@ -145,6 +145,8 @@ class DelayReachLoader(ExperimentalTaskLoader):
             for k, v in trial_spikes.items():
                 trial_spikes[k] = v[-task_cfg.chop_size_ms // cfg.bin_size_ms:]
             trial_vel = trial_vel[-task_cfg.chop_size_ms // cfg.bin_size_ms:]
+            if task_cfg.minmax:
+                trial_vel = apply_minmax_norm(trial_vel, global_args)
             # Crop start if necessary
             # trial_vel = vel_dense[(t_start * sampling_rate).astype(int) - min_obs:(t_end * sampling_rate).astype(int) - min_obs]
 

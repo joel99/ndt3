@@ -19,7 +19,7 @@ from context_general_bci.utils import loadmat
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm, apply_minmax_norm
 
 import logging
 
@@ -99,11 +99,7 @@ class DyerCOLoader(ExperimentalTaskLoader):
                 # targets_binned[k] = trialtable[trial_id, 1]
             covariates_binned = torch.as_tensor(covariates_binned)
             if cfg.dyer_co.minmax:
-                if global_args['cov_mean'] is not None:
-                    covariates_binned = (covariates_binned - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
-                else:
-                    covariates_binned = covariates_binned / global_args['cov_max']
-                covariates_binned = torch.clamp(covariates_binned, -1, 1)
+                covariates_binned = apply_minmax_norm(covariates_binned, payload_norm)
             for i in range(num_neurons):
                 spike_times = neurons[i]['ts']
                 neurons_binned[:, i] = np.histogram(spike_times, grid)[0]

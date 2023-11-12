@@ -57,12 +57,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             trial_vel = resample_poly(trial_vel, 1, cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if task_cfg.minmax:
-                if global_args['cov_mean'] is not None:
-                    trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
-                    trial_vel = torch.clamp(trial_vel, -1, 1)
-                else:
-                    trial_vel = trial_vel / global_args['cov_max']
-                    trial_vel = torch.clamp(trial_vel, -1, 1)
+                trial_vel = apply_minmax_norm(trial_vel, global_args)
             return trial_vel
         with NWBHDF5IO(datapath, 'r') as io:
             nwbfile = io.read()

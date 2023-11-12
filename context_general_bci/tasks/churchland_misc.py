@@ -22,7 +22,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload, SubjectName
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm, apply_minmax_norm
 
 
 # Note these comprise a bunch of different tasks, perhaps worth denoting/splitting them
@@ -133,11 +133,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             trial_vel = resample_poly(trial_vel, 1,  cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if cfg.churchland_misc.minmax:
-                if global_args['cov_mean'] is not None:
-                    trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
-                else:
-                    trial_vel = trial_vel / global_args['cov_max']
-                trial_vel = torch.clamp(trial_vel, -1, 1)
+                trial_vel = apply_minmax_norm(trial_vel, global_args)
             return trial_vel
         try:
             with h5py.File(datapath, 'r') as f:
