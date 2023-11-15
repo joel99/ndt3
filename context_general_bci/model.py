@@ -751,7 +751,7 @@ class BrainBertInterface(pl.LightningModule):
             else:
                 return_cond = torch.argmax(return_cond)
             # return_cond = torch.ones_like(return_cond) # ! Overwrite.
-            return_cond = None # torch.zeros_like(return_cond) # ! Overwrite.
+            return_cond = torch.zeros_like(return_cond) # ! Overwrite.
         else:
             return_cond = None
         # return_query = self.task_pipelines[ModelTask.return_infill.value]
