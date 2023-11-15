@@ -625,7 +625,6 @@ class BrainBertInterface(pl.LightningModule):
 
         # Extend the blank covariate to match the length of spikes, effectively our query
         # cov = F.pad(cov, (0, 0, 0, 1)) # Don't need explicit pad, we draw at system level
-        cov_query_length = cov.size(1) # Number of tokens to draw
         cov_time = repeat(torch.arange(cov.size(0), device=spikes.device), 't -> (t s)', s=cov.size(1))
         cov_space = repeat(torch.arange(cov.size(1), device=spikes.device), 's -> (t s)', t=cov.size(0))
         cov = rearrange(cov, 'time space -> 1 (time space) 1')
@@ -665,6 +664,9 @@ class BrainBertInterface(pl.LightningModule):
             constraint_time = torch.cat([batchify(reference[DataKey.constraint_time]), constraint_time + time_offset], dim=1)
             constraint_space = torch.cat([batchify(reference[DataKey.constraint_space]), constraint_space], dim=1)
             constraint = torch.cat([batchify(reference[DataKey.constraint]), constraint], dim=1)
+        # if cov.min() < -1 or cov.max() > 1:
+        #     print(f'Warning: covariate out of bounds {cov.min()} {cov.max()}')
+        #     breakpoint()
         batch: Dict[BatchKey, torch.Tensor] = {
             DataKey.spikes.name: tokenized_spikes,
             DataKey.time.name: times,
@@ -699,6 +701,9 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
+        # print(f'Bhvr: ', batch[DataKey.bhvr_vel.name].min(), batch[DataKey.bhvr_vel.name].max())
+        # print(f'Ret: ', batch[DataKey.task_return.name].min(), batch[DataKey.task_return.name].max())
+        # print(f'Rew: ', batch[DataKey.task_reward.name].min(), batch[DataKey.task_reward.name].max())
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
         if kin_mask_timesteps is not None:
             # Make sparse, to index
