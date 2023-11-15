@@ -22,7 +22,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_3D_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload, SubjectName
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm, apply_minmax_norm
 
 
 # Note these comprise a bunch of different tasks, perhaps worth denoting/splitting them
@@ -122,10 +122,8 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
                 if np.isnan(global_vel).any():
                     logging.warning(f'{global_vel.isnan().sum()} nan values found in velocity, masking out for global calculation')
                     global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
-                global_vel = torch.as_tensor(global_vel, dtype=torch.float)
-                global_args['cov_mean'] = global_vel.mean(0)
-                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0)
-                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
+                global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=cfg.churchland_misc.center)
+                global_args.update(payload_norm)
             return global_args
 
         def preproc_vel(trial_vel, global_args):
@@ -135,8 +133,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             trial_vel = resample_poly(trial_vel, 1,  cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if cfg.churchland_misc.minmax:
-                trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
-                trial_vel = torch.clamp(trial_vel, -1, 1)
+                trial_vel = apply_minmax_norm(trial_vel, global_args)
             return trial_vel
         try:
             with h5py.File(datapath, 'r') as f:

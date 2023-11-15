@@ -998,9 +998,12 @@ class ReturnContext(ContextPipeline):
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         # TODO phase these out given re-generation of PittCO
-        batch[DataKey.task_return.name] = batch[DataKey.task_return.name].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
-        batch[DataKey.task_reward.name] = batch[DataKey.task_reward.name].clamp(min=0)
-        return_embed = self.return_enc(batch[DataKey.task_return.name])
+        # batch[DataKey.task_return.name] = batch[DataKey.task_return.name].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
+        # batch[DataKey.task_reward.name] = batch[DataKey.task_reward.name].clamp(min=0)
+        if self.cfg.return_mute:
+            return_embed = self.return_enc(torch.zeros_like(batch[DataKey.task_return.name]))
+        else:
+            return_embed = self.return_enc(batch[DataKey.task_return.name])
         reward_embed = self.reward_enc(batch[DataKey.task_reward.name])
         times = batch[DataKey.task_return_time.name]
         space = torch.zeros_like(times)
@@ -1878,6 +1881,8 @@ class ClassificationMixin(QuantizeBehavior):
 
     def encode_cov(self, covariate: torch.Tensor):
         # Note: covariate is _not_ foreseeably quantized at this point, we quantize herein during embed.
+        # if covariate.max() > 1.0 or covariate.min() < -1.0:
+            # breakpoint()
         covariate = self.inp(self.quantize(covariate)) # B T Bhvr_Dims -> B T Bhvr_Dims H.
         covariate = covariate.mean(-2) # B T Bhvr_Dims H -> B T H # (Even if Bhvr_dim = 1, which is true in tokenized serving)
         # covariate = self.inp_norm(covariate)

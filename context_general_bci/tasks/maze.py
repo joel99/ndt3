@@ -18,7 +18,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
 
 BLACKLIST_UNITS = [1]
 @ExperimentalTaskRegistry.register
@@ -57,8 +57,7 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
             trial_vel = resample_poly(trial_vel, 1, cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if task_cfg.minmax:
-                trial_vel = (trial_vel - global_args['cov_mean']) / (global_args['cov_max'] - global_args['cov_min'])
-                trial_vel = torch.clamp(trial_vel, -1, 1)
+                trial_vel = apply_minmax_norm(trial_vel, global_args)
             return trial_vel
         with NWBHDF5IO(datapath, 'r') as io:
             nwbfile = io.read()
@@ -80,9 +79,9 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
                 if global_vel.shape[0] > int(1e6): # Too long for quantile, just crop with warning
                     logging.warning(f'Covariate length too long ({global_vel.shape[0]}) for quantile, cropping to 1M')
                     global_vel = global_vel[:int(1e6)]
-                global_args['cov_mean'] = global_vel.mean(0)
-                global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0)
-                global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
+                # Note it's actually 1D here, we normalize per dimension later
+                global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=task_cfg.center)
+                global_args.update(payload_norm)
 
             is_valid = ~(trial_info['discard_trial'][:].astype(bool))
             move_begins = trial_info['move_begins_time'][:]

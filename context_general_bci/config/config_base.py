@@ -208,6 +208,9 @@ class TaskConfig:
     behavior_tolerance: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
     behavior_tolerance_ceil: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
 
+    # Return related items
+    return_mute: bool = False # Mute specifically return stream as a control while we figure out how to condition at test.
+
     decode_separate: bool = False # for bhvr decoding, use a separate transformer decoder? (Only compat with EmbedStrat.token)
     decode_time_pool: str = "" # none or 'mean'
     decode_strategy: EmbedStrat = EmbedStrat.project # or EmbedStrat.token
@@ -455,7 +458,8 @@ class ExperimentalConfig:
     """
     arrays: List[str] = field(default_factory=lambda: []) # Empty list means don't filter
     firing_hz_floor: float = 0.5
-    minmax: bool = True # rescale kinematics to -1, 1
+    center: bool = False # Mean-center the data. This was created and is a breaking change with experiments older than v2_15s_60ms
+    minmax: bool = True # rescale kinematics to -1, 1 based on max magnitude. Applies after centering if true.
     chop_size_ms: int = 15000 # Not universally used but enough that I'm putting it for NDT3
 
     def reproc_dict(self) -> Dict[str, List[str]]:
@@ -510,6 +514,7 @@ class PittConfig(ExperimentalConfig):
     limit_kin_dims: int = 8 # First 8 dims are taken (historically idx 6 is grasp velocity, 7 is grasp force)
     native_resolution_ms: int = 20 # Recording resolution
     causal_smooth_ms: int = 300 # Visually prototyped in `pitt_scratch`, seems good enough to reduce aberrant visual feedback
+    try_stitch_norm: bool = False # Will apply stitching policy to figure normalization
     # clip_kinematics: float = 10.0 # we don't expect values outside this range. Something abberant is happening if we do, clip these.
 
 
@@ -579,6 +584,10 @@ class DatasetConfig:
     augmentations: List[str] = field(default_factory=lambda: [])
     randaug_num: int = 1
     # list of augmentations during dataloading.
+
+    augment_stitch_intrasession: bool = False # Manual dataloading augmentation strategy to introduce both calibration and brain control data in a single trial in dataset based dataloader
+    # This is a highly hacky, dataset-spanning hardcoding augmentation
+    # Mainly to debug whether non-mixed data is making online deployment more brittle
 
     # options: "" no z-scoring, session, global. See also model layer norm on input
 
@@ -737,7 +746,7 @@ class RootConfig:
     nodes: int = 1
     debug: bool = False # for debugging, don't log to wandb, don't save ckpts, etc
 
-BatchKey = str | DataKey | MetaKey
+BatchKey = str | DataKey | MetaKey | Output
 
 def propagate_config(config: RootConfig):
     r"""

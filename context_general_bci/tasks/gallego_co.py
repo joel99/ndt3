@@ -36,7 +36,7 @@ from scipy.signal import decimate
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm, apply_minmax_norm
 
 @ExperimentalTaskRegistry.register
 class GallegoCOLoader(ExperimentalTaskLoader):
@@ -86,11 +86,8 @@ class GallegoCOLoader(ExperimentalTaskLoader):
             # drop nans
             global_vel = global_vel[~np.isnan(global_vel).any(axis=1)]
             global_vel = torch.as_tensor(global_vel, dtype=torch.float)
-            global_args['cov_mean'] = torch.tensor([0.0, 0.0]) # Our prior
-            global_args['cov_min'] = torch.quantile(global_vel, 0.001, dim=0) # sufficient in a quick notebook check.
-            global_args['cov_max'] = torch.quantile(global_vel, 0.999, dim=0)
-            rescale = global_args['cov_max'] - global_args['cov_min']
-            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+            global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=cfg.gallego_co.center)
+            global_args.update(payload_norm)
         arrays_to_use = context_arrays
         print(f"Global args: {global_args}")
         if cfg.pack_dense:
@@ -106,8 +103,7 @@ class GallegoCOLoader(ExperimentalTaskLoader):
                 vel[-1] = vel[-2] # last value is nan, but not easy to crop at same resolution as spikes, so we just roll
             vel = compress_vel(df.vel[trial_id])
             if cfg.gallego_co.minmax:
-                vel = (vel - global_args['cov_mean']) / rescale
-                vel = torch.clamp(vel, -1, 1) # Note dynamic range is typically ~-0.5, 0.5 for -1, 1 rescale like we do. This is for extreme outliers.
+                vel = apply_minmax_norm(vel, global_args)
             single_payload = {
                 DataKey.spikes: spike_payload, # T x H x 1? IIRC?
                 DataKey.bhvr_vel: vel, # T x H

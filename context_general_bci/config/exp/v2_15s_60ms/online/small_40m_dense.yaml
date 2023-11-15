@@ -2,5 +2,5 @@
 
 defaults:
   - _default
-train:
-  batch_size: 32
+dataset:
+  sparse_rewards: False

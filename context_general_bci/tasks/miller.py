@@ -28,6 +28,7 @@ from einops import reduce, rearrange
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS, EMG_CANON_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
+from context_general_bci.tasks.preproc_utils import get_minmax_norm
 
 MILLER_LABELS = [*REACH_DEFAULT_KIN_LABELS, *EMG_CANON_LABELS]
 # No sanitation needed implemented at the moment, only using curated data
@@ -93,14 +94,8 @@ class MillerLoader(ExperimentalTaskLoader):
             vel_pieces.append(torch.as_tensor(my_xds.EMG, dtype=torch.float))
         vel = torch.cat(vel_pieces, 1) # T x H
         if cfg.miller.minmax:
-            # Aggregate velocities and get min/max
-            global_args['cov_mean'] = vel.mean(0)
-            global_args['cov_min'] = torch.quantile(vel, 0.001, dim=0) # sufficient in a quick notebook check.
-            global_args['cov_max'] = torch.quantile(vel, 0.999, dim=0)
-            rescale = global_args['cov_max'] - global_args['cov_min']
-            rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
-            vel = (vel - global_args['cov_mean']) / rescale
-            vel = torch.clamp(vel, -1, 1)
+            vel, payload_norm = get_minmax_norm(vel, center_mean=cfg.miller.center)
+            global_args.update(payload_norm)
 
         spikes = my_xds.spike_counts
         if spikes.shape[0] == vel.shape[0] + 1:

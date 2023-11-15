@@ -202,7 +202,8 @@ def stack_batch(batch_out: List[Dict[str, torch.Tensor | List[str]]], try_collap
                 else:
                     if cov_labels != v:
                         collapsing_cov = False
-            all_lists[k].extend(v)
+            if v is not None:
+                all_lists[k].extend(v)
     if try_collapse_labels and not collapsing_cov:
         print("Warning: could not collapse kinematic labels, return full list")
     if collapsing_cov and cov_labels is not None:
@@ -215,7 +216,7 @@ def stack_batch(batch_out: List[Dict[str, torch.Tensor | List[str]]], try_collap
                 out[k] = torch.stack(v)
             else:
                 out[k] = v
-        elif k in [DataKey.covariate_labels.name]:
+        elif k == DataKey.covariate_labels.name:
             out[k] = v # Don't stack, return as list of lists
         else:
             out[k] = torch.tensor(v).mean() # some metric
