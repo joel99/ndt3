@@ -1,0 +1,23 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    decode_quantize_classes: 256
+    return_mute: False
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_infill
+    task_weights: [1.0, 1.0, 0., 1.0]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    - Metric.return_acc
+dataset:
+  sparse_rewards: False
+train:
+  batch_size: 32
+notes: "40M dense reward"

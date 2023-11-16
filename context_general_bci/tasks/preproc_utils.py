@@ -35,10 +35,12 @@ def apply_minmax_norm(covariates: torch.Tensor | np.ndarray, norm: Dict[str, tor
     """
     covariates = torch.as_tensor(covariates, dtype=torch.float)
     if norm['cov_mean'] is not None and norm['cov_min'] is not None and norm['cov_max'] is not None:
-        # TODO bug here - we don't have the rescale clamping we previously had.
-        covariates = (covariates - norm['cov_mean'][:covariates.size(-1)]) / (norm['cov_max'][:covariates.size(-1)] - norm['cov_min'][:covariates.size(-1)])
+        rescale = norm['cov_max'] - norm['cov_min']
+        rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
+        covariates = covariates - norm['cov_mean'][:covariates.size(-1)]
     else:
-        covariates = covariates / norm['cov_max'][:covariates.size(-1)]
+        rescale = norm['cov_max']
+    covariates = covariates / rescale[:covariates.size(-1)]
     covariates = torch.clamp(covariates, -1, 1)
     return covariates, norm
 
@@ -67,7 +69,7 @@ def get_minmax_norm(covariates: torch.Tensor | np.ndarray, center_mean=False) ->
     if len(original_shape) > 2:
         covariates = covariates.flatten(start_dim=0, end_dim=-2)
     norm = {}
-    if center_mean:
+    if center_mean: # The fact that we don't cache this makes this pretty inefficient
         norm['cov_mean'] = covariates.mean(dim=0)
         norm['cov_min'] = torch.quantile(covariates, 0.001, dim=0)
         norm['cov_max'] = torch.quantile(covariates, 0.999, dim=0)
@@ -78,9 +80,8 @@ def get_minmax_norm(covariates: torch.Tensor | np.ndarray, center_mean=False) ->
         magnitude = torch.quantile(covariates.abs(), 0.999, dim=0)
         norm['cov_mean'] = None
         norm['cov_min'] = None
+        magnitude[torch.isclose(magnitude, torch.tensor(0.))] = 1 # Avoid / 0
         norm['cov_max'] = magnitude
-        rescale = magnitude
-        rescale[torch.isclose(rescale, torch.tensor(0.))] = 1
         covariates = covariates / magnitude
     covariates = torch.clamp(covariates, -1, 1)
     return covariates.reshape(original_shape), norm
