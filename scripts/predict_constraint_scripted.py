@@ -59,7 +59,7 @@ else:
         # 'pitt_broad_pitt_co_CRS08Lab_29_3$',
 
         # OLE FBC
-        # 'pitt_broad_pitt_co_CRS08Lab_25_5$',
+        'pitt_broad_pitt_co_CRS08Lab_25_5$',
         'pitt_broad_pitt_co_CRS08Lab_25_6$',
         # 'pitt_broad_pitt_co_CRS08Lab_29_5$',
         # 'pitt_broad_pitt_co_CRS08Lab_29_6$',
@@ -78,15 +78,19 @@ dataset = SpikingDataset(cfg.dataset)
 
 reference_target = []
 reference_target = [
-    # 'pitt_broad_pitt_co_CRS08Lab_25_6$',
     # 'pitt_broad_pitt_co_CRS08Lab_25_5$',
+    # 'pitt_broad_pitt_co_CRS08Lab_25_6$',
 ]
 
-# reference_target = [
-#     'pitt_broad_pitt_co_CRS08Lab_25_1$',
-#     'pitt_broad_pitt_co_CRS08Lab_25_2$',
-#     'pitt_broad_pitt_co_CRS08Lab_25_3$',
-# ]
+reference_target = [
+    # 'pitt_broad_pitt_co_CRS08Lab_25_1$',
+    # 'pitt_broad_pitt_co_CRS08Lab_25_2$',
+    # 'pitt_broad_pitt_co_CRS08Lab_25_3$',
+
+    # 'pitt_broad_pitt_co_CRS08Lab_29_1$',
+    # 'pitt_broad_pitt_co_CRS08Lab_29_2$',
+    'pitt_broad_pitt_co_CRS08Lab_29_3$',
+]
 if reference_target:
     reference_cfg = deepcopy(cfg)
     reference_cfg.dataset.datasets = reference_target
@@ -111,8 +115,8 @@ def eval_model(
     dataset,
     cue_length_s=3,
     tail_length_s=3,
-    precrop_prompt=12, # For simplicity, all precrop for now. We can evaluate as we change precrop length
-    postcrop_working=3,
+    precrop_prompt=3, # For simplicity, all precrop for now. We can evaluate as we change precrop length
+    postcrop_working=12,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)
@@ -134,13 +138,11 @@ def eval_model(
         batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         if prompt is not None:
             # breakpoint()
-            pseudo_prompt = deepcopy(batch)
+            # pseudo_prompt = deepcopy(batch)
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
+            # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
+            # crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
 
-            crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
-            crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
-            # batch = prepend_prompt(batch, pseudo_crop_prompt)
-            # breakpoint()
             batch = prepend_prompt(batch, crop_prompt)
         # TODO crop batch
 
@@ -186,4 +188,6 @@ all_metrics = []
 for cue_length_s in [3, 6, 9]:
     metrics = eval_model(model, dataset, cue_length_s=cue_length_s)
     all_metrics.append(metrics)
-print(all_metrics)
+import pandas as pd
+df = pd.DataFrame(all_metrics)
+print(df)
