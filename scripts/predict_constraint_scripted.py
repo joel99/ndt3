@@ -78,7 +78,7 @@ dataset = SpikingDataset(cfg.dataset)
 
 reference_target = []
 reference_target = [
-    # 'pitt_broad_pitt_co_CRS08Lab_25_6$',
+    'pitt_broad_pitt_co_CRS08Lab_25_6$',
     # 'pitt_broad_pitt_co_CRS08Lab_25_5$',
 ]
 
@@ -92,7 +92,7 @@ if reference_target:
     reference_cfg.dataset.datasets = reference_target
     reference_dataset = SpikingDataset(reference_cfg.dataset)
     reference_dataset.build_context_index()
-    print(len(reference_dataset))
+    print(f'Ref total: {len(reference_dataset)}')
     prompt = reference_dataset[0]
 else:
     prompt = None
@@ -135,10 +135,12 @@ def eval_model(
         if prompt is not None:
             # breakpoint()
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
-            pseudo_prompt = deepcopy(batch)
-            pseudo_crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
-            batch = prepend_prompt(batch, pseudo_crop_prompt)
-            # batch = prepend_prompt(batch, crop_prompt)
+
+            # pseudo_prompt = deepcopy(batch)
+            # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
+            # batch = prepend_prompt(batch, pseudo_crop_prompt)
+            # breakpoint()
+            batch = prepend_prompt(batch, crop_prompt)
         # TODO crop batch
 
         output = model.predict_simple_batch(

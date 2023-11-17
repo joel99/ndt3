@@ -78,16 +78,16 @@ def postcrop_batch(
         constraint_time = constraint_time[0]
         return {
             sanitize(DataKey.spikes): batch[sanitize(DataKey.spikes)][:, spike_time >= crop_timesteps],
-            sanitize(DataKey.time): batch[sanitize(DataKey.time)][:, spike_time >= crop_timesteps],
+            sanitize(DataKey.time): batch[sanitize(DataKey.time)][:, spike_time >= crop_timesteps] - crop_timesteps,
             sanitize(DataKey.position): batch[sanitize(DataKey.position)][:, spike_time >= crop_timesteps],
             sanitize(DataKey.bhvr_vel): batch[sanitize(DataKey.bhvr_vel)][:, cov_time >= crop_timesteps],
-            sanitize(DataKey.covariate_time): batch[sanitize(DataKey.covariate_time)][:, cov_time >= crop_timesteps],
+            sanitize(DataKey.covariate_time): batch[sanitize(DataKey.covariate_time)][:, cov_time >= crop_timesteps]  - crop_timesteps,
             sanitize(DataKey.covariate_space): batch[sanitize(DataKey.covariate_space)][:, cov_time >= crop_timesteps],
             sanitize(DataKey.task_reward): batch[sanitize(DataKey.task_reward)][:, return_time >= crop_timesteps],
             sanitize(DataKey.task_return): batch[sanitize(DataKey.task_return)][:, return_time >= crop_timesteps],
-            sanitize(DataKey.task_return_time): batch[sanitize(DataKey.task_return_time)][:, return_time >= crop_timesteps],
+            sanitize(DataKey.task_return_time): batch[sanitize(DataKey.task_return_time)][:, return_time >= crop_timesteps]  - crop_timesteps,
             sanitize(DataKey.constraint): batch[sanitize(DataKey.constraint)][:, constraint_time >= crop_timesteps],
-            sanitize(DataKey.constraint_time): batch[sanitize(DataKey.constraint_time)][:, constraint_time >= crop_timesteps],
+            sanitize(DataKey.constraint_time): batch[sanitize(DataKey.constraint_time)][:, constraint_time >= crop_timesteps]  - crop_timesteps,
             sanitize(DataKey.constraint_space): batch[sanitize(DataKey.constraint_space)][:, constraint_time >= crop_timesteps],
             sanitize(DataKey.covariate_labels): batch[sanitize(DataKey.covariate_labels)],
         }
@@ -111,6 +111,7 @@ def prepend_prompt(
     batch_primary,
     prompt, # Assumes batch dim 1, prepended
 ): # In-place mods
+    out = {}
     def batchify(t: torch.Tensor, ref: torch.Tensor): # B x ...
         out_rep = [ref.size(0)] + [1] * (t.dim())
         return t.unsqueeze(0).repeat(out_rep).to(device=ref.device)
@@ -121,10 +122,16 @@ def prepend_prompt(
     for k in prompt: # TODO for cleaner code, make reference use .name to begin with
         # breakpoint()
         # print(k)
+        if not isinstance(prompt[k], torch.Tensor):
+            out[k.name] = prompt[k]
+            continue
         if 'time' in k.name:
-            batch_primary[k.name] = bind_ref(prompt[k], batch_primary[k.name] + time_offset)
+            out[k.name] = bind_ref(prompt[k], batch_primary[k.name] + time_offset)
         else:
-            batch_primary[k.name] = bind_ref(prompt[k], batch_primary[k.name])
-        if k in [DataKey.task_return, DataKey.task_reward]:
-            batch_primary[k.name] = batch_primary[k.name][..., 0] # no hidden dim, TODO not sure why hidden is showing up
-    return batch_primary
+            out[k.name] = bind_ref(prompt[k], batch_primary[k.name])
+        if k in [DataKey.task_return, DataKey.task_reward, DataKey.task_return.name, DataKey.task_reward.name]:
+            out[k.name] = out[k.name][..., 0] # no hidden dim, TODO not sure why hidden is showing up
+    for k in batch_primary:
+        if k not in out:
+            out[k] = batch_primary[k]
+    return out
