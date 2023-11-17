@@ -585,9 +585,7 @@ class BrainBertInterface(pl.LightningModule):
             # print(f"prefix loss: {batch_out['loss']}")
         return batch_out
 
-    @torch.inference_mode()
-    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
-    def predict_simple(
+    def batchify_inference(
         self,
         spikes: torch.Tensor, # Time x Channel
         cov: torch.Tensor, # Time x CovDim
@@ -596,23 +594,7 @@ class BrainBertInterface(pl.LightningModule):
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         task_return_time: torch.Tensor,
-        reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
-        kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
-        temperature=0.,
     ):
-        r"""
-            Assumes single item prediction, no padding.
-            PREDICTS NEXT STEP OF KINEMATIC AND RETURN IF NEEDED
-
-            Supporting real time inference
-            spikes: Time (at token bin size) x Channel
-            cov: Time (at token bin size) x Cov dim - comes in normalized, normalization happens at dataloader level
-
-            kin_mask_timesteps: bool, true if masking timesteps
-
-            to_predict_modality dictates which token is expected to be predicted next
-            DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
-        """
         # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
         # breakpoint()
         pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
@@ -643,30 +625,94 @@ class BrainBertInterface(pl.LightningModule):
         constraint_space = repeat(torch.arange(constraint.size(-1), device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
         constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
+        return (
+            tokenized_spikes,
+            times,
+            positions,
+            cov_time,
+            cov_space,
+            cov,
+            task_return,
+            task_return_time,
+            task_reward,
+            constraint,
+            constraint_space,
+            constraint_time,
+        )
 
-        # breakpoint()
+    @torch.inference_mode()
+    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
+    def predict_simple(
+        self,
+        spikes: torch.Tensor, # Time x Channel
+        cov: torch.Tensor, # Time x CovDim
+        constraint: torch.Tensor, # sparse, # Event x 3 x CovDim
+        constraint_time: torch.Tensor, # sparse # Event
+        task_reward: torch.Tensor,
+        task_return: torch.Tensor,
+        task_return_time: torch.Tensor,
+        reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
+        kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
+        temperature=0.,
+    ):
+        r"""
+            Assumes single item prediction, no padding.
+            PREDICTS NEXT STEP OF KINEMATIC AND RETURN IF NEEDED
+
+            Supporting real time inference
+            spikes: Time (at token bin size) x Channel
+            cov: Time (at token bin size) x Cov dim - comes in normalized, normalization happens at dataloader level
+
+            kin_mask_timesteps: bool, true if masking timesteps
+
+            to_predict_modality dictates which token is expected to be predicted next
+            DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
+            TODO: KV cache
+        """
+        (
+            tokenized_spikes,
+            times,
+            positions,
+            cov_time,
+            cov_space,
+            cov,
+            task_return,
+            task_return_time,
+            task_reward,
+            constraint,
+            constraint_space,
+            constraint_time,
+        ) = self.batchify_inference(
+            spikes,
+            cov,
+            constraint,
+            constraint_time,
+            task_reward,
+            task_return,
+            task_return_time,
+        )
+
         if reference:
             time_offset = reference[DataKey.time].max() + 1
-            def batchify(t: torch.Tensor):
-                return t.unsqueeze(0).to(device=tokenized_spikes.device)
-            tokenized_spikes = torch.cat([
-                batchify(reference[DataKey.spikes]), tokenized_spikes
-            ], dim=1)
-            times = torch.cat([batchify(reference[DataKey.time]), times + time_offset], dim=1)
-            positions = torch.cat([batchify(reference[DataKey.position]), positions], dim=1)
-            cov_time = torch.cat([batchify(reference[DataKey.covariate_time]), cov_time + time_offset], dim=1)
-            cov_space = torch.cat([batchify(reference[DataKey.covariate_space]), cov_space], dim=1)
-            cov = torch.cat([batchify(reference[DataKey.bhvr_vel]), cov], dim=1)
-            task_return = torch.cat([batchify(reference[DataKey.task_return]), task_return], dim=1)[..., 0] # no hidden dim
-            task_reward = torch.cat([batchify(reference[DataKey.task_reward]), task_reward], dim=1)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
-            task_return_time = torch.cat([batchify(reference[DataKey.task_return_time]), task_return_time + time_offset], dim=1)
+            def batchify(t: torch.Tensor, ref: torch.Tensor): # B x ...
+                out_rep = [ref.size(0)] + [1] * (t.dim() - 1)
+                return t.unsqueeze(0).repeat(out_rep).to(device=ref.device)
+            def bind_ref(t: torch.Tensor, ref: torch.Tensor):
+                return torch.cat([batchify(t, ref), ref], dim=1)
+            tokenized_spikes = bind_ref(reference[DataKey.spikes], tokenized_spikes)
+            times = bind_ref(reference[DataKey.time], times + time_offset)
+            positions = bind_ref(reference[DataKey.position], positions)
+            cov_time = bind_ref(reference[DataKey.covariate_time], cov_time + time_offset)
+            cov_space = bind_ref(reference[DataKey.covariate_space], cov_space)
+            cov = bind_ref(reference[DataKey.bhvr_vel], cov)
+            task_return = bind_ref(reference[DataKey.task_return], task_return)[..., 0] # no hidden dim
+            task_reward = bind_ref(reference[DataKey.task_reward], task_reward)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
+            task_return_time = bind_ref(reference[DataKey.task_return_time], task_return_time + time_offset)
             # constraint not dealt with or even offset for now
-            constraint_time = torch.cat([batchify(reference[DataKey.constraint_time]), constraint_time + time_offset], dim=1)
-            constraint_space = torch.cat([batchify(reference[DataKey.constraint_space]), constraint_space], dim=1)
-            constraint = torch.cat([batchify(reference[DataKey.constraint]), constraint], dim=1)
-        # if cov.min() < -1 or cov.max() > 1:
-        #     print(f'Warning: covariate out of bounds {cov.min()} {cov.max()}')
-        #     breakpoint()
+            constraint_time = bind_ref(reference[DataKey.constraint_time], constraint_time + time_offset)
+            constraint_space = bind_ref(reference[DataKey.constraint_space], constraint_space)
+            constraint = bind_ref(reference[DataKey.constraint], constraint)
+
         batch: Dict[BatchKey, torch.Tensor] = {
             DataKey.spikes.name: tokenized_spikes,
             DataKey.time.name: times,

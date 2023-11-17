@@ -66,9 +66,20 @@ else:
         # 'pitt_broad_pitt_co_CRS08Lab_10_.*',
 
         # NDT runs
-        'pitt_broad_pitt_co_CRS08Lab_29_1$',
-        'pitt_broad_pitt_co_CRS08Lab_29_2$',
-        'pitt_broad_pitt_co_CRS08Lab_29_3$',
+        # OL
+        # 'pitt_broad_pitt_co_CRS08Lab_25_1$',
+        # 'pitt_broad_pitt_co_CRS08Lab_25_2$',
+        # 'pitt_broad_pitt_co_CRS08Lab_25_3$',
+
+        # 'pitt_broad_pitt_co_CRS08Lab_29_1$',
+        # 'pitt_broad_pitt_co_CRS08Lab_29_2$',
+        # 'pitt_broad_pitt_co_CRS08Lab_29_3$',
+
+        # OLE FBC
+        'pitt_broad_pitt_co_CRS08Lab_25_5$',
+        'pitt_broad_pitt_co_CRS08Lab_25_6$',
+        'pitt_broad_pitt_co_CRS08Lab_29_5$',
+        'pitt_broad_pitt_co_CRS08Lab_29_6$',
 
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
@@ -137,7 +148,7 @@ def eval_model(model: BrainBertInterface, dataset, cue_length_s=3, tail_length_s
     # print(outputs[Output.behavior].shape)
     # print(outputs[DataKey.covariate_labels.name])
     prediction = outputs[Output.behavior_pred].cpu()
-    print(prediction.sum())
+    # print(prediction.sum())
     target = outputs[Output.behavior].cpu()
     is_student = outputs[Output.behavior_query_mask].cpu().bool()
 
@@ -161,7 +172,6 @@ def eval_model(model: BrainBertInterface, dataset, cue_length_s=3, tail_length_s
 for cue_length_s in [3, 6, 9]:
     eval_model(model, dataset, cue_length_s=cue_length_s)
 
-print("hi")
 #%%
 
 f = plt.figure(figsize=(10, 10))
