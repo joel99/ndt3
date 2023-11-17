@@ -17,20 +17,47 @@ def precrop_batch(
     cov_time = batch[sanitize(DataKey.covariate_time)]
     return_time = batch[sanitize(DataKey.task_return_time)]
     constraint_time = batch[sanitize(DataKey.constraint_time)]
-    return {
-        sanitize(DataKey.spikes): batch[sanitize(DataKey.spikes)][spike_time < crop_timesteps],
-        sanitize(DataKey.time): spike_time[spike_time < crop_timesteps],
-        sanitize(DataKey.position): batch[sanitize(DataKey.position)][spike_time < crop_timesteps],
-        sanitize(DataKey.bhvr_vel): batch[sanitize(DataKey.bhvr_vel)][cov_time < crop_timesteps],
-        sanitize(DataKey.covariate_time): cov_time[cov_time < crop_timesteps],
-        sanitize(DataKey.covariate_space): batch[sanitize(DataKey.covariate_space)][cov_time < crop_timesteps],
-        sanitize(DataKey.task_reward): batch[sanitize(DataKey.task_reward)][return_time < crop_timesteps],
-        sanitize(DataKey.task_return): batch[sanitize(DataKey.task_return)][return_time < crop_timesteps],
-        sanitize(DataKey.task_return_time): return_time[return_time < crop_timesteps],
-        sanitize(DataKey.constraint): batch[sanitize(DataKey.constraint)][constraint_time < crop_timesteps],
-        sanitize(DataKey.constraint_time): constraint_time[constraint_time < crop_timesteps],
-        sanitize(DataKey.constraint_space): batch[sanitize(DataKey.constraint_space)][constraint_time < crop_timesteps],
-    }
+
+    flatten = spike_time.ndim == 2
+    if flatten:
+        logging.warning("Assuming consistent time across batch")
+        spike_time = spike_time[0]
+        cov_time = cov_time[0]
+        return_time = return_time[0]
+        constraint_time = constraint_time[0]
+        out = {
+            sanitize(DataKey.spikes): batch[sanitize(DataKey.spikes)][:, spike_time < crop_timesteps],
+            sanitize(DataKey.time): batch[sanitize(DataKey.time)][:, spike_time < crop_timesteps],
+            sanitize(DataKey.position): batch[sanitize(DataKey.position)][:, spike_time < crop_timesteps],
+            sanitize(DataKey.bhvr_vel): batch[sanitize(DataKey.bhvr_vel)][:, cov_time < crop_timesteps],
+            sanitize(DataKey.covariate_time): batch[sanitize(DataKey.covariate_time)][:, cov_time < crop_timesteps],
+            sanitize(DataKey.covariate_space): batch[sanitize(DataKey.covariate_space)][:, cov_time < crop_timesteps],
+            sanitize(DataKey.task_reward): batch[sanitize(DataKey.task_reward)][:, return_time < crop_timesteps],
+            sanitize(DataKey.task_return): batch[sanitize(DataKey.task_return)][:, return_time < crop_timesteps],
+            sanitize(DataKey.task_return_time): batch[sanitize(DataKey.task_return_time)][:, return_time < crop_timesteps],
+            sanitize(DataKey.constraint): batch[sanitize(DataKey.constraint)][:, constraint_time < crop_timesteps],
+            sanitize(DataKey.constraint_time): batch[sanitize(DataKey.constraint_time)][:, constraint_time < crop_timesteps],
+            sanitize(DataKey.constraint_space): batch[sanitize(DataKey.constraint_space)][:, constraint_time < crop_timesteps],
+
+        }
+    else:
+        out = {
+            sanitize(DataKey.spikes): batch[sanitize(DataKey.spikes)][spike_time < crop_timesteps],
+            sanitize(DataKey.time): spike_time[spike_time < crop_timesteps],
+            sanitize(DataKey.position): batch[sanitize(DataKey.position)][spike_time < crop_timesteps],
+            sanitize(DataKey.bhvr_vel): batch[sanitize(DataKey.bhvr_vel)][cov_time < crop_timesteps],
+            sanitize(DataKey.covariate_time): cov_time[cov_time < crop_timesteps],
+            sanitize(DataKey.covariate_space): batch[sanitize(DataKey.covariate_space)][cov_time < crop_timesteps],
+            sanitize(DataKey.task_reward): batch[sanitize(DataKey.task_reward)][return_time < crop_timesteps],
+            sanitize(DataKey.task_return): batch[sanitize(DataKey.task_return)][return_time < crop_timesteps],
+            sanitize(DataKey.task_return_time): return_time[return_time < crop_timesteps],
+            sanitize(DataKey.constraint): batch[sanitize(DataKey.constraint)][constraint_time < crop_timesteps],
+            sanitize(DataKey.constraint_time): constraint_time[constraint_time < crop_timesteps],
+            sanitize(DataKey.constraint_space): batch[sanitize(DataKey.constraint_space)][constraint_time < crop_timesteps],
+        }
+    if sanitize(DataKey.covariate_labels) in batch:
+        out[sanitize(DataKey.covariate_labels)] = batch[sanitize(DataKey.covariate_labels)]
+    return out
 
 def postcrop_batch(
     batch: Dict[BatchKey, torch.Tensor],

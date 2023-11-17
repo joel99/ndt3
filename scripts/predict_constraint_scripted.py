@@ -78,7 +78,7 @@ dataset = SpikingDataset(cfg.dataset)
 
 reference_target = []
 reference_target = [
-    'pitt_broad_pitt_co_CRS08Lab_25_6$',
+    # 'pitt_broad_pitt_co_CRS08Lab_25_6$',
     # 'pitt_broad_pitt_co_CRS08Lab_25_5$',
 ]
 
@@ -105,7 +105,6 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to('cuda')
 
-# ! Need to figure how to intervene on batch
 #%%
 def eval_model(
     model: BrainBertInterface,
@@ -136,7 +135,10 @@ def eval_model(
         if prompt is not None:
             # breakpoint()
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
-            batch = prepend_prompt(batch, crop_prompt)
+            pseudo_prompt = deepcopy(batch)
+            pseudo_crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
+            batch = prepend_prompt(batch, pseudo_crop_prompt)
+            # batch = prepend_prompt(batch, crop_prompt)
         # TODO crop batch
 
         output = model.predict_simple_batch(
