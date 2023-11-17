@@ -1,7 +1,6 @@
 from typing import Dict
 import logging
 import torch
-
 from context_general_bci.config import DataKey, BatchKey
 
 r"""
@@ -63,6 +62,7 @@ def postcrop_batch(
     batch: Dict[BatchKey, torch.Tensor],
     crop_timesteps: int,
 ):
+    # ! In place mod
     # Hm. This will flatten the batch, since there's no guarantees. OK, we'll just squeeze out the time dimension
     sanitize = lambda x: x.name if x.name in batch else x  # stringify
     spike_time = batch[sanitize(DataKey.time)]
@@ -109,7 +109,7 @@ def postcrop_batch(
 
 def prepend_prompt(
     batch_primary,
-    prompt, # Assumes batch dim 1, prepended
+    prompt, # Assumes batch dim 1, prepended. right now, k may be str or enum
 ): # In-place mods
     out = {}
     def batchify(t: torch.Tensor, ref: torch.Tensor): # B x ...
@@ -118,19 +118,23 @@ def prepend_prompt(
     def bind_ref(t: torch.Tensor, ref: torch.Tensor):
         # breakpoint()
         return torch.cat([batchify(t, ref), ref], dim=1)
-    time_offset = prompt[DataKey.time].max() + 1
+    if DataKey.time in prompt:
+        time_offset = prompt[DataKey.time].max() + 1
+    else:
+        time_offset = prompt[DataKey.time.name].max() + 1
     for k in prompt: # TODO for cleaner code, make reference use .name to begin with
         # breakpoint()
         # print(k)
+        is_str = isinstance(k, str)
         if not isinstance(prompt[k], torch.Tensor):
-            out[k.name] = prompt[k]
+            out[k if is_str else k.name] = prompt[k]
             continue
-        if 'time' in k.name:
-            out[k.name] = bind_ref(prompt[k], batch_primary[k.name] + time_offset)
+        if 'time' in str(k):
+            out[k if is_str else k.name] = bind_ref(prompt[k], batch_primary[k if is_str else k.name] + time_offset)
         else:
-            out[k.name] = bind_ref(prompt[k], batch_primary[k.name])
+            out[k if is_str else k.name] = bind_ref(prompt[k], batch_primary[k if is_str else k.name])
         if k in [DataKey.task_return, DataKey.task_reward, DataKey.task_return.name, DataKey.task_reward.name]:
-            out[k.name] = out[k.name][..., 0] # no hidden dim, TODO not sure why hidden is showing up
+            out[k if is_str else k.name] = out[k if is_str else k.name][..., 0] # no hidden dim, TODO not sure why hidden is showing up
     for k in batch_primary:
         if k not in out:
             out[k] = batch_primary[k]

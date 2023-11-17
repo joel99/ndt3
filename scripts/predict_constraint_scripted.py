@@ -78,7 +78,7 @@ dataset = SpikingDataset(cfg.dataset)
 
 reference_target = []
 reference_target = [
-    'pitt_broad_pitt_co_CRS08Lab_25_6$',
+    # 'pitt_broad_pitt_co_CRS08Lab_25_6$',
     # 'pitt_broad_pitt_co_CRS08Lab_25_5$',
 ]
 
@@ -134,10 +134,11 @@ def eval_model(
         batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         if prompt is not None:
             # breakpoint()
+            pseudo_prompt = deepcopy(batch)
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
 
-            # pseudo_prompt = deepcopy(batch)
-            # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
+            crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
+            crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
             # batch = prepend_prompt(batch, pseudo_crop_prompt)
             # breakpoint()
             batch = prepend_prompt(batch, crop_prompt)
