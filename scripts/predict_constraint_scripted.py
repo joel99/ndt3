@@ -139,7 +139,9 @@ def eval_model(
         if prompt is not None:
             # breakpoint()
             # pseudo_prompt = deepcopy(batch)
+            # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
+            # print(f'After: {batch[DataKey.constraint.name].shape}')
             # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
             # crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
 
