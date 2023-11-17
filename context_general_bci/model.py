@@ -585,6 +585,8 @@ class BrainBertInterface(pl.LightningModule):
             # print(f"prefix loss: {batch_out['loss']}")
         return batch_out
 
+    @torch.inference_mode()
+    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
     def batchify_inference(
         self,
         spikes: torch.Tensor, # Time x Channel
@@ -594,7 +596,7 @@ class BrainBertInterface(pl.LightningModule):
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         task_return_time: torch.Tensor,
-    ):
+    ) -> Dict[BatchKey, torch.Tensor]:
         # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
         # breakpoint()
         pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
@@ -625,25 +627,42 @@ class BrainBertInterface(pl.LightningModule):
         constraint_space = repeat(torch.arange(constraint.size(-1), device=spikes.device), 'b -> 1 (t b)', t=constraint.size(0))
         constraint_time = repeat(constraint_time, 't -> 1 (t b)', b=constraint.size(-1))
         constraint = rearrange(constraint, 'time constraint cov -> 1 (time cov) constraint')
-        return (
-            tokenized_spikes,
-            times,
-            positions,
-            cov_time,
-            cov_space,
-            cov,
-            task_return,
-            task_return_time,
-            task_reward,
-            constraint,
-            constraint_space,
-            constraint_time,
-        )
+        return {
+            DataKey.spikes.name: tokenized_spikes,
+            DataKey.time.name: times,
+            DataKey.position.name: positions,
+            DataKey.covariate_time.name: cov_time,
+            DataKey.covariate_space.name: cov_space,
+            DataKey.bhvr_vel.name: cov,
+            DataKey.task_return.name: task_return,
+            DataKey.task_return_time.name: task_return_time,
+            DataKey.task_reward.name: task_reward,
+            DataKey.constraint.name: constraint,
+            DataKey.constraint_space.name: constraint_space,
+            DataKey.constraint_time.name: constraint_time,
+        }
 
-    def merge_batch(
+    @torch.inference_mode()
+    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
+    def prepend_prompt(
         self,
-    ):
-        pass
+        batch_primary,
+        batch_prompt, # Assumes batch dim 1, prepended
+    ): # In-place mods
+        def batchify(t: torch.Tensor, ref: torch.Tensor): # B x ...
+            out_rep = [ref.size(0)] + [1] * (t.dim() - 1)
+            return t.unsqueeze(0).repeat(out_rep).to(device=ref.device)
+        def bind_ref(t: torch.Tensor, ref: torch.Tensor):
+            return torch.cat([batchify(t, ref), ref], dim=1)
+        time_offset = batch_prompt[DataKey.time].max() + 1
+        for k in batch_prompt: # TODO for cleaner code, make reference use .name to begin with
+            if 'time' in k.name:
+                batch_primary[k.name] = bind_ref(batch_prompt[k], batch_primary[k.name] + time_offset)
+            else:
+                batch_primary[k.name] = bind_ref(batch_prompt[k], batch_primary[k.name])
+            if k in [DataKey.task_return, DataKey.task_reward]:
+                batch_primary[k.name] = batch_primary[k.name][..., 0] # no hidden dim, TODO not sure why hidden is showing up
+        return batch_primary
 
     @torch.inference_mode()
     @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
@@ -674,20 +693,7 @@ class BrainBertInterface(pl.LightningModule):
             DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
             TODO: KV cache
         """
-        (
-            tokenized_spikes,
-            times,
-            positions,
-            cov_time,
-            cov_space,
-            cov,
-            task_return,
-            task_return_time,
-            task_reward,
-            constraint,
-            constraint_space,
-            constraint_time,
-        ) = self.batchify_inference(
+        batch = self.batchify_inference(
             spikes,
             cov,
             constraint,
@@ -698,40 +704,8 @@ class BrainBertInterface(pl.LightningModule):
         )
 
         if reference:
-            time_offset = reference[DataKey.time].max() + 1
-            def batchify(t: torch.Tensor, ref: torch.Tensor): # B x ...
-                out_rep = [ref.size(0)] + [1] * (t.dim() - 1)
-                return t.unsqueeze(0).repeat(out_rep).to(device=ref.device)
-            def bind_ref(t: torch.Tensor, ref: torch.Tensor):
-                return torch.cat([batchify(t, ref), ref], dim=1)
-            tokenized_spikes = bind_ref(reference[DataKey.spikes], tokenized_spikes)
-            times = bind_ref(reference[DataKey.time], times + time_offset)
-            positions = bind_ref(reference[DataKey.position], positions)
-            cov_time = bind_ref(reference[DataKey.covariate_time], cov_time + time_offset)
-            cov_space = bind_ref(reference[DataKey.covariate_space], cov_space)
-            cov = bind_ref(reference[DataKey.bhvr_vel], cov)
-            task_return = bind_ref(reference[DataKey.task_return], task_return)[..., 0] # no hidden dim
-            task_reward = bind_ref(reference[DataKey.task_reward], task_reward)[..., 0] # no hidden dim, TODO not sure why hidden is showing up
-            task_return_time = bind_ref(reference[DataKey.task_return_time], task_return_time + time_offset)
-            # constraint not dealt with or even offset for now
-            constraint_time = bind_ref(reference[DataKey.constraint_time], constraint_time + time_offset)
-            constraint_space = bind_ref(reference[DataKey.constraint_space], constraint_space)
-            constraint = bind_ref(reference[DataKey.constraint], constraint)
+            batch = self.prepend_prompt(batch, reference)
 
-        batch: Dict[BatchKey, torch.Tensor] = {
-            DataKey.spikes.name: tokenized_spikes,
-            DataKey.time.name: times,
-            DataKey.position.name: positions,
-            DataKey.covariate_time.name: cov_time,
-            DataKey.covariate_space.name: cov_space,
-            DataKey.bhvr_vel.name: cov,
-            DataKey.task_return.name: task_return,
-            DataKey.task_return_time.name: task_return_time,
-            DataKey.task_reward.name: task_reward,
-            DataKey.constraint.name: constraint,
-            DataKey.constraint_space.name: constraint_space,
-            DataKey.constraint_time.name: constraint_time,
-        }
         return self.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
