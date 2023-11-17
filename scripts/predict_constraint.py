@@ -11,7 +11,7 @@ import lightning.pytorch as pl
 
 from sklearn.metrics import r2_score
 
-from context_general_bci.model import transfer_model
+from context_general_bci.model import transfer_model, BrainBertInterface
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import RootConfig, ModelTask, Metric, Output, DataKey, MetaKey
 from context_general_bci.contexts import context_registry
@@ -101,27 +101,25 @@ pl.seed_everything(0)
 print("Eval length: ", len(dataset))
 data_attrs = dataset.get_data_attrs()
 print(data_attrs)
-
-# ! Need to figure how to intervene on batch
-
-
 model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to('cuda')
-dataloader = get_dataloader(dataset, batch_size=1, num_workers=16)
 
-def eval_model(model, dataloader, cue_length_s=3, tail_length_s=3):
+# ! Need to figure how to intervene on batch
+#%%
+
+def eval_model(model: BrainBertInterface, dataset, cue_length_s=3, tail_length_s=3):
+    dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     # TODO
-    print(f'Cue: {cue_length_s}')
-    cue_length = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)
+    # print(f'Cue: {cue_length_s}')
+    model.cfg.eval.teacher_timesteps = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)
     total_bins = round(cfg.dataset.pitt_co.chop_size_ms // cfg.dataset.bin_size_ms)
     eval_bins = round(tail_length_s * 1000 // cfg.dataset.bin_size_ms)
-    gap = total_bins - eval_bins - cue_length
+    model.cfg.eval.student_gap = total_bins - eval_bins - model.cfg.eval.teacher_timesteps
     kin_mask_timesteps = torch.zeros(total_bins, device='cuda', dtype=torch.bool)
-    kin_mask_timesteps[:cue_length] = 1
-    print(f'Total: {total_bins}')
-    print(f'Cue: {cue_length}')
-    print(f'Gap: {gap}')
+    kin_mask_timesteps[:model.cfg.eval.teacher_timesteps] = 1
+    print(model.cfg.eval)
+    # print(f'Total: {total_bins}')
 
     outputs = []
     for batch in dataloader:
@@ -135,17 +133,18 @@ def eval_model(model, dataloader, cue_length_s=3, tail_length_s=3):
 
     outputs = stack_batch(outputs)
 
-    print(outputs[Output.behavior_pred].shape)
-    print(outputs[Output.behavior].shape)
-    print(outputs[DataKey.covariate_labels.name])
+    # print(outputs[Output.behavior_pred].shape)
+    # print(outputs[Output.behavior].shape)
+    # print(outputs[DataKey.covariate_labels.name])
     prediction = outputs[Output.behavior_pred].cpu()
+    print(prediction.sum())
     target = outputs[Output.behavior].cpu()
     is_student = outputs[Output.behavior_query_mask].cpu().bool()
 
     # Compute R2
     r2 = r2_score(target, prediction)
     is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-    valid = is_student_rolling > (gap * len(outputs[DataKey.covariate_labels.name]))
+    valid = is_student_rolling > (model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
     # print(gap * len(outputs[DataKey.covariate_labels.name]))
     # plt.plot(is_student_rolling)
     # plt.hlines(gap * len(outputs[DataKey.covariate_labels.name]), 0, 1000, )
@@ -157,11 +156,12 @@ def eval_model(model, dataloader, cue_length_s=3, tail_length_s=3):
     print(f'MSE: {mse:.4f}')
     print(f'R2: {r2:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
-    print(model.cfg.eval)
 
 
 for cue_length_s in [3, 6, 9]:
-    eval_model(model, dataloader, cue_length_s=cue_length_s)
+    eval_model(model, dataset, cue_length_s=cue_length_s)
+
+print("hi")
 #%%
 
 f = plt.figure(figsize=(10, 10))

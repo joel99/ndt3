@@ -708,13 +708,14 @@ class BrainBertInterface(pl.LightningModule):
         if kin_mask_timesteps is not None:
             # Make sparse, to index
             if kin_mask_timesteps.any():
-                kin_mask_timesteps_sparse = kin_mask_timesteps.nonzero()[0]
+                kin_mask_timesteps_sparse = kin_mask_timesteps.nonzero()[:, 0]
                 zero_mask = torch.isin(times, kin_mask_timesteps_sparse)
             else:
                 raise ValueError("No kinematic mask timesteps provided")
             # * Risk point - we should examine this mask carefully.
             is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input?
             is_kin_mask[:, 0] = False # First token is always valid
+            # breakpoint()
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
 
