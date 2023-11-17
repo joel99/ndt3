@@ -42,6 +42,9 @@ from context_general_bci.utils import (
     unflatten,
     cosine_schedule,
 )
+from context_general_bci.streaming_utils import (
+    prepend_prompt
+)
 
 logger = logging.getLogger(__name__)
 
@@ -644,28 +647,6 @@ class BrainBertInterface(pl.LightningModule):
 
     @torch.inference_mode()
     @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
-    def prepend_prompt(
-        self,
-        batch_primary,
-        batch_prompt, # Assumes batch dim 1, prepended
-    ): # In-place mods
-        def batchify(t: torch.Tensor, ref: torch.Tensor): # B x ...
-            out_rep = [ref.size(0)] + [1] * (t.dim() - 1)
-            return t.unsqueeze(0).repeat(out_rep).to(device=ref.device)
-        def bind_ref(t: torch.Tensor, ref: torch.Tensor):
-            return torch.cat([batchify(t, ref), ref], dim=1)
-        time_offset = batch_prompt[DataKey.time].max() + 1
-        for k in batch_prompt: # TODO for cleaner code, make reference use .name to begin with
-            if 'time' in k.name:
-                batch_primary[k.name] = bind_ref(batch_prompt[k], batch_primary[k.name] + time_offset)
-            else:
-                batch_primary[k.name] = bind_ref(batch_prompt[k], batch_primary[k.name])
-            if k in [DataKey.task_return, DataKey.task_reward]:
-                batch_primary[k.name] = batch_primary[k.name][..., 0] # no hidden dim, TODO not sure why hidden is showing up
-        return batch_primary
-
-    @torch.inference_mode()
-    @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
     def predict_simple(
         self,
         spikes: torch.Tensor, # Time x Channel
@@ -686,6 +667,7 @@ class BrainBertInterface(pl.LightningModule):
             Supporting real time inference
             spikes: Time (at token bin size) x Channel
             cov: Time (at token bin size) x Cov dim - comes in normalized, normalization happens at dataloader level
+            reference: Single dataset.__getitem__! Not a batch!
 
             kin_mask_timesteps: bool, true if masking timesteps
 
@@ -702,15 +684,14 @@ class BrainBertInterface(pl.LightningModule):
             task_return,
             task_return_time,
         )
-
-        if reference:
-            batch = self.prepend_prompt(batch, reference)
+        if reference is not None:
+            batch = prepend_prompt(batch, reference)
 
         return self.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
             last_step_only=True,  # default for online prediction
-            temperature=temperature
+            temperature=temperature,
         )
 
 
@@ -721,8 +702,9 @@ class BrainBertInterface(pl.LightningModule):
         batch: Dict[BatchKey, torch.Tensor], # Should have batch=1 dimension
         kin_mask_timesteps: torch.Tensor, # Time, dense
         last_step_only=False,
-        temperature=0.
+        temperature=0.,
     ):
+
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
