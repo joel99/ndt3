@@ -1,7 +1,7 @@
 #%%
 # Testing online parity, using open predict
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+os.environ['CUDA_VISIBLE_DEVICES'] = '1'
 
 from matplotlib import pyplot as plt
 import numpy as np
@@ -49,7 +49,7 @@ else:
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
-        'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
         # 'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
 
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2', # Ortho
@@ -65,25 +65,11 @@ else:
         # 'pitt_broad_pitt_co_CRS08Lab_36_.*',
         # 'pitt_broad_pitt_co_CRS08Lab_10_.*',
 
-        # 'miller_Jango-Jango_20150730_001',
-        # 'dyer_co_chewie_2',
-        # 'gallego_co_Chewie_CO_20160510',
-        # 'churchland_misc_jenkins-10cXhCDnfDlcwVJc_elZwjQLLsb_d7xYI',
-        # 'churchland_maze_jenkins.*'
+        # NDT runs
+        'pitt_broad_pitt_co_CRS08Lab_29_1$',
+        'pitt_broad_pitt_co_CRS08Lab_29_2$',
+        'pitt_broad_pitt_co_CRS08Lab_29_3$',
 
-        # 'odoherty_rtt-Indy-20160627_01', # Robust ref - goal 0.7
-
-        # 'odoherty_rtt-Indy-20160407_02',
-        # 'odoherty_rtt-Indy-20160627_01',
-        # 'odoherty_rtt-Indy-20161005_06',
-        # 'odoherty_rtt-Indy-20161026_03',
-        # 'odoherty_rtt-Indy-20170131_02',
-
-        # 'pitt_broad_pitt_co_CRS02bLab_1899', # Some error here. But this is 2d, so leaving for now...
-        # 'pitt_broad_pitt_co_CRS02bLab_1761',
-        # 'pitt_broad_pitt_co_CRS07Home_32',
-        # 'pitt_broad_pitt_co_CRS07Home_88',
-        # 'pitt_broad_pitt_co_CRS02bLab_1776_1.*'
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
     # data_label = 'grasp'
@@ -116,69 +102,67 @@ print("Eval length: ", len(dataset))
 data_attrs = dataset.get_data_attrs()
 print(data_attrs)
 
-model = transfer_model(src_model, cfg.model, data_attrs)
-
-CUE_LENGTH_S = 1
-CUE_LENGTH_S = 3
-# CUE_LENGTH_S = 9
-# CUE_LENGTH_S = 30
-
-EVAL_GAP_S = 45 - CUE_LENGTH_S - 6 # TAIL
-EVAL_GAP_S = 45 - CUE_LENGTH_S - 40 # TAIL
-
-# TODO assemble a kin mask from this
-# trainer = pl.Trainer(
-#     accelerator='gpu', devices=1, default_root_dir='./data/tmp',
-#     precision='bf16-mixed',
-# )
-# outputs = stack_batch(trainer.predict(model, dataloader))#%%
-#%%
-outputs = []
-dataloader = get_dataloader(dataset, batch_size=1, num_workers=16)
-model.eval()
-model = model.to('cuda')
-kin_mask_timesteps = torch.zeros(250, device='cuda', dtype=torch.bool)
-kin_mask_timesteps[:200] = 1
-for batch in dataloader:
-    batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-    output = model.predict_simple_batch(
-        batch,
-        kin_mask_timesteps=kin_mask_timesteps,
-        last_step_only=False
-    )
-    outputs.append(output)
-
-outputs = stack_batch(outputs)
-
 # ! Need to figure how to intervene on batch
 
-print(outputs[Output.behavior_pred].shape)
-print(outputs[Output.behavior].shape)
-print(outputs[DataKey.covariate_labels.name])
+
+model = transfer_model(src_model, cfg.model, data_attrs)
+model.eval()
+model = model.to('cuda')
+dataloader = get_dataloader(dataset, batch_size=1, num_workers=16)
+
+def eval_model(model, dataloader, cue_length_s=3, tail_length_s=3):
+    # TODO
+    print(f'Cue: {cue_length_s}')
+    cue_length = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)
+    total_bins = round(cfg.dataset.pitt_co.chop_size_ms // cfg.dataset.bin_size_ms)
+    eval_bins = round(tail_length_s * 1000 // cfg.dataset.bin_size_ms)
+    gap = total_bins - eval_bins - cue_length
+    kin_mask_timesteps = torch.zeros(total_bins, device='cuda', dtype=torch.bool)
+    kin_mask_timesteps[:cue_length] = 1
+    print(f'Total: {total_bins}')
+    print(f'Cue: {cue_length}')
+    print(f'Gap: {gap}')
+
+    outputs = []
+    for batch in dataloader:
+        batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        output = model.predict_simple_batch(
+            batch,
+            kin_mask_timesteps=kin_mask_timesteps,
+            last_step_only=False
+        )
+        outputs.append(output)
+
+    outputs = stack_batch(outputs)
+
+    print(outputs[Output.behavior_pred].shape)
+    print(outputs[Output.behavior].shape)
+    print(outputs[DataKey.covariate_labels.name])
+    prediction = outputs[Output.behavior_pred].cpu()
+    target = outputs[Output.behavior].cpu()
+    is_student = outputs[Output.behavior_query_mask].cpu().bool()
+
+    # Compute R2
+    r2 = r2_score(target, prediction)
+    is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
+    valid = is_student_rolling > (gap * len(outputs[DataKey.covariate_labels.name]))
+    # print(gap * len(outputs[DataKey.covariate_labels.name]))
+    # plt.plot(is_student_rolling)
+    # plt.hlines(gap * len(outputs[DataKey.covariate_labels.name]), 0, 1000, )
+    # plt.plot(valid * 1000)
+
+    print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
+    mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
+    r2_student = r2_score(target[valid], prediction[valid])
+    print(f'MSE: {mse:.4f}')
+    print(f'R2: {r2:.4f}')
+    print(f'R2 Student: {r2_student:.4f}')
+    print(model.cfg.eval)
+
+
+for cue_length_s in [3, 6, 9]:
+    eval_model(model, dataloader, cue_length_s=cue_length_s)
 #%%
-prediction = outputs[Output.behavior_pred].cpu()
-target = outputs[Output.behavior].cpu()
-is_student = outputs[Output.behavior_query_mask].cpu().bool()
-
-
-# Compute R2
-r2 = r2_score(target, prediction)
-# print(dataset[0][DataKey.covariate_time][-100:])
-is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
-plt.plot(is_student_rolling)
-valid = is_student_rolling > (model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
-print(model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]))
-plt.hlines(model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name]), 0, 1000, )
-plt.plot(valid * 1000)
-
-print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
-mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
-r2_student = r2_score(target[valid], prediction[valid])
-
-print(f'R2: {r2:.4f}')
-print(f'R2 Student: {r2_student:.4f}')
-print(model.cfg.eval)
-
 
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
