@@ -2,7 +2,7 @@
 # Testing online parity, using open predict
 import os
 os.environ['CUDA_VISIBLE_DEVICES'] = '1'
-
+from copy import deepcopy
 from matplotlib import pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -43,28 +43,6 @@ if data_label:
     target = data_label_to_target(data_label)
 else:
     target = [
-
-        # 'pitt_broad_pitt_co_CRS02bLab_1942.*',
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
-
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
-
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_2', # Ortho
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
-
-        # 'rouse.*',
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_1',
-        # 'pitt_broad_pitt_co_CRS07Home_108_.*',
-        # 'pitt_broad_pitt_co_CRS08Lab_36_.*',
-        # 'pitt_broad_pitt_co_CRS08Lab_10_.*',
-
         # NDT runs
         # OL
         # 'pitt_broad_pitt_co_CRS08Lab_25_1$',
@@ -88,26 +66,24 @@ else:
 
 # Note: This won't preserve train val split, try to make sure eval datasets were held out
 print(cfg.dataset.eval_ratio)
-if cfg.dataset.eval_ratio > 0 and cfg.dataset.eval_ratio < 1: # i.e. brand new dataset, not monitored during training
-    # Not super robust... we probably want to make this more like... expand datasets and compute whether overlapped
-    dataset = SpikingDataset(cfg.dataset) # Make as original
-    dataset.subset_split(splits=['eval'], keep_index=True)
-    TARGET_DATASETS = [context_registry.query(alias=td) for td in target]
-    FLAT_TARGET_DATASETS = []
-    for td in TARGET_DATASETS:
-        if td == None:
-            continue
-        if isinstance(td, list):
-            FLAT_TARGET_DATASETS.extend(td)
-        else:
-            FLAT_TARGET_DATASETS.append(td)
-    TARGET_DATASETS = [td.id for td in FLAT_TARGET_DATASETS]
-    dataset.subset_by_key(TARGET_DATASETS, key=MetaKey.session)
-else:
-    cfg.dataset.datasets = target
-    cfg.dataset.exclude_datasets = []
-    cfg.dataset.eval_datasets = []
-    dataset = SpikingDataset(cfg.dataset)
+cfg.dataset.datasets = target
+cfg.dataset.exclude_datasets = []
+cfg.dataset.eval_datasets = []
+dataset = SpikingDataset(cfg.dataset)
+
+reference_target = [
+    'pitt_broad_pitt_co_CRS08Lab_25_1$',
+    'pitt_broad_pitt_co_CRS08Lab_25_2$',
+    'pitt_broad_pitt_co_CRS08Lab_25_3$',
+]
+reference_cfg = deepcopy(cfg)
+reference_cfg.dataset.datasets = reference_target
+reference_dataset = SpikingDataset(reference_cfg.dataset)
+reference_dataset.build_context_index()
+print(len(reference_dataset))
+reference = reference_dataset[0]
+print(reference.keys())
+
 pl.seed_everything(0)
 print("Eval length: ", len(dataset))
 data_attrs = dataset.get_data_attrs()
@@ -121,8 +97,6 @@ model = model.to('cuda')
 
 def eval_model(model: BrainBertInterface, dataset, cue_length_s=3, tail_length_s=3):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
-    # TODO
-    # print(f'Cue: {cue_length_s}')
     model.cfg.eval.teacher_timesteps = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)
     total_bins = round(cfg.dataset.pitt_co.chop_size_ms // cfg.dataset.bin_size_ms)
     eval_bins = round(tail_length_s * 1000 // cfg.dataset.bin_size_ms)
@@ -130,7 +104,6 @@ def eval_model(model: BrainBertInterface, dataset, cue_length_s=3, tail_length_s
     kin_mask_timesteps = torch.zeros(total_bins, device='cuda', dtype=torch.bool)
     kin_mask_timesteps[:model.cfg.eval.teacher_timesteps] = 1
     print(model.cfg.eval)
-    # print(f'Total: {total_bins}')
 
     outputs = []
     for batch in dataloader:
@@ -165,7 +138,7 @@ def eval_model(model: BrainBertInterface, dataset, cue_length_s=3, tail_length_s
     mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
     print(f'MSE: {mse:.4f}')
-    print(f'R2: {r2:.4f}')
+    # print(f'R2: {r2:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
 
 

@@ -640,6 +640,11 @@ class BrainBertInterface(pl.LightningModule):
             constraint_time,
         )
 
+    def merge_batch(
+        self,
+    ):
+        pass
+
     @torch.inference_mode()
     @torch.autocast(device_type='cuda', dtype=torch.bfloat16) # needed for flashattn
     def predict_simple(
