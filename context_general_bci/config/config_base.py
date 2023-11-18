@@ -208,6 +208,7 @@ class TaskConfig:
     behavior_tolerance: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
     behavior_tolerance_ceil: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
 
+    constraint_mute: bool = False
     # Return related items
     return_mute: bool = False # Mute specifically return stream as a control while we figure out how to condition at test.
 

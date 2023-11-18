@@ -115,8 +115,10 @@ def eval_model(
     dataset,
     cue_length_s=3,
     tail_length_s=3,
-    precrop_prompt=3, # For simplicity, all precrop for now. We can evaluate as we change precrop length
-    postcrop_working=12,
+    precrop_prompt=10.5, # For simplicity, all precrop for now. We can evaluate as we change precrop length
+    # precrop_prompt=3, # For simplicity, all precrop for now. We can evaluate as we change precrop length
+    postcrop_working=4.5,
+    # postcrop_working=12,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)

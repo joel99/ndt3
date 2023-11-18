@@ -107,8 +107,8 @@ def eval_model(
     dataset,
     cue_length_s=3,
     tail_length_s=3,
-    precrop_prompt=12, # For simplicity, all precrop for now. We can evaluate as we change precrop length
-    postcrop_working=3,
+    precrop_prompt=6, # For simplicity, all precrop for now. We can evaluate as we change precrop length
+    postcrop_working=9,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(cue_length_s * 1000 / cfg.dataset.bin_size_ms)
@@ -130,8 +130,11 @@ def eval_model(
         batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
         if prompt is not None:
             # breakpoint()
+            # print(prompt.keys())
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
+            # print(batch[DataKey.covariate_labels.name])
             batch = prepend_prompt(batch, crop_prompt)
+        # print(batch[DataKey.covariate_labels.name])
         # TODO crop batch
 
         output = model.predict_simple_batch(
@@ -140,9 +143,8 @@ def eval_model(
             last_step_only=False,
         )
         outputs.append(output)
-
     outputs = stack_batch(outputs)
-
+    print(outputs[DataKey.covariate_labels.name])
     # print(outputs[Output.behavior_pred].shape)
     # print(outputs[Output.behavior].shape)
     # print(outputs[DataKey.covariate_labels.name])
@@ -163,14 +165,17 @@ def eval_model(
     print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
     mse = torch.mean((target[valid] - prediction[valid])**2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
+
     print(f'MSE: {mse:.4f}')
     # print(f'R2: {r2:.4f}')
     print(f'R2 Student: {r2_student:.4f}')
 
+    return outputs, target, prediction, is_student, valid, r2_student
 
-for cue_length_s in [3, 6, 9]:
-    eval_model(model, dataset, cue_length_s=cue_length_s)
 
+# for cue_length_s in [3, 6, 9]:
+    # eval_model(model, dataset, cue_length_s=cue_length_s)
+outputs, target, prediction, is_student, valid, r2_student = eval_model(model, dataset, cue_length_s=3)
 #%%
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
@@ -185,6 +190,8 @@ ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {data_label} R2: {r2_student:.2f}')
+# %%
+
 #%%
 palette = sns.color_palette(n_colors=2)
 camera_label = {
@@ -337,3 +344,5 @@ data_label_camera = {
 # )
 # fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
+
+# %%

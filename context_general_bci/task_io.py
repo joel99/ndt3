@@ -279,8 +279,10 @@ class ConstraintPipeline(ContextPipeline):
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
         constraint = batch[DataKey.constraint.name]
-
-        constraint_embed = self.encode_constraint(constraint) # b t h d
+        if self.cfg.constraint_mute:
+            constraint_embed = self.encode_constraint(torch.zeros_like(constraint))
+        else:
+            constraint_embed = self.encode_constraint(constraint) # b t h d
         time = batch[DataKey.constraint_time.name]
         space = batch[DataKey.constraint_space.name]
         padding = create_padding_simple(

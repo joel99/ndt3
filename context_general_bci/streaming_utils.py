@@ -127,7 +127,7 @@ def prepend_prompt(
         # print(k)
         is_str = isinstance(k, str)
         if not isinstance(prompt[k], torch.Tensor):
-            out[k if is_str else k.name] = prompt[k]
+            # out[k if is_str else k.name] = prompt[k] # take from batch_primary
             continue
         if 'time' in str(k):
             out[k if is_str else k.name] = bind_ref(prompt[k], batch_primary[k if is_str else k.name] + time_offset)
