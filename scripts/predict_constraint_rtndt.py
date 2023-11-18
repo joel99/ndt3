@@ -10,11 +10,15 @@ import torch
 import lightning.pytorch as pl
 
 from sklearn.metrics import r2_score
-
+from context_general_bci.utils import suppress_default_registry
+suppress_default_registry()
+from context_general_bci.contexts.context_registry import CLOSED_LOOP_DIR
 from context_general_bci.model import transfer_model, BrainBertInterface
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import RootConfig, ModelTask, Metric, Output, DataKey, MetaKey
+from context_general_bci.contexts.context_info import BCIContextInfo
 from context_general_bci.contexts import context_registry
+
 
 from context_general_bci.utils import wandb_query_latest
 from context_general_bci.analyze_utils import (
@@ -29,7 +33,10 @@ from context_general_bci.streaming_utils import (
 
 query = 'small_40m-0q2by8md'
 query = 'small_40m_dense-ggg6z4ii'
-
+context_registry.clear()
+context_registry.register([
+    *BCIContextInfo.build_from_nested_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={}, alias_prefix='closed_loop_'), # each dataset deposits into its own session folder
+])
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -69,7 +76,8 @@ else:
         # 'closed_loop_pitt_co_CRSTest_190_1',
         # 'closed_loop_pitt_co_CRSTest_190_3',
         # 'closed_loop_pitt_co_CRSTest_190_5',
-        'closed_loop_pitt_co_CRSTest_190_6',
+        # 'closed_loop_pitt_co_CRSTest_190_6',
+        'closed_loop_pitt_co_CRSTest_190_7',
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
     # data_label = 'grasp'
@@ -85,16 +93,16 @@ dataset = SpikingDataset(cfg.dataset)
 reference_target = [
     # 'closed_loop_pitt_co_CRSTest_190_1',
     # 'closed_loop_pitt_co_CRSTest_190_3',
-    'closed_loop_pitt_co_CRSTest_190_4',
-    # 'closed_loop_pitt_co_CRSTest_190_5',
+    # 'closed_loop_pitt_co_CRSTest_190_4',
+    'closed_loop_pitt_co_CRSTest_190_5',
 ]
 if reference_target:
     reference_cfg = deepcopy(cfg)
     reference_cfg.dataset.datasets = reference_target
     reference_dataset = SpikingDataset(reference_cfg.dataset)
     reference_dataset.build_context_index()
-    print(len(reference_dataset))
-    prompt = reference_dataset[0]
+    print(f'Ref: {len(reference_dataset)}')
+    prompt = reference_dataset[-1]
 else:
     prompt = None
 
@@ -106,7 +114,15 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to('cuda')
 
-# ! Need to figure how to intervene on batch
+MUTE_CONSTRAINT = False
+MUTE_CONSTRAINT = True
+if MUTE_CONSTRAINT:
+    # Actually, at test time, we have normal constraint/reference. Don't alter
+    NUM_DIMS = len(prompt[DataKey.covariate_labels])
+    # prompt[DataKey.constraint] = prompt[DataKey.constraint][:NUM_DIMS] * 0
+    # prompt[DataKey.constraint_time] = prompt[DataKey.constraint_time][:NUM_DIMS]
+    # prompt[DataKey.constraint_space] = prompt[DataKey.constraint_space][:NUM_DIMS]
+
 #%%
 def eval_model(
     model: BrainBertInterface,
@@ -134,10 +150,15 @@ def eval_model(
     outputs = []
     for batch in dataloader:
         batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
+        print(batch[DataKey.constraint.name].shape)
         if prompt is not None:
             # breakpoint()
             # print(prompt.keys())
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
+            if MUTE_CONSTRAINT:
+                batch[DataKey.constraint.name] = batch[DataKey.constraint.name][:, :NUM_DIMS] * 0
+                batch[DataKey.constraint_time.name] = batch[DataKey.constraint_time.name][:, :NUM_DIMS] * 0
+                batch[DataKey.constraint_space.name] = batch[DataKey.constraint_space.name][:, :NUM_DIMS]
             # print(batch[DataKey.covariate_labels.name])
             batch = prepend_prompt(batch, crop_prompt)
         # print(batch[DataKey.covariate_labels.name])
@@ -211,7 +232,7 @@ camera_label = {
     'EMG_EDCr': 'EDCr',
 }
 xlim = [0, 1500]
-xlim = [0, 750]
+# xlim = [0, 750]
 # xlim = [0, 3000]
 # xlim = [0, 5000]
 # xlim = [3000, 4000]
