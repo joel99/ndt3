@@ -279,6 +279,17 @@ class ConstraintPipeline(ContextPipeline):
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
         assert self.cfg.encode_constraints and self.inject_constraint_tokens, 'constraint pipeline only for encoding tokenized constraints'
         constraint = batch[DataKey.constraint.name]
+        if self.cfg.constraint_ablate:
+            constraint = torch.zeros_like(constraint[:, :1])
+            constraint_embed = self.encode_constraint(constraint)
+            return (
+                constraint_embed,
+                batch[DataKey.constraint_time.name][:, :1],
+                batch[DataKey.constraint_space.name][:, :1],
+                create_padding_simple(constraint, torch.ones_like(batch[CONSTRAINT_LENGTH_KEY]))
+            )
+
+
         if self.cfg.constraint_mute:
             constraint_embed = self.encode_constraint(torch.zeros_like(constraint))
         else:
@@ -1006,7 +1017,10 @@ class ReturnContext(ContextPipeline):
             return_embed = self.return_enc(torch.zeros_like(batch[DataKey.task_return.name]))
         else:
             return_embed = self.return_enc(batch[DataKey.task_return.name])
-        reward_embed = self.reward_enc(batch[DataKey.task_reward.name])
+        if self.cfg.reward_mute:
+            reward_embed = self.reward_enc(torch.zeros_like(batch[DataKey.task_reward.name]))
+        else:
+            reward_embed = self.reward_enc(batch[DataKey.task_reward.name])
         times = batch[DataKey.task_return_time.name]
         space = torch.zeros_like(times)
         padding = create_padding_simple(return_embed, batch.get(RETURN_LENGTH_KEY, None))
