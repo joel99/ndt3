@@ -366,6 +366,18 @@ class SpikingDataset(Dataset):
             data = augmentations[op](data)
         return data
 
+    @staticmethod
+    def tokenize_spikes(spikes: torch.Tensor, neurons_per_token: int, pad_value: float):
+        r"""
+            spikes: Time x Channels x H=1
+
+            returns:
+                out: Time x Space x Channels x Channel_in_token
+        """
+        pad_amount = (neurons_per_token - spikes.size(-2) % neurons_per_token) % neurons_per_token
+        spikes = F.pad(spikes, (0, 0, 0, pad_amount), value=pad_value)
+        return spikes.unfold(1, neurons_per_token, neurons_per_token), pad_amount # time space H channel_in_token
+
     def __getitem__(self, index):
         r"""
             dict of arrays
@@ -427,9 +439,9 @@ class SpikingDataset(Dataset):
                         perm  = perm[perm < array_group.shape[-2]]
                         array_group = array_group[:,perm]
                     # * Note to get array tokenization to respect array boundaries, use non-alias full array references
-                    pad_amount = (self.cfg.neurons_per_token - array_group.size(-2) % self.cfg.neurons_per_token) % self.cfg.neurons_per_token
-                    array_group = F.pad(array_group, (0, 0, 0, pad_amount), value=self.cfg.pad_spike_value)
-                    tokenized_spikes = array_group.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # time space H channel_in_token
+                    tokenized_spikes, pad_amount = self.tokenize_spikes(array_group, self.cfg.neurons_per_token, self.cfg.pad_spike_value)
+                    # array_group = F.pad(array_group, (0, 0, 0, pad_amount), value=self.cfg.pad_spike_value)
+                    # tokenized_spikes = array_group.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # time space H channel_in_token
                     array_spikes.append(rearrange(tokenized_spikes, 'time space h c -> time space c h'))
                     time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1) # track across aliases and arrays
                     times.append(repeat(torch.arange(time), 'time -> time space', space=token_space))

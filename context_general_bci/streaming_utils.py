@@ -108,7 +108,7 @@ def postcrop_batch(
     }
 
 def prepend_prompt(
-    batch_primary,
+    batch_primary, # Assumes batch dim 1
     prompt, # Assumes batch dim 1, prepended. right now, k may be str or enum
 ): # In-place mods
     out = {}
