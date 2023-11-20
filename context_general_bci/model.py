@@ -245,6 +245,10 @@ class BrainBertInterface(pl.LightningModule):
             The logger messages are told from the perspective of a model that is being transferred to (but in practice, this model has been initialized and contains new weights already)
         """
         logger.info("Rebinding IO...")
+        if self.cfg.next_step_prediction:
+            # Transfer self.start_of_sentence parameter
+            self.start_of_sentence.data = transfer_model.start_of_sentence.data.clone()
+
 
         transfer_data_attrs: DataAttrs = transfer_model.data_attrs
         transfer_cfg: ModelConfig = transfer_model.cfg
@@ -689,7 +693,12 @@ class BrainBertInterface(pl.LightningModule):
         )
         if reference is not None:
             batch = prepend_prompt(batch, reference)
-
+        # comp = torch.load('/home/joy47/projects/ndt3/test.pth')
+        # for k, v in reference.items():
+        #     if isinstance(v, torch.Tensor):
+        #         print(k, v.shape, v.sum())
+        #         assert torch.allclose(v, comp[k])
+        # breakpoint()
         return self.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
@@ -707,11 +716,11 @@ class BrainBertInterface(pl.LightningModule):
         last_step_only=False, # If true, used online. If false, used to try to get parity with offline eval `scripts/predict.py`
         temperature=0.,
     ):
-        # breakpoint()
-        print(kin_mask_timesteps.sum())
+        # print(kin_mask_timesteps.sum())
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
+        breakpoint()
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
         if kin_mask_timesteps is not None:
             # Make sparse, to index
@@ -721,9 +730,9 @@ class BrainBertInterface(pl.LightningModule):
             else:
                 raise ValueError("No kinematic mask timesteps provided")
             # * Risk point - we should examine this mask carefully.
-            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input?
+            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Is kinematic input - one after is kin target
             is_kin_mask[:, 0] = False # First token is always valid
-            # breakpoint()
+            breakpoint()
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
 

@@ -145,6 +145,7 @@ def eval_model(
             # print(prompt.keys())
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
             # print(batch[DataKey.covariate_labels.name])
+            # breakpoint()
             batch = prepend_prompt(batch, crop_prompt)
         # print(batch[DataKey.covariate_labels.name])
         # TODO crop batch
