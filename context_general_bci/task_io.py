@@ -286,7 +286,7 @@ class ConstraintPipeline(ContextPipeline):
                 constraint_embed,
                 batch[DataKey.constraint_time.name][:, :1],
                 batch[DataKey.constraint_space.name][:, :1],
-                create_padding_simple(constraint, torch.ones_like(batch[CONSTRAINT_LENGTH_KEY]))
+                create_padding_simple(constraint, torch.ones(constraint_embed.size(0), device=constraint_embed.device, dtype=torch.long))
             )
 
 

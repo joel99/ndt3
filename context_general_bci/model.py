@@ -27,7 +27,7 @@ from context_general_bci.config import (
     BatchKey
 )
 
-from context_general_bci.dataset import DataAttrs, LENGTH_KEY, CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY
+from context_general_bci.dataset import DataAttrs, LENGTH_KEY, CHANNEL_KEY, COVARIATE_LENGTH_KEY, COVARIATE_CHANNEL_KEY, SpikingDataset
 from context_general_bci.subjects import subject_array_registry, SortedArrayInfo
 # It's not obvious that augmentation will actually help - might hinder feature tracking, which is consistent
 # through most of data collection (certainly good if we aggregate sensor/sessions)
@@ -245,6 +245,10 @@ class BrainBertInterface(pl.LightningModule):
             The logger messages are told from the perspective of a model that is being transferred to (but in practice, this model has been initialized and contains new weights already)
         """
         logger.info("Rebinding IO...")
+        if self.cfg.next_step_prediction:
+            # Transfer self.start_of_sentence parameter
+            self.start_of_sentence.data = transfer_model.start_of_sentence.data.clone()
+
 
         transfer_data_attrs: DataAttrs = transfer_model.data_attrs
         transfer_cfg: ModelConfig = transfer_model.cfg
@@ -599,14 +603,16 @@ class BrainBertInterface(pl.LightningModule):
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         task_return_time: torch.Tensor,
+        PAD_SPIKE_VALUE: int = 0, # Should migrate or surface some other way
     ) -> Dict[BatchKey, torch.Tensor]:
-        # Pad spikes to max - follow dataloader.__getitem__ (TODO refactor or bake to RTNDT level)
+        # TODO non-parity - currently we don't format spikes by array group, which will be bad for misshaped arrays.
+        # We should refactor dataloader entirely and use exactly dataloader logic here.
         # breakpoint()
-        pad_amount = self.cfg.neurons_per_token - (spikes.size(1) % self.cfg.neurons_per_token)
-        pad_spikes = F.pad(spikes, (0, pad_amount))
-        tokenized_spikes = pad_spikes.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # Time x Token x Intra-Patch
+        tokenized_spikes, pad_amount = SpikingDataset.tokenize_spikes(spikes.unsqueeze(-1), self.cfg.neurons_per_token, PAD_SPIKE_VALUE)
+        if pad_amount > 0:
+            raise ValueError("Padding not supported in inference mode")
         token_time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1)
-        tokenized_spikes = rearrange(tokenized_spikes, 'time space neurons -> 1 (time space) neurons 1')
+        tokenized_spikes = rearrange(tokenized_spikes, 'time space h c -> 1 (time space) c h')
         times = repeat(torch.arange(spikes.size(0), device=spikes.device), 'time -> 1 (time space)', space=token_space)
         positions = repeat(torch.arange(token_space, device=spikes.device), 'space -> 1 (time space)', time=token_time)
 
@@ -675,6 +681,7 @@ class BrainBertInterface(pl.LightningModule):
             DATA THAT COMES IN ARE FULL BUFFERS, BUT WE NEED PREDICTIONS FOR THE TAIL OF THE BUFFER
             TODO: KV cache
         """
+        # breakpoint()
         batch = self.batchify_inference(
             spikes,
             cov,
@@ -686,7 +693,12 @@ class BrainBertInterface(pl.LightningModule):
         )
         if reference is not None:
             batch = prepend_prompt(batch, reference)
-
+        # comp = torch.load('/home/joy47/projects/ndt3/test.pth')
+        # for k, v in reference.items():
+        #     if isinstance(v, torch.Tensor):
+        #         print(k, v.shape, v.sum())
+        #         assert torch.allclose(v, comp[k])
+        # breakpoint()
         return self.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
@@ -700,14 +712,15 @@ class BrainBertInterface(pl.LightningModule):
     def predict_simple_batch(
         self,
         batch: Dict[BatchKey, torch.Tensor], # Should have batch=1 dimension
-        kin_mask_timesteps: torch.Tensor, # Time, dense
+        kin_mask_timesteps: torch.Tensor, # Time, dense. True if masking
         last_step_only=False, # If true, used online. If false, used to try to get parity with offline eval `scripts/predict.py`
         temperature=0.,
     ):
-
+        # print(kin_mask_timesteps.sum())
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
+        # breakpoint()
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
         if kin_mask_timesteps is not None:
             # Make sparse, to index
@@ -717,7 +730,7 @@ class BrainBertInterface(pl.LightningModule):
             else:
                 raise ValueError("No kinematic mask timesteps provided")
             # * Risk point - we should examine this mask carefully.
-            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Kinematic input?
+            is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Is kinematic input - one after is kin target
             is_kin_mask[:, 0] = False # First token is always valid
             # breakpoint()
             zero_mask &= is_kin_mask
@@ -760,7 +773,7 @@ class BrainBertInterface(pl.LightningModule):
         }
         if not last_step_only:
             if kin_mask_timesteps is not None:
-                out[Output.behavior_query_mask] = repeat(~kin_mask_timesteps, 't -> (t b)', b=num_kin)
+                out[Output.behavior_query_mask] = repeat(kin_mask_timesteps, 't -> (t b)', b=num_kin)
             out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
             out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name][0]
         return out
