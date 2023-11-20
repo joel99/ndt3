@@ -720,7 +720,7 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
-        breakpoint()
+        # breakpoint()
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
         if kin_mask_timesteps is not None:
             # Make sparse, to index
@@ -732,7 +732,7 @@ class BrainBertInterface(pl.LightningModule):
             # * Risk point - we should examine this mask carefully.
             is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Is kinematic input - one after is kin target
             is_kin_mask[:, 0] = False # First token is always valid
-            breakpoint()
+            # breakpoint()
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
 
