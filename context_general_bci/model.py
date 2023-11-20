@@ -764,7 +764,7 @@ class BrainBertInterface(pl.LightningModule):
         }
         if not last_step_only:
             if kin_mask_timesteps is not None:
-                out[Output.behavior_query_mask] = repeat(~kin_mask_timesteps, 't -> (t b)', b=num_kin)
+                out[Output.behavior_query_mask] = repeat(kin_mask_timesteps, 't -> (t b)', b=num_kin)
             out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
             out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name][0]
         return out

@@ -131,8 +131,8 @@ def eval_model(
     total_bins = prompt_bins + working_bins
 
     model.cfg.eval.student_gap = total_bins - eval_bins - model.cfg.eval.teacher_timesteps
-    kin_mask_timesteps = torch.zeros(total_bins, device='cuda', dtype=torch.bool)
-    kin_mask_timesteps[:model.cfg.eval.teacher_timesteps] = 1
+    kin_mask_timesteps = torch.ones(total_bins, device='cuda', dtype=torch.bool)
+    kin_mask_timesteps[:model.cfg.eval.teacher_timesteps] = 0
     print(model.cfg.eval)
     if prompt is not None:
         crop_prompt = precrop_batch(prompt, prompt_bins)
