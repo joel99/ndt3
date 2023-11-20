@@ -701,16 +701,13 @@ class BrainBertInterface(pl.LightningModule):
         self,
         batch: Dict[BatchKey, torch.Tensor], # Should have batch=1 dimension
         kin_mask_timesteps: torch.Tensor, # Time, dense
-        last_step_only=False,
+        last_step_only=False, # If true, used online. If false, used to try to get parity with offline eval `scripts/predict.py`
         temperature=0.,
     ):
 
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
-        # print(f'Bhvr: ', batch[DataKey.bhvr_vel.name].min(), batch[DataKey.bhvr_vel.name].max())
-        # print(f'Ret: ', batch[DataKey.task_return.name].min(), batch[DataKey.task_return.name].max())
-        # print(f'Rew: ', batch[DataKey.task_reward.name].min(), batch[DataKey.task_reward.name].max())
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
         if kin_mask_timesteps is not None:
             # Make sparse, to index
@@ -726,10 +723,6 @@ class BrainBertInterface(pl.LightningModule):
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
 
-        # print(f'Context: {pipeline_context.shape}')
-        # print(f'Times {times.shape, times.unique()}')
-        # print(f'Space {space.shape, space.unique()}')
-        # breakpoint()
         outputs = self.backbone(
             pipeline_context,
             times=times,
@@ -737,9 +730,10 @@ class BrainBertInterface(pl.LightningModule):
         ) # B x T x H. All at once, not autoregressive single step sampling
         # The order of logic here is following the order dictated in the task pipeline
         num_kin = len(batch[DataKey.covariate_space.name].unique())
+
         cov_query = outputs[modalities == tks.index('kinematic_infill')]
         if last_step_only:
-            cov_query = outputs[:, -num_kin:]
+            cov_query = cov_query[-num_kin:]
         cov_query = self.task_pipelines[ModelTask.kinematic_infill.value](
             batch,
             cov_query,
@@ -752,34 +746,21 @@ class BrainBertInterface(pl.LightningModule):
             return_query = outputs[modalities == tks.index('return_infill')]
             return_logits = self.task_pipelines[ModelTask.return_infill.value](
                 batch,
-                return_query[:, -1:],
+                return_query[-1:],
                 compute_metrics=False,
-            )[Output.return_logits][0,0]
-            probabilities = torch.softmax(return_logits, dim=-1)
-            # print(probabilities[:5]) # Hm... producing 3.
-            return_cond = (probabilities > 0.3)
-            if return_cond.any():
-                # get last one
-                return_cond = return_cond.nonzero()
-            else:
-                return_cond = torch.argmax(return_cond)
-            # return_cond = torch.ones_like(return_cond) # ! Overwrite.
-            return_cond = torch.zeros_like(return_cond) # ! Overwrite.
+            )[Output.return_logits][0]
+            return_probs = torch.softmax(return_logits, dim=-1)
         else:
-            return_cond = None
-        # return_query = self.task_pipelines[ModelTask.return_infill.value]
+            return_probs = None
 
         # Satisfy onlne eval interface
         out: Dict[BatchKey, Any] = {
             Output.behavior_pred: cov_query[Output.behavior_pred],
-            Output.return_logits: return_cond, # TODO make a new output type, these aren't logits, they're samples
+            Output.return_probs: return_probs,
         }
         if not last_step_only:
-            # replicate `predict` offline eval infra
-            # breakpoint()
             if kin_mask_timesteps is not None:
                 out[Output.behavior_query_mask] = repeat(~kin_mask_timesteps, 't -> (t b)', b=num_kin)
-
             out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
             out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name][0]
         return out

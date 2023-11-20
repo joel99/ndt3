@@ -67,6 +67,7 @@ class Output(Enum):
     features = 'features'
     spikes = 'spikes' # for debugging
     return_logits = 'return_logits'
+    return_probs = 'return_probs'
     return_target = 'return_target'
 
     behavior = 'behavior'

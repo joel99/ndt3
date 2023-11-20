@@ -33,6 +33,8 @@ from context_general_bci.streaming_utils import (
 
 query = 'small_40m-0q2by8md'
 query = 'small_40m_dense-ggg6z4ii'
+query = 'small_40m_dense_q256_nocond-0h0ms77k'
+query = 'small_40m_dense_q256_nocond-pgkwe5mj'
 context_registry.clear()
 context_registry.register([
     *BCIContextInfo.build_from_nested_dir(f'./data/{CLOSED_LOOP_DIR}', task_map={}, alias_prefix='closed_loop_'), # each dataset deposits into its own session folder
@@ -76,7 +78,7 @@ else:
         # 'closed_loop_pitt_co_CRSTest_190_1',
         # 'closed_loop_pitt_co_CRSTest_190_3',
         # 'closed_loop_pitt_co_CRSTest_190_5',
-        # 'closed_loop_pitt_co_CRSTest_190_6',
+        'closed_loop_pitt_co_CRSTest_190_6',
         'closed_loop_pitt_co_CRSTest_190_7',
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
@@ -114,14 +116,23 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to('cuda')
 
-MUTE_CONSTRAINT = False
-MUTE_CONSTRAINT = True
-if MUTE_CONSTRAINT:
+CONSTRAINT_COND = "normal" # mute, ablate, ablate_prompt
+CONSTRAINT_COND = "mute"
+# CONSTRAINT_COND = "ablate"
+RETURN_COND = "normal" # mute, mute_prompt
+RETURN_COND = "amplify"
+# RETURN_COND = "mute" # mute, mute_prompt
+# RETURN_COND = "mute_prompt" # mute, mute_prompt
+NUM_DIMS = len(prompt[DataKey.covariate_labels])
+if CONSTRAINT_COND == "ablate_prompt":
     # Actually, at test time, we have normal constraint/reference. Don't alter
-    NUM_DIMS = len(prompt[DataKey.covariate_labels])
-    # prompt[DataKey.constraint] = prompt[DataKey.constraint][:NUM_DIMS] * 0
-    # prompt[DataKey.constraint_time] = prompt[DataKey.constraint_time][:NUM_DIMS]
-    # prompt[DataKey.constraint_space] = prompt[DataKey.constraint_space][:NUM_DIMS]
+    prompt[DataKey.constraint] = prompt[DataKey.constraint][:NUM_DIMS] * 0
+    prompt[DataKey.constraint_time] = prompt[DataKey.constraint_time][:NUM_DIMS]
+    prompt[DataKey.constraint_space] = prompt[DataKey.constraint_space][:NUM_DIMS]
+if RETURN_COND == "mute_prompt":
+    prompt[DataKey.task_return] = torch.ones_like(prompt[DataKey.task_return])
+    # prompt[DataKey.task_reward] = torch.ones_like(prompt[DataKey.task_reward])
+
 
 #%%
 def eval_model(
@@ -150,15 +161,25 @@ def eval_model(
     outputs = []
     for batch in dataloader:
         batch = {k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()}
-        print(batch[DataKey.constraint.name].shape)
+        # print(batch[DataKey.constraint.name].shape)
         if prompt is not None:
             # breakpoint()
             # print(prompt.keys())
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
-            if MUTE_CONSTRAINT:
+            if CONSTRAINT_COND in ["ablate", "ablate_prompt"]:
                 batch[DataKey.constraint.name] = batch[DataKey.constraint.name][:, :NUM_DIMS] * 0
                 batch[DataKey.constraint_time.name] = batch[DataKey.constraint_time.name][:, :NUM_DIMS] * 0
                 batch[DataKey.constraint_space.name] = batch[DataKey.constraint_space.name][:, :NUM_DIMS]
+            elif CONSTRAINT_COND == "mute":
+                batch[DataKey.constraint.name] = batch[DataKey.constraint.name] * 0
+            if RETURN_COND in ["mute", "mute_prompt"]:
+                batch[DataKey.task_return.name] = torch.ones_like(batch[DataKey.task_return.name])
+                # batch[DataKey.task_reward.name] = torch.ones_like(batch[DataKey.task_reward.name])
+            elif RETURN_COND == "amplify":
+                # batch[DataKey.task_return.name] = torch.ones_like(batch[DataKey.task_return.name]) * 2
+                batch[DataKey.task_reward.name] = torch.ones_like(batch[DataKey.task_reward.name])
+                batch[DataKey.task_reward.name][:,::10] = 2
+                # batch[DataKey.task_reward.name] = torch.ones_like(batch[DataKey.task_reward.name]) * 2
             # print(batch[DataKey.covariate_labels.name])
             batch = prepend_prompt(batch, crop_prompt)
         # print(batch[DataKey.covariate_labels.name])
@@ -203,7 +224,6 @@ def eval_model(
 # for cue_length_s in [3, 6, 9]:
     # eval_model(model, dataset, cue_length_s=cue_length_s)
 outputs, target, prediction, is_student, valid, r2_student = eval_model(model, dataset, cue_length_s=3)
-#%%
 f = plt.figure(figsize=(10, 10))
 ax = prep_plt(f.gca(), big=True)
 palette = sns.color_palette(n_colors=2)
@@ -217,7 +237,6 @@ ax.scatter(target, prediction, s=3, alpha=0.4, color=colors)
 ax.set_xlabel('True')
 ax.set_ylabel('Pred')
 ax.set_title(f'{query} {data_label} R2: {r2_student:.2f}')
-
 #%%
 palette = sns.color_palette(n_colors=2)
 camera_label = {
@@ -368,7 +387,7 @@ data_label_camera = {
 #     x=0.35,
 #     y=0.99,
 # )
-# fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
+fig.suptitle(f'{query} Constraint: {CONSTRAINT_COND} Return: {RETURN_COND}')
 
 
 # %%
