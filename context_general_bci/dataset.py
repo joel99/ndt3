@@ -378,6 +378,45 @@ class SpikingDataset(Dataset):
         spikes = F.pad(spikes, (0, 0, 0, pad_amount), value=pad_value)
         return spikes.unfold(1, neurons_per_token, neurons_per_token), pad_amount # time space H channel_in_token
 
+    @staticmethod
+    def tokenize_spike_arrays(
+        spike_arrays: List[torch.Tensor],
+        neurons_per_token: int,
+        pad_value: float,
+        max_channels_per_array: int = 0,
+        permute_channels: bool = False,
+    ):
+        assert not permute_channels, "Deprecated" # To resupport, pass metakey/self.perm parameter to `tokenize_spike_arrays`
+        #     perm = self.channel_perms[trial[MetaKey.session]]
+        #     perm  = perm[perm < array_group.shape[-2]]
+        #     array_group = array_group[:,perm]
+        array_spikes = []
+        times = []
+        positions = []
+        channel_counts = []
+        space = 0
+        for array_group in spike_arrays:
+            if max_channels_per_array:
+                array_group = array_group[:,:max_channels_per_array] # crop
+            # * Note to get array tokenization to respect array boundaries, use non-alias full array references
+            tokenized_spikes, pad_amount = SpikingDataset.tokenize_spikes(array_group, neurons_per_token, pad_value)
+            # array_group = F.pad(array_group, (0, 0, 0, pad_amount), value=self.cfg.pad_spike_value)
+            # tokenized_spikes = array_group.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # time space H channel_in_token
+            array_spikes.append(rearrange(tokenized_spikes, 'time space h c -> time space c h'))
+            time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1) # track across aliases and arrays
+            times.append(repeat(torch.arange(time), 'time -> time space', space=token_space))
+            positions.append(repeat(torch.arange(space, space+token_space), 'space -> time space', time=time))
+            space += token_space
+            channel_counts.append(torch.full((time, token_space), fill_value=neurons_per_token, dtype=torch.long))
+            if pad_amount:
+                channel_counts[-1][:,-1] = neurons_per_token - pad_amount
+        return (
+            rearrange(torch.cat(array_spikes, 1), 't s c h -> (t s) c h'),
+            rearrange(torch.cat(times, 1), 't s -> (t s)'),
+            rearrange(torch.cat(positions, 1), 't s -> (t s)'),
+            rearrange(torch.cat(channel_counts, 1), 't s -> (t s)'),
+        )
+
     def __getitem__(self, index):
         r"""
             dict of arrays
@@ -421,39 +460,26 @@ class SpikingDataset(Dataset):
         # import pdb;pdb.set_trace()
         for k in self.cfg.data_keys:
             if k == DataKey.spikes:
-                array_spikes = []
-                if self.cfg.serve_tokenized:
-                    times = []
-                    positions = []
-                    space = 0
+                array_groups = []
                 for i in range(self.cfg.max_arrays):
                     alias = trial[f'array_{i}']
                     if alias == '':
                         continue # empty, ignore
                     alias_arrays = SubjectArrayRegistry.resolve_alias(alias) # list of strs
                     array_group = torch.cat([payload[k][a] for a in alias_arrays], dim=-2) # T C' H
-                    if self.cfg.max_channels:
-                        array_group = array_group[:,:self.cfg.max_channels] # crop
-                    if self.cfg.permute_channels:
-                        perm = self.channel_perms[trial[MetaKey.session]]
-                        perm  = perm[perm < array_group.shape[-2]]
-                        array_group = array_group[:,perm]
-                    # * Note to get array tokenization to respect array boundaries, use non-alias full array references
-                    tokenized_spikes, pad_amount = self.tokenize_spikes(array_group, self.cfg.neurons_per_token, self.cfg.pad_spike_value)
-                    # array_group = F.pad(array_group, (0, 0, 0, pad_amount), value=self.cfg.pad_spike_value)
-                    # tokenized_spikes = array_group.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # time space H channel_in_token
-                    array_spikes.append(rearrange(tokenized_spikes, 'time space h c -> time space c h'))
-                    time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1) # track across aliases and arrays
-                    times.append(repeat(torch.arange(time), 'time -> time space', space=token_space))
-                    positions.append(repeat(torch.arange(space, space+token_space), 'space -> time space', time=time))
-                    space += token_space
-                    channel_counts.append(torch.full((time, token_space), fill_value=self.cfg.neurons_per_token, dtype=torch.long))
-                    if pad_amount:
-                        channel_counts[-1][:,-1] = self.cfg.neurons_per_token - pad_amount
-                data_items[k] = rearrange(torch.cat(array_spikes, 1), 't s c h -> (t s) c h')
-                data_items[DataKey.time] = rearrange(torch.cat(times, 1), 't s -> (t s)')
-                data_items[DataKey.position] = rearrange(torch.cat(positions, 1), 't s -> (t s)')
-                data_items[CHANNEL_KEY] = rearrange(torch.cat(channel_counts, 1), 't s -> (t s)')
+                    array_groups.append(array_group)
+                (
+                    data_items[k],
+                    data_items[DataKey.time],
+                    data_items[DataKey.position],
+                    data_items[CHANNEL_KEY],
+                ) = self.tokenize_spike_arrays(
+                    array_groups,
+                    self.cfg.neurons_per_token,
+                    self.cfg.pad_spike_value,
+                    self.cfg.max_channels,
+                    self.cfg.permute_channels,
+                )
             else:
                 if k == DataKey.heldout_spikes and self.cfg.heldout_key_spoof_shape:
                     data_items[k] = torch.full(list(self.cfg.heldout_key_spoof_shape), fill_value=self.pad_value)

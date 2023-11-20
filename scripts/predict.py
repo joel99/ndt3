@@ -24,6 +24,7 @@ from context_general_bci.analyze_utils import (
 )
 
 query = 'small_40m-6lk35hxs'
+query = "small_40m_dense_q256_return-ztflwxeg"
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -34,6 +35,8 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.outputs = [
     Output.behavior,
     Output.behavior_pred,
+    Output.return_logits,
+    Output.return_probs
 ]
 
 
@@ -52,13 +55,13 @@ else:
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
+        'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
+        'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
 
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2', # Ortho
         # 'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
-        'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
-        'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
         # 'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
         # 'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
 
