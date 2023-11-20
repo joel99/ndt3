@@ -24,6 +24,7 @@ from context_general_bci.analyze_utils import (
 )
 
 query = 'small_40m-6lk35hxs'
+query = "small_40m_dense_q256_return-ztflwxeg"
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -34,6 +35,8 @@ src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag='val_loss')
 cfg.model.task.outputs = [
     Output.behavior,
     Output.behavior_pred,
+    Output.return_logits,
+    Output.return_probs
 ]
 
 
