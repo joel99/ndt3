@@ -1,0 +1,16 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    decode_quantize_classes: 256
+    return_mute: False # We think sampling is fine for this
+    reward_mute: True
+    constraint_mute: True
+    constraint_ablate: True
+dataset:
+  sparse_rewards: False
+# train:
+  # batch_size: 32
+notes: "40M dense reward"
