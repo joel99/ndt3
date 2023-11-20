@@ -609,8 +609,9 @@ class BrainBertInterface(pl.LightningModule):
         # We should refactor dataloader entirely and use exactly dataloader logic here.
         # breakpoint()
         if spike_array_lengths:
+            # breakpoint()
             tokenized_spikes, times, positions, _ = SpikingDataset.tokenize_spike_arrays(
-                torch.split(spikes, spike_array_lengths, dim=1),
+                torch.split(spikes.unsqueeze(-1), spike_array_lengths, dim=1),
                 self.cfg.neurons_per_token,
                 PAD_SPIKE_VALUE,
                 max_channels_per_array=self.data_attrs.max_channel_count,

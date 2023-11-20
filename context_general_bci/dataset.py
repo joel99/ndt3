@@ -404,10 +404,10 @@ class SpikingDataset(Dataset):
             # tokenized_spikes = array_group.unfold(1, self.cfg.neurons_per_token, self.cfg.neurons_per_token) # time space H channel_in_token
             array_spikes.append(rearrange(tokenized_spikes, 'time space h c -> time space c h'))
             time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1) # track across aliases and arrays
-            times.append(repeat(torch.arange(time), 'time -> time space', space=token_space))
-            positions.append(repeat(torch.arange(space, space+token_space), 'space -> time space', time=time))
+            times.append(repeat(torch.arange(time, device=tokenized_spikes.device), 'time -> time space', space=token_space))
+            positions.append(repeat(torch.arange(space, space+token_space, device=tokenized_spikes.device), 'space -> time space', time=time))
             space += token_space
-            channel_counts.append(torch.full((time, token_space), fill_value=neurons_per_token, dtype=torch.long))
+            channel_counts.append(torch.full((time, token_space), fill_value=neurons_per_token, device=tokenized_spikes.device, dtype=torch.long))
             if pad_amount:
                 channel_counts[-1][:,-1] = neurons_per_token - pad_amount
         return (
