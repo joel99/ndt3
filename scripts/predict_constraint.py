@@ -74,7 +74,8 @@ else:
         # 'closed_loop_pitt_co_CRSTest_190_6', # TODO test OOD
         # 'closed_loop_pitt_co_CRSTest_190_6',
 
-        'closed_loop_pitt_co_CRSTest_198_3',
+        'closed_loop_pitt_co_CRSTest_198_1',
+        # 'closed_loop_pitt_co_CRSTest_198_3',
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
     # data_label = 'grasp'
@@ -90,9 +91,11 @@ dataset = SpikingDataset(cfg.dataset)
 reference_target = [
     # 'closed_loop_pitt_co_CRSTest_190_1',
     # 'closed_loop_pitt_co_CRSTest_190_3',
-    'closed_loop_pitt_co_CRSTest_197_1',
+    # 'closed_loop_pitt_co_CRSTest_197_1',
     # 'closed_loop_pitt_co_CRSTest_190_4',
     # 'closed_loop_pitt_co_CRSTest_190_5',
+    'closed_loop_pitt_co_CRSTest_198_1',
+    # 'closed_loop_pitt_co_CRSTest_198_2',
 ]
 if reference_target:
     reference_cfg = deepcopy(cfg)
@@ -143,9 +146,17 @@ def eval_model(
         if prompt is not None:
             # breakpoint()
             # print(prompt.keys())
+            # Pseudo model
+            # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
+            pseudo_prompt = deepcopy(batch)
+
             batch = postcrop_batch(batch, int((cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000) // cfg.dataset.bin_size_ms))
-            # print(batch[DataKey.covariate_labels.name])
-            # breakpoint()
+
+            # print(f'After: {batch[DataKey.constraint.name].shape}')
+            crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
+            crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
+
+
             batch = prepend_prompt(batch, crop_prompt)
         # print(batch[DataKey.covariate_labels.name])
         # TODO crop batch
