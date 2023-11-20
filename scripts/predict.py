@@ -52,13 +52,13 @@ else:
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2',
         # 'pitt_broad_pitt_co_CRS02bLab_1942_3',
 
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
-        # 'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
+        'pitt_broad_pitt_co_CRS02bLab_1942_1', # OL
+        'pitt_broad_pitt_co_CRS02bLab_1942_4', # OL
 
         # 'pitt_broad_pitt_co_CRS02bLab_1942_2', # Ortho
         # 'pitt_broad_pitt_co_CRS02bLab_1942_5', # Ortho
-        'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
-        'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_3', # FBC
+        # 'pitt_broad_pitt_co_CRS02bLab_1942_6', # FBC
         # 'pitt_broad_pitt_co_CRS02bLab_1942_7', # Free play
         # 'pitt_broad_pitt_co_CRS02bLab_1942_8', # Free play
 

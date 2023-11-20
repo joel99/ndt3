@@ -32,6 +32,7 @@ query = 'small_40m_dense-ggg6z4ii'
 
 query = 'small_40m_dense_q256_ablate-0grt5zqd'
 query = 'small_40m_dense_q256_return-1pj8hmj4'
+query = 'small_40m_dense_q256_ablate_cond_rew-vh12zgxm'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -77,8 +78,8 @@ else:
         # 'closed_loop_pitt_co_CRSTest_190_6', # TODO test OOD
         # 'closed_loop_pitt_co_CRSTest_190_6',
 
-        'closed_loop_pitt_co_CRSTest_198_1',
-        # 'closed_loop_pitt_co_CRSTest_198_3',
+        # 'closed_loop_pitt_co_CRSTest_198_1',
+        'closed_loop_pitt_co_CRSTest_198_3',
     ]
     # data_label = [i for i in DIMS.keys() if dataset.cfg.datasets[0].startswith(i)][0]
     # data_label = 'grasp'
@@ -94,10 +95,10 @@ dataset = SpikingDataset(cfg.dataset)
 reference_target = [
     # 'closed_loop_pitt_co_CRSTest_190_1',
     # 'closed_loop_pitt_co_CRSTest_190_3',
-    'closed_loop_pitt_co_CRSTest_197_1',
+    # 'closed_loop_pitt_co_CRSTest_197_1',
     # 'closed_loop_pitt_co_CRSTest_190_4',
     # 'closed_loop_pitt_co_CRSTest_190_5',
-    # 'closed_loop_pitt_co_CRSTest_198_1',
+    'closed_loop_pitt_co_CRSTest_198_1',
     # 'closed_loop_pitt_co_CRSTest_198_2',
 ]
 if reference_target:

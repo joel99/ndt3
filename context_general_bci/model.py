@@ -603,6 +603,7 @@ class BrainBertInterface(pl.LightningModule):
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         task_return_time: torch.Tensor,
+        spike_array_lengths: List[int] = [], # For padding, see dataloader spike logic
         PAD_SPIKE_VALUE: int = 0, # Should migrate or surface some other way
     ) -> Dict[BatchKey, torch.Tensor]:
         # TODO non-parity - currently we don't format spikes by array group, which will be bad for misshaped arrays.
@@ -665,6 +666,7 @@ class BrainBertInterface(pl.LightningModule):
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
         kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
         temperature=0.,
+        spike_array_lengths: List[int] = [], # For padding, see dataloader spike logic
     ):
         r"""
             Assumes single item prediction, no padding.
@@ -690,6 +692,7 @@ class BrainBertInterface(pl.LightningModule):
             task_reward,
             task_return,
             task_return_time,
+            spike_array_lengths,
         )
         if reference is not None:
             batch = prepend_prompt(batch, reference)
