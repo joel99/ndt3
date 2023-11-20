@@ -210,8 +210,10 @@ class TaskConfig:
     behavior_tolerance_ceil: float = 0.0 # if > 0, use this as a tolerance for behavior labels. If the difference between the predicted and actual behavior is less than this, don't penalize it.
 
     constraint_mute: bool = False
+    constraint_ablate: bool = False
     # Return related items
     return_mute: bool = False # Mute specifically return stream as a control while we figure out how to condition at test.
+    reward_mute: bool = False
 
     decode_separate: bool = False # for bhvr decoding, use a separate transformer decoder? (Only compat with EmbedStrat.token)
     decode_time_pool: str = "" # none or 'mean'
