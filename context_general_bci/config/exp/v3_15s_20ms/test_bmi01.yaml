@@ -1,0 +1,18 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  max_tokens: 4092 # For subsequent curricula
+  datasets:
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
+  # - miller.*
+  # - odoherty_rtt.*
+  # - delay.*
+  - pitt_broad_pitt_co_BMI01.*
+  eval_datasets: []
+  exclude_datasets: []
+train:
+  batch_size: 32

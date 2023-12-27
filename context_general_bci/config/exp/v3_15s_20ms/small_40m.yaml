@@ -1,0 +1,7 @@
+# @package _global_
+
+defaults:
+  - _default
+train:
+  batch_size: 32 # on 40G
+notes: "40M sparse reward"

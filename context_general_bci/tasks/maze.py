@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import pandas as pd
 from scipy.signal import resample_poly
-from einops import rearrange, reduce
+from einops import rearrange, reduce, repeat
 
 import logging
 logger = logging.getLogger(__name__)
@@ -18,7 +18,7 @@ except:
 from context_general_bci.config import DataKey, DatasetConfig, REACH_DEFAULT_KIN_LABELS
 from context_general_bci.subjects import SubjectInfo, SubjectArrayRegistry, create_spike_payload
 from context_general_bci.tasks import ExperimentalTask, ExperimentalTaskLoader, ExperimentalTaskRegistry
-from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm
+from context_general_bci.tasks.preproc_utils import PackToChop, get_minmax_norm, apply_minmax_norm
 
 BLACKLIST_UNITS = [1]
 @ExperimentalTaskRegistry.register
@@ -82,6 +82,8 @@ class ChurchlandMazeLoader(ExperimentalTaskLoader):
                 # Note it's actually 1D here, we normalize per dimension later
                 global_vel, payload_norm = get_minmax_norm(global_vel, center_mean=task_cfg.center)
                 global_args.update(payload_norm)
+                # Assumes center_mean, i.e. only updates cov_max
+                global_args['cov_max'] = repeat(global_args['cov_max'], ' -> d', d=len(REACH_DEFAULT_KIN_LABELS))
 
             is_valid = ~(trial_info['discard_trial'][:].astype(bool))
             move_begins = trial_info['move_begins_time'][:]

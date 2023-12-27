@@ -1,0 +1,23 @@
+# @package _global_
+
+defaults:
+  - _default
+dataset:
+  max_tokens: 4092 # For subsequent curricula
+  datasets:
+  # - churchland.*
+  # - gallego.*
+  # - dyer_co.*
+  # - miller.*
+  # - odoherty_rtt.*
+  # - delay.*
+  - pitt_broad_pitt_co_CRS02bLab_2.*
+  - pitt_broad_pitt_co_CRS02bLab_3.*
+  - pitt_broad_pitt_co_CRS02bLab_4.*
+  - pitt_broad_pitt_co_CRS02bLab_5.*
+  - pitt_broad_pitt_co_CRS02bLab_6.*
+  - pitt_broad_pitt_co_CRS02bLab_7.*
+  - pitt_broad_pitt_co_CRS02bLab_8.*
+  - pitt_broad_pitt_co_CRS02bLab_9.*
+train:
+  batch_size: 32
