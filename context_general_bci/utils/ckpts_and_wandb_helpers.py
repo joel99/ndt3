@@ -28,8 +28,8 @@ def wandb_query_experiment(
     runs = api.runs(f"{wandb_user}/{wandb_project}", filters=filters, order=order)
     return runs
 
-def get_best_ckpt_in_dir(ckpt_dir: Path, tag="val_loss", higher_is_better=False):
-    if 'bps' in tag:
+def get_best_ckpt_in_dir(ckpt_dir: Path, tag="val_loss", higher_is_better=False, nth_best=0):
+    if 'bps' in tag or 'r2' in tag:
         higher_is_better = True
     # Newest is best since we have early stopping callback, and modelcheckpoint only saves early stopped checkpoints (not e.g. latest)
     res = sorted(ckpt_dir.glob("*.ckpt"), key=osp.getmtime)
@@ -46,9 +46,13 @@ def get_best_ckpt_in_dir(ckpt_dir: Path, tag="val_loss", higher_is_better=False)
             if end == -1:
                 end = len(r.stem)
             values.append(float(r.stem[start+len(tag)+1:end].split('=')[-1]))
+        values = np.array(values)
         if higher_is_better:
-            return res[np.argmax(values)]
-        return res[np.argmin(values)]
+            values = -values
+        idxs = np.argsort(values)
+        res = [res[i] for i in idxs]
+        return res[nth_best]
+    print(f"Found {len(res)} ckpts in {ckpt_dir}, no tag specified, returning newest")
     return res[-1] # default to newest
 
 def wandb_query_latest(

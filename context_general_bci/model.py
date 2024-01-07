@@ -610,18 +610,30 @@ class BrainBertInterface(pl.LightningModule):
         task_reward: torch.Tensor,
         task_return: torch.Tensor,
         task_return_time: torch.Tensor,
+        spike_array_lengths: List[int] = [], # For padding, see dataloader spike logic
         PAD_SPIKE_VALUE: int = 0, # Should migrate or surface some other way
     ) -> Dict[BatchKey, torch.Tensor]:
-        # TODO non-parity - currently we don't format spikes by array group, which will be bad for misshaped arrays.
         # We should refactor dataloader entirely and use exactly dataloader logic here.
         # breakpoint()
-        tokenized_spikes, pad_amount = SpikingDataset.tokenize_spikes(spikes.unsqueeze(-1), self.cfg.neurons_per_token, PAD_SPIKE_VALUE)
-        if pad_amount > 0:
-            raise ValueError("Padding not supported in inference mode")
-        token_time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1)
-        tokenized_spikes = rearrange(tokenized_spikes, 'time space h c -> 1 (time space) c h')
-        times = repeat(torch.arange(spikes.size(0), device=spikes.device), 'time -> 1 (time space)', space=token_space)
-        positions = repeat(torch.arange(token_space, device=spikes.device), 'space -> 1 (time space)', time=token_time)
+        if spike_array_lengths:
+            # breakpoint()
+            tokenized_spikes, times, positions, _ = SpikingDataset.tokenize_spike_arrays(
+                torch.split(spikes.unsqueeze(-1), spike_array_lengths, dim=1),
+                self.cfg.neurons_per_token,
+                PAD_SPIKE_VALUE,
+                max_channels_per_array=self.data_attrs.max_channel_count,
+            )
+            tokenized_spikes = tokenized_spikes.unsqueeze(0)
+            times = times.unsqueeze(0)
+            positions = positions.unsqueeze(0)
+        else:
+            tokenized_spikes, pad_amount = SpikingDataset.tokenize_spikes(spikes.unsqueeze(-1), self.cfg.neurons_per_token, PAD_SPIKE_VALUE)
+            if pad_amount > 0:
+                raise ValueError("Padding not supported in inference mode")
+            token_time, token_space = tokenized_spikes.size(0), tokenized_spikes.size(1)
+            tokenized_spikes = rearrange(tokenized_spikes, 'time space h c -> 1 (time space) c h')
+            times = repeat(torch.arange(spikes.size(0), device=spikes.device), 'time -> 1 (time space)', space=token_space)
+            positions = repeat(torch.arange(token_space, device=spikes.device), 'space -> 1 (time space)', time=token_time)
 
         # Extend the blank covariate to match the length of spikes, effectively our query
         # cov = F.pad(cov, (0, 0, 0, 1)) # Don't need explicit pad, we draw at system level
@@ -672,6 +684,7 @@ class BrainBertInterface(pl.LightningModule):
         reference: Dict[DataKey, torch.Tensor] = {}, # To prepend
         kin_mask_timesteps: torch.Tensor | None = None, # None is not good, but we bake up to iterate at system level
         temperature=0.,
+        spike_array_lengths: List[int] = [], # For padding, see dataloader spike logic
     ):
         r"""
             Assumes single item prediction, no padding.
@@ -697,6 +710,7 @@ class BrainBertInterface(pl.LightningModule):
             task_reward,
             task_return,
             task_return_time,
+            spike_array_lengths,
         )
         if reference is not None:
             batch = prepend_prompt(batch, reference)

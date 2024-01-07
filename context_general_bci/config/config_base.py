@@ -717,6 +717,7 @@ class RootConfig:
 
     weight_space_ensemble_alpha = 0.0 # Ensemble back to backbone - uses load_from_id or init_from_id if available
     save_r2: bool = False # save r2 ckpts
+    save_num: int = 1 # save top N ckpts (per metric)
 
     # orchestration
     inherit_exp: str = "" # hunt wandb for the relevant experiment, presumed same tag name.

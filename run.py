@@ -262,7 +262,7 @@ def run_exp(cfg : RootConfig) -> None:
         ModelCheckpoint(
             monitor='val_loss',
             filename='val-{epoch:02d}-{val_loss:.4f}',
-            save_top_k=2, # For rollback efforts.
+            save_top_k=cfg.save_num, # For rollback efforts.
             mode='min',
             every_n_epochs=1 if cfg.train.val_check_interval == 0 else None,
             every_n_train_steps=cfg.train.val_check_interval if cfg.train.val_check_interval > 0 else None,
@@ -274,8 +274,8 @@ def run_exp(cfg : RootConfig) -> None:
         callbacks.append(
             ModelCheckpoint(
                 monitor='val_kinematic_r2',
-                filename='val_kinematic_r2-{epoch:02d}-{val_loss:.4f}',
-                save_top_k=1,
+                filename='val_kinematic_r2-{epoch:02d}-{val_kinematic_r2:.4f}-{val_loss:.4f}',
+                save_top_k=cfg.save_num,
                 mode='max', # I'm dumb
                 every_n_epochs=1 if cfg.train.val_check_interval == 0 else None,
                 every_n_train_steps=cfg.train.val_check_interval if cfg.train.val_check_interval > 0 else None,
