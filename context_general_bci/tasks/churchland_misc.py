@@ -133,7 +133,7 @@ class ChurchlandMiscLoader(ExperimentalTaskLoader):
             trial_vel = resample_poly(trial_vel, 1,  cfg.bin_size_ms, padtype='line', axis=0)
             trial_vel = torch.from_numpy(trial_vel).float()
             if cfg.churchland_misc.minmax:
-                trial_vel = apply_minmax_norm(trial_vel, global_args)
+                trial_vel, _ = apply_minmax_norm(trial_vel, global_args)
             return trial_vel
         try:
             with h5py.File(datapath, 'r') as f:

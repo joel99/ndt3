@@ -103,7 +103,7 @@ class GallegoCOLoader(ExperimentalTaskLoader):
                 vel[-1] = vel[-2] # last value is nan, but not easy to crop at same resolution as spikes, so we just roll
             vel = compress_vel(df.vel[trial_id])
             if cfg.gallego_co.minmax:
-                vel = apply_minmax_norm(vel, global_args)
+                vel, _ = apply_minmax_norm(vel, global_args)
             single_payload = {
                 DataKey.spikes: spike_payload, # T x H x 1? IIRC?
                 DataKey.bhvr_vel: vel, # T x H

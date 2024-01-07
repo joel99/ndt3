@@ -5,5 +5,5 @@ defaults:
 dataset:
   sparse_rewards: False
 train:
-  batch_size: 32
+  batch_size: 16
 notes: "40M dense reward"

@@ -99,7 +99,7 @@ class DyerCOLoader(ExperimentalTaskLoader):
                 # targets_binned[k] = trialtable[trial_id, 1]
             covariates_binned = torch.as_tensor(covariates_binned)
             if cfg.dyer_co.minmax:
-                covariates_binned = apply_minmax_norm(covariates_binned, payload_norm)
+                covariates_binned, _ = apply_minmax_norm(covariates_binned, payload_norm)
             for i in range(num_neurons):
                 spike_times = neurons[i]['ts']
                 neurons_binned[:, i] = np.histogram(spike_times, grid)[0]

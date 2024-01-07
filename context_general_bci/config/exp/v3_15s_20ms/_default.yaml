@@ -1,7 +1,6 @@
 # @package _global_
-# Add merged Pitt preproc to allow model to see multiple constraints in one datastream
-# Muted return stream while we figure out how to use it
-# Remove preproc centering to avoid preproc bias at test time
+# Go back to 20ms just to see how it goes, per Guy's advice. Ramping back up in new year.
+
 defaults:
   - /model:
     - flat_enc_dec
@@ -97,6 +96,8 @@ dataset:
   - delay.*
   - flint.*
   - rouse.*
+  exclude_datasets:
+  - pitt_broad_pitt_co_BMI01.* # Only at 30ms atm
   eval_datasets:
   # - CRS08.* # Pitt eval - we hold out a few sessions this time instead of the full subject
   - CRS08Home_3_.*

@@ -374,10 +374,11 @@ class BrainBertInterface(pl.LightningModule):
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
                 elif self.do_kin_maskout:
-                    # We want to make sure we always have at least one kin token on, even if it's padding, so that we can get loss computed on our readout
+                    # We want to make sure we always have at least one kin token on, even if it's dataloader-padding, so that we can get loss computed on our readout
                     # However, the padding is automatically put at the very last token, and kin is last modality - so that token is never used as input.
                     # It's the token that will get rolled and cancelled immediately below.
                     # Symmetric to this special case, however, is the notion that the first kinematic token is always valid, we have no prior that makes it trivial.
+
                     # Meaning of `is_kin_mask` - is a kinematic input that should have received kin input that was masked out?
                     is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
                     is_kin_mask[:, 0] = False
@@ -395,7 +396,7 @@ class BrainBertInterface(pl.LightningModule):
                         mask = mask & (times >= sample_thresh)
                         # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
                     elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
-                        # Wer still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
+                        # We still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
                         # ! Note this should be >= 1 step, so prompt_time_thresh_min must be < -1 - -1 itself, inclusive, means that we might make all steps illegal
                         sample_thresh = torch.randint(
                             self.cfg.task.context_prompt_time_thresh,
@@ -408,11 +409,14 @@ class BrainBertInterface(pl.LightningModule):
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         if not mask.any():
                             breakpoint()
+                        print(sample_thresh)
                         mask = mask & (times_from_end >= sample_thresh)
                         if not mask.any():
                             breakpoint()
                             # ? I still don't really get why this happens, waiting to trigger again
                     mask = is_kin_mask & mask
+                    if not (mask & ~pipeline_padding).any():
+                        breakpoint()
                     # if not mask.any():
                         # breakpoint()
                     pipeline_context[mask] = 0
@@ -552,17 +556,20 @@ class BrainBertInterface(pl.LightningModule):
                 sub_space = space[modalities == i]
                 sub_padding = padding[modalities == i]
                 # sub_loss_mask = None if zero_mask is None else zero_mask[modalities == i]
-                # ! Beware off by 1 - include features that didn't receive kinematic input by virtue of receiving non-kinematic input, not just zero-masked.
+                # ! TODO Beware off by 1 - include features that didn't receive kinematic input by virtue of receiving non-kinematic input, not just zero-masked.
                 # was_modality_input = (modalities == i).roll(1, dims=1)
                 # was_modality_input[:, 0] = False # Nope, keep this for even batches downstream. Probably the source of an insiduous bug, but should wash out.
                 # If this token will be masked, it is strong indication we have reached the ICL-suffix (zero mask is only returned/used in suffix mode), so it is sufficient
                 if zero_mask is not None and 'kinematic' in task.value:
-                    # Restrict loss to only compute on tokens that will mask out. This is a heuristic for tokens that themselves, aren't receiving kinematic input. Only valid if we mask continuous spans, as in ICL.
+                    # Exclude prefix in loss mask
+                    # Restrict loss to only compute on tokens that are masked out. This is a heuristic for tokens that themselves, aren't receiving kinematic input. Only valid if we mask continuous spans, as in ICL.
                     # TBH I doubt this masking is necessary - the masking and increased difficulty will upweight the loss naturally.
                     target_will_mask = zero_mask.roll(-1, dims=1)
                     if not target_will_mask.any():
-                        target_will_mask[:, -1] = True # Last token is always a kinematic one, turn it on - needed for setting with no kin targets and only padding tokens that were rolled off in zero mask.
-                    sub_loss_mask = target_will_mask[modalities == i]
+                        sub_loss_mask = target_will_mask[modalities == i]
+                        sub_loss_mask[:] = True # forcibly turn on all kin tokens if we're not finding any masked kin tokens. All sequences should have at least one, dataloader injected token in this case, absent collator padding.
+                    else:
+                        sub_loss_mask = target_will_mask[modalities == i]
                 else:
                     sub_loss_mask = None
                 # Heuristic: zero_mask is steps where inputs were masked - compute loss for these (reasonable mainly in prefix case with continuous mask span)

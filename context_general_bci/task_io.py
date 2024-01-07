@@ -1024,6 +1024,9 @@ class ReturnContext(ContextPipeline):
         times = batch[DataKey.task_return_time.name]
         space = torch.zeros_like(times)
         padding = create_padding_simple(return_embed, batch.get(RETURN_LENGTH_KEY, None))
+        if (batch[DataKey.task_return_time.name].max(1).values > batch[DataKey.time.name].max(1).values).any():
+            breakpoint()
+        # breakpoint()
         return (
             return_embed + reward_embed,
             # self.norm(return_embed + reward_embed),
@@ -2018,8 +2021,8 @@ class CovariateInfill(ClassificationMixin):
             loss_mask = ~backbone_padding
         if not loss_mask.any(): # ! This really shouldn't trigger and will cause unused parameters for DDP.
             breakpoint()
-            # ! We take care to have a concluding kinematic padding token in each sequence in worst case
-            loss = torch.zeros_like(loss).mean()
+            # ! This shouldn't trigger because we take care to have a concluding kinematic padding token in each sequence in worst case - but it still seems to be triggering...?
+            loss = (loss * 0).mean()
         else:
             loss = loss[loss_mask].mean()
         batch_out['loss'] = loss
