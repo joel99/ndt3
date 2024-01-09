@@ -9,7 +9,7 @@ from omegaconf import OmegaConf
 
 from context_general_bci.contexts import context_registry
 from context_general_bci.config import DatasetConfig, DataKey, MetaKey
-from context_general_bci.config.presets import FlatDataConfig
+from context_general_bci.config.presets import FlatDataConfig, ScaleHistoryDatasetConfig
 from context_general_bci.dataset import SpikingDataset
 
 from context_general_bci.analyze_utils import prep_plt
@@ -74,7 +74,7 @@ dataset_name = 'odoherty_rtt-Loco-20170210_03'
 # dataset_name = 'observation_CRS08_21_3'
 # dataset_name = 'observation_CRS08_23_1'
 # dataset_name = 'observation_CRS08_23_3'
-# dataset_name = 'observation_CRS08_23_4'
+dataset_name = 'pitt_co_CRS02bLab_1612_12'
 
 # dataset_name = 'observation_CRS02b_1959_3'
 
@@ -87,14 +87,8 @@ print(context)
 # datapath = './data/odoherty_rtt/indy_20160407_02.mat'
 # context = context_registry.query_by_datapath(datapath)
 
-default_cfg: DatasetConfig = OmegaConf.create(FlatDataConfig())
-default_cfg.odoherty_rtt.include_sorted = False
-default_cfg.odoherty_rtt.arrays = ['Indy-M1', 'Loco-M1']
-# default_cfg.data_keys = [DataKey.spikes]
-# default_cfg.data_keys = [DataKey.spikes]
-# default_cfg.data_keys = [DataKey.spikes, DataKey.heldout_spikes, DataKey.bhvr_vel]
-default_cfg.data_keys = [DataKey.spikes] # , DataKey.bhvr_vel]
-default_cfg.data_keys = [DataKey.spikes, DataKey.bhvr_vel]
+default_cfg: DatasetConfig = OmegaConf.create(ScaleHistoryDatasetConfig())
+default_cfg.data_keys = [DataKey.spikes, DataKey.bhvr_vel, DataKey.task_return, DataKey.constraint]
 default_cfg.bin_size_ms = 20
 default_cfg.max_channels = 288
 # default_cfg.bin_size_ms = 30
@@ -117,8 +111,8 @@ for t in range(len(dataset)):
     lengths.append(dataset[t][DataKey.spikes].size(0))
 trial = 1
 print(f'Spike shape (padded): {dataset[trial][DataKey.spikes].size()}')
-print(f'Channels: {dataset[trial]["channel_counts"].sum(1)[0]}')
-print(f'Timerange: {min(lengths) * dataset.cfg.bin_size_ms, max(lengths) * dataset.cfg.bin_size_ms}')
+# print(f'Channels: {dataset[trial]["channel_counts"].sum(1)[0]}')
+# print(f'Timerange: {min(lengths) * dataset.cfg.bin_size_ms, max(lengths) * dataset.cfg.bin_size_ms}')
 
 #%%
 trial = 0
@@ -132,9 +126,18 @@ trial = 0
 # trial = 11
 
 trial_vel = dataset[trial][DataKey.bhvr_vel]
+print(dataset[trial][DataKey.task_return_time])
+print(dataset[trial][DataKey.time])
 
+print(dataset[trial][DataKey.task_return].shape)
+print(dataset[trial][DataKey.spikes].shape)
+print(dataset[trial][DataKey.spikes].shape)
+print(dataset[trial][DataKey.bhvr_vel].shape)
+print(dataset[trial][DataKey.covariate_time])
+
+print(dataset[trial].keys())
 # Show kinematic trace by integrating trial_vel
-print(trial_vel.shape)
+# print(trial_vel.shape)
 trial_vel = trial_vel[:,-2:]
 # trial_vel = trial_vel[:,-2:]
 

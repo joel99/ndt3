@@ -589,7 +589,8 @@ class SpikingDataset(Dataset):
                         data_items[DataKey.task_reward] = data_items[DataKey.task_reward] + 1
                         data_items[DataKey.task_return] = data_items[DataKey.task_return] + 1
                     if data_items[DataKey.task_return_time].max() > data_items[DataKey.time].max():
-                        breakpoint()
+                        print(f"Warning: return time exceeds trial time, trial {trial.path}")
+                        # breakpoint()
                 else:
                     data_items[k] = payload[k]
         out = {

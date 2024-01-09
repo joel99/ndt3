@@ -409,7 +409,6 @@ class BrainBertInterface(pl.LightningModule):
                         times_from_end = times - non_pad_times.max(-1, keepdim=True).values
                         if not mask.any():
                             breakpoint()
-                        print(sample_thresh)
                         mask = mask & (times_from_end >= sample_thresh)
                         if not mask.any():
                             breakpoint()

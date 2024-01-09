@@ -127,6 +127,8 @@ class PoissonCrossEntropyLoss(nn.CrossEntropyLoss):
             og_size = target.size()
             soft_target = self.poisson_map[target.flatten()].view(*og_size, -1)
             target = soft_target.permute(class_second)
+        else:
+            breakpoint()
         return super().forward(
             logits,
             target,
@@ -370,30 +372,32 @@ class RatePrediction(DataPipeline):
         )
         if self.serve_tokens_flat:
             assert Metric.bps not in self.cfg.metrics, "bps metric not supported for flat tokens"
-        readout_size = cfg.neurons_per_token if cfg.transform_space else channel_count
-        if self.cfg.unique_no_head:
-            decoder_layers = []
-        elif self.cfg.linear_head:
-            decoder_layers = [nn.Linear(backbone_out_size, readout_size)]
-        else:
-            decoder_layers = [
-                nn.Linear(backbone_out_size, backbone_out_size),
-                nn.ReLU() if cfg.activation == 'relu' else nn.GELU(),
-                nn.Linear(backbone_out_size, readout_size)
-            ]
 
-        if not cfg.lograte:
-            decoder_layers.append(nn.ReLU())
+        if self.cfg.spike_loss == 'poisson':
+            readout_size = cfg.neurons_per_token if cfg.transform_space else channel_count
+            if self.cfg.unique_no_head:
+                decoder_layers = []
+            elif self.cfg.linear_head:
+                decoder_layers = [nn.Linear(backbone_out_size, readout_size)]
+            else:
+                decoder_layers = [
+                    nn.Linear(backbone_out_size, backbone_out_size),
+                    nn.ReLU() if cfg.activation == 'relu' else nn.GELU(),
+                    nn.Linear(backbone_out_size, readout_size)
+                ]
 
-        if cfg.transform_space and not self.serve_tokens: # if serving as tokens, then target has no array dim
-            # after projecting, concatenate along the group dimension to get back into channel space
-            decoder_layers.append(Rearrange('b t a s_a c -> b t a (s_a c)'))
-        self.out = nn.Sequential(*decoder_layers)
+            if not cfg.lograte:
+                decoder_layers.append(nn.ReLU())
 
-        if getattr(self.cfg, 'spike_loss', 'poisson') == 'poisson':
+            if cfg.transform_space and not self.serve_tokens: # if serving as tokens, then target has no array dim
+                # after projecting, concatenate along the group dimension to get back into channel space
+                decoder_layers.append(Rearrange('b t a s_a c -> b t a (s_a c)'))
+            self.out = nn.Sequential(*decoder_layers)
             self.loss = nn.PoissonNLLLoss(reduction='none', log_input=cfg.lograte)
         elif self.cfg.spike_loss == 'cross_entropy':
-            self.loss = PoissonCrossEntropyLoss(reduction='none', soften=self.cfg.cross_ent_soften)
+            self.out = RatePrediction.create_linear_head(cfg, cfg.hidden_size, cfg.neurons_per_token)
+            self.loss = PoissonCrossEntropyLoss(reduction='none', soften=self.cfg.cross_ent_soften, max_count=cfg.max_neuron_count)
+
 
     @torch.no_grad()
     def bps(
@@ -458,13 +462,13 @@ class RatePrediction(DataPipeline):
 
     @staticmethod
     def create_linear_head(
-        cfg: ModelConfig, in_size: int, out_size: int, layers=1
+        cfg: ModelConfig, in_size: int, out_size: int, layers=1, collapse_nonpatch=True,
     ):
         assert cfg.transform_space, 'Classification heads only supported for transformed space'
         if cfg.task.spike_loss == 'poisson':
             classes = 1
         elif cfg.task.spike_loss == 'cross_entropy':
-            classes = cfg.max_neuron_count
+            classes = cfg.max_neuron_count+ 1
         out_layers = [
             nn.Linear(in_size, out_size * classes)
         ]
@@ -475,9 +479,11 @@ class RatePrediction(DataPipeline):
             if not cfg.lograte:
                 out_layers.append(nn.ReLU())
         else:
-            out_layers.append(
-                Rearrange('b t (s c) -> b c t s', c=classes)
-            )
+            if collapse_nonpatch: # For NDT3
+                rearr = Rearrange('b (s c) -> b c s', c=classes)
+            else: # NDT2
+                rearr = Rearrange('b t (s c) -> b c t s', c=classes)
+            out_layers.append(rearr)
         return nn.Sequential(*out_layers)
 
 class SpikeContext(ContextPipeline):
@@ -502,6 +508,7 @@ class SpikeContext(ContextPipeline):
         else:
             assert cfg.hidden_size % cfg.neurons_per_token == 0, "hidden size must be divisible by neurons per token"
             spike_embed_dim = round(cfg.hidden_size / cfg.neurons_per_token)
+        self.max_neuron_count = cfg.max_neuron_count
         if self.spike_embed_style == EmbedStrat.project:
             self.readin = nn.Linear(1, spike_embed_dim)
         elif self.spike_embed_style == EmbedStrat.token:
@@ -520,7 +527,7 @@ class SpikeContext(ContextPipeline):
         if self.spike_embed_style == EmbedStrat.token:
             state_in = self.readin(state_in.clip(max=self.readin.num_embeddings - 1))
         elif self.spike_embed_style == EmbedStrat.project:
-            state_in = self.readin(state_in.float().unsqueeze(-1))
+            state_in = self.readin(state_in.clip(max=self.max_neuron_count).float().unsqueeze(-1))
         else:
             raise NotImplementedError
         state_in = state_in.flatten(-2, -1)
@@ -657,9 +664,12 @@ class SpikeBase(SpikeContext, RatePrediction):
         # ! We assume that backbone features arrives in a batch-major, time-minor format, that has already been flattened
         # We need to similarly flatten
         # Time-sorting respects original served DataKey.spikes order (this should be true, but we should check)
-        target = batch[DataKey.spikes.name][..., 0]
+        target = batch[DataKey.spikes.name][..., 0] # B T C 1 -> B T C -> B C
         rates = self.out(backbone_features) # B x H
-        loss = self.loss(rates, target.flatten(0, 1))
+        # print(rates.shape, target.min(), target.max())
+        # if target.max() >= rates.shape[1]:
+            # breakpoint()
+        loss = self.loss(rates, target.flatten(0, 1).clip(max=self.max_neuron_count))
         comparison = repeat(torch.arange(loss.size(-1), device=loss.device), 'c -> t c', t=loss.size(0))
         # cf self.get_loss_mask
         if loss_mask is not None:
@@ -1010,9 +1020,6 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
-        # TODO phase these out given re-generation of PittCO
-        # batch[DataKey.task_return.name] = batch[DataKey.task_return.name].clamp(min=0) # Really got to understand what's happening here... guard against off by 1 errors.
-        # batch[DataKey.task_reward.name] = batch[DataKey.task_reward.name].clamp(min=0)
         if self.cfg.return_mute:
             return_embed = self.return_enc(torch.zeros_like(batch[DataKey.task_return.name]))
         else:
@@ -1024,12 +1031,8 @@ class ReturnContext(ContextPipeline):
         times = batch[DataKey.task_return_time.name]
         space = torch.zeros_like(times)
         padding = create_padding_simple(return_embed, batch.get(RETURN_LENGTH_KEY, None))
-        if (batch[DataKey.task_return_time.name].max(1).values > batch[DataKey.time.name].max(1).values).any():
-            breakpoint()
-        # breakpoint()
         return (
             return_embed + reward_embed,
-            # self.norm(return_embed + reward_embed),
             times,
             space,
             padding
