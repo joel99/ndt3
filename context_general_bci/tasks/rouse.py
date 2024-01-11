@@ -51,11 +51,16 @@ class RouseLoader(ExperimentalTaskLoader):
             We are currently assuming that the start of covariate data is the same as time=0 for trial SpikeTimes
             TODO do we want a <break> token between trials? For now no.
         """
+        version_ksu = 'ksu' in dataset_alias # New batch, where position is labeled differently and there are more arrays, see `rouse_viewer2`
+
         payload = loadmat(datapath)
         channel_trial_spikes = payload['SpikeTimes']
-        channel_trial_spikes = [s[0] for s in channel_trial_spikes]
-        # spikes = [flatten_single(channel, trial_starts) for channel in trial_spikes]
-        pos = payload['JoystickPos_disp'] # Trial x Time x Dim
+        if not version_ksu:
+            channel_trial_spikes = [s[0] for s in channel_trial_spikes]
+            pos = payload['JoystickPos_disp'] # Trial x Time x Dim
+            # spikes = [flatten_single(channel, trial_starts) for channel in trial_spikes]
+        else:
+            pos = payload['CursorPos']
         vel = np.gradient(pos, axis=1)
         vel = torch.tensor(
             signal.resample_poly(vel, 10, cfg.bin_size_ms, padtype='line', axis=1), # Default 100Hz
@@ -91,7 +96,9 @@ class RouseLoader(ExperimentalTaskLoader):
             # Create at ms resolution
             trial_spikes_dense = torch.zeros(len(trial_spikes), cue_time_end - cue_time_start, dtype=torch.uint8)
             for channel, channel_spikes in enumerate(trial_spikes):
-                if channel_spikes is None:
+                if isinstance(channel_spikes, float) or isinstance(channel_spikes, int):
+                    channel_spikes = np.array([channel_spikes])
+                if channel_spikes is None or len(channel_spikes) == 0:
                     continue
                 channel_spikes_ms = torch.as_tensor(channel_spikes * 1000, dtype=int)
                 channel_spikes_ms = (channel_spikes_ms[(channel_spikes_ms >= cue_time_start) & (channel_spikes_ms < cue_time_end)] - cue_time_start)
@@ -99,6 +106,7 @@ class RouseLoader(ExperimentalTaskLoader):
             all_spikes.append(trial_spikes_dense)
         dense_spikes = torch.cat([compress_vector(s.T, 0, cfg.bin_size_ms) for s in all_spikes]) # Time x Channel x 1, at bin res
         vel = torch.cat(all_vels) # Time x Dim, at bins
+
         meta_payload = {}
         meta_payload['path'] = []
         global_args = {}

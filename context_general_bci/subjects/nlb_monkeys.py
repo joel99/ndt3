@@ -141,3 +141,10 @@ class RouseQ(SubjectInfo):
     _arrays = {
         'M1': SortedArrayInfo(_max_channels=320),
     }
+
+@SubjectArrayRegistry.register
+class RouseA(SubjectInfo):
+    name = SubjectName.rouse_a
+    _arrays = {
+        'M1': SortedArrayInfo(_max_channels=320), # Generic motor, actually contains premotor as well.
+    }

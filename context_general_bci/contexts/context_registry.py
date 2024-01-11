@@ -194,6 +194,7 @@ if not os.getenv('NDT_SUPPRESS_DEFAULT_REGISTRY', False):
 
         *RouseContextInfo.build_from_dir('./data/rouse_precision/monk_p/COT_SpikesCombined', task=ExperimentalTask.rouse),
         *RouseContextInfo.build_from_dir('./data/rouse_precision/monk_q/COT_SpikesCombined', task=ExperimentalTask.rouse),
+        *RouseContextInfo.build_from_dir('./data/rouse/', task=ExperimentalTask.rouse, is_ksu=True),
 
         *FlintContextInfo.build_from_dir('./data/flint/', task=ExperimentalTask.flint),
 

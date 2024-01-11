@@ -578,7 +578,7 @@ class RouseContextInfo(ContextInfo):
         return self.alias
 
     @classmethod
-    def build_from_dir(cls, root: str, task: ExperimentalTask, arrays=["M1"]):
+    def build_from_dir(cls, root: str, task: ExperimentalTask, arrays=["M1"], is_ksu=False):
         root = Path(root)
         if not root.exists():
             logger.warning(f"Datapath folder {root} does not exist. Skipping.")
@@ -593,7 +593,7 @@ class RouseContextInfo(ContextInfo):
                 subject=subject,
                 task=task,
                 _arrays=arrays,
-                alias=f"rouse_{subject.name.value}-{timestamp}",
+                alias=f"{'rouse_ksu' if is_ksu else 'rouse'}_{subject.name.value}-{timestamp}",
                 datapath=path,
             )
         infos = map(make_info, root.glob("*.mat"))
