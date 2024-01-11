@@ -93,7 +93,7 @@ train:
   autoscale_batch_size: False
   batch_size: 4
   effective_batch_size: 4
-inherit_exp: v3_15s_60ms
+inherit_exp: v3_15s_20ms
 
 save_r2: True
 save_num: 2
