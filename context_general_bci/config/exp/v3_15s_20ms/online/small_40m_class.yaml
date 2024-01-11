@@ -1,0 +1,9 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    spike_loss: cross_entropy
+dataset:
+  sparse_rewards: False
