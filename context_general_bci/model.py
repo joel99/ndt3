@@ -304,6 +304,7 @@ class BrainBertInterface(pl.LightningModule):
         batch: Dict[BatchKey, torch.Tensor],
         prefix=False,
         kin_maskout=None,
+        no_prefix_val=False,
     ) -> Tuple[
         List[str], List[Any],
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
@@ -385,34 +386,35 @@ class BrainBertInterface(pl.LightningModule):
                     # if not is_kin_mask.any():
                         # is_kin_mask[:, -1] = True
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < kin_maskout
-                    if prefix and self.cfg.task.context_prompt_time_thresh > 0:
-                        # Essentially - maskout only begins at timestamps past prompt threshold.
-                        sample_thresh = torch.randint(
-                            self.cfg.task.context_prompt_time_thresh_min,
-                            self.cfg.task.context_prompt_time_thresh,
-                            (1,),
-                            device=pipeline_context.device
-                        ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
-                        mask = mask & (times >= sample_thresh)
-                        # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
-                    elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
-                        # We still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
-                        # ! Note this should be >= 1 step, so prompt_time_thresh_min must be < -1 - -1 itself, inclusive, means that we might make all steps illegal
-                        sample_thresh = torch.randint(
-                            self.cfg.task.context_prompt_time_thresh,
-                            self.cfg.task.context_prompt_time_thresh_min,
-                            (1,),
-                            device=pipeline_context.device
-                        ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
-                        non_pad_times = times.clone()
-                        non_pad_times[pipeline_padding] = -1
-                        times_from_end = times - non_pad_times.max(-1, keepdim=True).values
-                        if not mask.any():
-                            breakpoint()
-                        mask = mask & (times_from_end >= sample_thresh)
-                        if not mask.any():
-                            breakpoint()
-                            # ? I still don't really get why this happens, waiting to trigger again
+                    if not no_prefix_val:
+                        if prefix and self.cfg.task.context_prompt_time_thresh > 0:
+                            # Essentially - maskout only begins at timestamps past prompt threshold.
+                            sample_thresh = torch.randint(
+                                self.cfg.task.context_prompt_time_thresh_min,
+                                self.cfg.task.context_prompt_time_thresh,
+                                (1,),
+                                device=pipeline_context.device
+                            ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
+                            mask = mask & (times >= sample_thresh)
+                            # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
+                        elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
+                            # We still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
+                            # ! Note this should be >= 1 step, so prompt_time_thresh_min must be < -1 - -1 itself, inclusive, means that we might make all steps illegal
+                            sample_thresh = torch.randint(
+                                self.cfg.task.context_prompt_time_thresh,
+                                self.cfg.task.context_prompt_time_thresh_min,
+                                (1,),
+                                device=pipeline_context.device
+                            ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
+                            non_pad_times = times.clone()
+                            non_pad_times[pipeline_padding] = -1
+                            times_from_end = times - non_pad_times.max(-1, keepdim=True).values
+                            if not mask.any():
+                                breakpoint()
+                            mask = mask & (times_from_end >= sample_thresh)
+                            if not mask.any():
+                                breakpoint()
+                                # ? I still don't really get why this happens, waiting to trigger again
                     mask = is_kin_mask & mask
                     if not (mask & ~pipeline_padding).any():
                         breakpoint()
@@ -456,6 +458,7 @@ class BrainBertInterface(pl.LightningModule):
         batch: Dict[BatchKey, torch.Tensor],
         use_prefix=False,
         kin_maskout=None,
+        no_prefix_val=False,
     ) -> Tuple[
         torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor | None, torch.Tensor | None
     ]:
@@ -466,7 +469,8 @@ class BrainBertInterface(pl.LightningModule):
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(
             batch,
             prefix=use_prefix,
-            kin_maskout=kin_maskout
+            kin_maskout=kin_maskout,
+            no_prefix_val=no_prefix_val,
         )
         # explanation = \
         #     torch._dynamo.explain(
@@ -504,7 +508,13 @@ class BrainBertInterface(pl.LightningModule):
                 enc_index = tks.index('spike_context')
             return outputs[enc_index], times[enc_index], space[enc_index], pipeline_padding[enc_index], None, None
 
-    def _step(self, batch: Dict[BatchKey, torch.Tensor], eval_mode=False, use_prefix=False) -> Dict[BatchKey, torch.Tensor]:
+    def _step(
+            self,
+            batch: Dict[BatchKey, torch.Tensor],
+            eval_mode=False,
+            use_prefix=False,
+            no_prefix_val=False,
+        ) -> Dict[BatchKey, torch.Tensor]:
         r"""
             batch provided contains all configured data_keys and meta_keys
             - The distinction with `forward` is not currently clear, but `_step` is specifically oriented around training.
@@ -537,7 +547,8 @@ class BrainBertInterface(pl.LightningModule):
                 prefix_loss = False
                 kin_maskout = self.kin_maskout
         # breakpoint()
-        features, times, space, padding, modalities, zero_mask = self(batch, use_prefix=use_prefix, kin_maskout=kin_maskout) # B T H
+        features, times, space, padding, modalities, zero_mask = self(
+            batch, use_prefix=use_prefix, kin_maskout=kin_maskout, no_prefix_val=no_prefix_val) # B T H
         # if ((times > 750) & (times < 1500)).any():
         #     breakpoint() # This is an invalid value... what's happening
         if self.cfg.log_backbone_norm:
@@ -754,7 +765,8 @@ class BrainBertInterface(pl.LightningModule):
                 kin_mask_timesteps_sparse = kin_mask_timesteps.nonzero()[:, 0]
                 zero_mask = torch.isin(times, kin_mask_timesteps_sparse)
             else:
-                raise ValueError("No kinematic mask timesteps provided")
+                logger.warning("Empty kinematic mask given; no timesteps are masked")
+                zero_mask = torch.zeros_like(times, dtype=torch.bool)
             # * Risk point - we should examine this mask carefully.
             is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Is kinematic input - one after is kin target
             is_kin_mask[:, 0] = False # First token is always valid
@@ -1240,7 +1252,7 @@ class BrainBertInterface(pl.LightningModule):
     def validation_step(self, batch, batch_idx, dataloader_idx=0):
         # if dataloader_idx == 0 and batch_idx > 0:
             # return None # debug
-        metrics = self._step(batch, use_prefix = True)
+        metrics = self._step(batch, use_prefix=True, no_prefix_val=self.cfg.task.no_prefix_val)
         self.common_log(
             metrics,
             prefix='val' if dataloader_idx == 0 else 'eval',
@@ -1256,7 +1268,7 @@ class BrainBertInterface(pl.LightningModule):
             Note test step isn't capable of returning non-metrics. (use `predict` to get outputs)
         """
 
-        metrics = self._step(batch, eval_mode=False, use_prefix=True)
+        metrics = self._step(batch, eval_mode=False, use_prefix=True, no_prefix_val=self.cfg.task.no_prefix_val)
             # kinematic_labels=batch[DataKey.covariate_labels] if DataKey.covariate_labels in batch else DEFAULT_KIN_LABELS,
         # )
         # metrics = self._step(batch, eval_mode=True)

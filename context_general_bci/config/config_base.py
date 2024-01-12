@@ -170,6 +170,7 @@ class TaskConfig:
     # For autoregressive models, this just means we start evaluating loss after N tokens (and is probably honestly unnecessary)
     prefix_ratio: float = 0.0 # ratio of using prefix loss - i.e. only count loss on maskout suffix. Assumes negative context_prompt_time_thresh
     # For shuffle based non-autoregressive models, this means never shuffle out the first N tokens during decoding, we assume those are provided.
+    no_prefix_val: bool = False # Special mode for deterministic fine-tuning - kill prefix during validation
 
     # These ratios are only relevant for non-asymmetric path (i.e. defunct)
     mask_token_ratio: float = 0.8
