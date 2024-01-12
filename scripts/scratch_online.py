@@ -12,12 +12,9 @@ from sklearn.metrics import r2_score
 from context_general_bci.model import transfer_model, BrainBertInterface
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import (
-    RootConfig,
-    ModelTask,
     Metric,
     Output,
     DataKey,
-    MetaKey,
 )
 from context_general_bci.contexts import context_registry
 
@@ -28,7 +25,6 @@ from context_general_bci.analyze_utils import (
     prep_plt,
     rolling_time_since_student,
     get_dataloader,
-    data_label_to_target,
 )
 from context_general_bci.streaming_utils import (
     precrop_batch,
@@ -38,7 +34,10 @@ from context_general_bci.streaming_utils import (
 
 query = 'small_40m_class-tpdlnrii'
 query = 'small_40m_class-crzzyj1d'
-# query = 'small_40m_class-2wmyxnhl'
+query = 'small_40m_class-2wmyxnhl'
+
+query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
+# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -67,9 +66,12 @@ target = [
     # "closed_loop_pitt_co_CRS02bLab_2049_8",
     # "closed_loop_pitt_co_CRS02bLab_2045_17",
     # "closed_loop_pitt_co_CRS02bLab_2045_18",
-    'CRS08Lab_59_2$',
-    'CRS08Lab_59_3$',
-    'CRS08Lab_59_6$',
+    # 'CRS08Lab_59_2$',
+    # 'CRS08Lab_59_3$',
+    # 'CRS08Lab_59_6$',
+
+    'CRSTest_206_3$',
+    'CRSTest_206_4$',
 
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
@@ -94,9 +96,12 @@ reference_target = [
     # "closed_loop_pitt_co_CRS02bLab_2049_7",
     # "closed_loop_pitt_co_CRS02bLab_2049_4",
     # 'closed_loop_pitt_co_CRS02bLab_2049_8',
-    'CRS08Lab_59_2$',
-    'CRS08Lab_59_3$',
-    'CRS08Lab_59_6$',
+    # 'CRS08Lab_59_2$',
+    # 'CRS08Lab_59_3$',
+    # 'CRS08Lab_59_6$',
+
+    'CRSTest_206_3$',
+    'CRSTest_206_4$',
 
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
@@ -112,18 +117,19 @@ else:
     prompt = None
 
 pl.seed_everything(0)
-print("Eval length: ", len(dataset))
+# Use val for parity with report
+train, val = dataset.create_tv_datasets()
 data_attrs = dataset.get_data_attrs()
+dataset = val
+print("Eval length: ", len(dataset))
 print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to("cuda")
 
-dataset.cfg.max_tokens = 8192
-
 # %%
-CUE_S = 3
-TAIL_S = 12
+CUE_S = 0
+TAIL_S = 15
 PROMPT_S = 3
 PROMPT_S = 0
 WORKING_S = 12
