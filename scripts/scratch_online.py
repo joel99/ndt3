@@ -37,7 +37,7 @@ query = 'small_40m_class-crzzyj1d'
 query = 'small_40m_class-2wmyxnhl'
 
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
-# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
+query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -57,24 +57,16 @@ cfg.model.task.outputs = [
     Output.return_probs,
 ]
 
-
 target = [
-    # 'closed_loop_pitt_co_CRS02bLab_2049_1',
-    # 'closed_loop_pitt_co_CRS02bLab_2049_2',
-    # 'closed_loop_pitt_co_CRS02bLab_2049_4',
-    # "closed_loop_pitt_co_CRS02bLab_2049_7",
-    # "closed_loop_pitt_co_CRS02bLab_2049_8",
-    # "closed_loop_pitt_co_CRS02bLab_2045_17",
-    # "closed_loop_pitt_co_CRS02bLab_2045_18",
     # 'CRS08Lab_59_2$',
     # 'CRS08Lab_59_3$',
     # 'CRS08Lab_59_6$',
 
-    'CRSTest_206_3$',
-    'CRSTest_206_4$',
+    # 'CRSTest_206_3$',
+    # 'CRSTest_206_4$',
 
-    # 'CRS02bLab_2065_1$',
-    # 'CRS02bLab_2066_1$',
+    'CRS02bLab_2065_1$',
+    'CRS02bLab_2066_1$',
 ]
 
 cfg.dataset.datasets = target
@@ -83,25 +75,12 @@ cfg.dataset.eval_datasets = []
 dataset = SpikingDataset(cfg.dataset)
 
 reference_target = [
-    # 'closed_loop_pitt_co_CRSTest_190_1',
-    # 'closed_loop_pitt_co_CRSTest_190_3',
-    # 'closed_loop_pitt_co_CRSTest_197_1',
-    # 'closed_loop_pitt_co_CRSTest_190_4',
-    # 'closed_loop_pitt_co_CRSTest_190_5',
-    # 'closed_loop_pitt_co_CRSTest_198_1',
-    # 'closed_loop_pitt_co_CRSTest_198_2',
-    # "closed_loop_pitt_co_CRS02bLab_2045_13",
-    # "closed_loop_pitt_co_CRS02bLab_2049_1",
-    # "closed_loop_pitt_co_CRS02bLab_2049_2",
-    # "closed_loop_pitt_co_CRS02bLab_2049_7",
-    # "closed_loop_pitt_co_CRS02bLab_2049_4",
-    # 'closed_loop_pitt_co_CRS02bLab_2049_8',
     # 'CRS08Lab_59_2$',
     # 'CRS08Lab_59_3$',
     # 'CRS08Lab_59_6$',
 
-    'CRSTest_206_3$',
-    'CRSTest_206_4$',
+    # 'CRSTest_206_3$',
+    # 'CRSTest_206_4$',
 
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
@@ -111,7 +90,7 @@ if reference_target:
     reference_cfg.dataset.datasets = reference_target
     reference_dataset = SpikingDataset(reference_cfg.dataset)
     reference_dataset.build_context_index()
-    print(len(reference_dataset))
+    print(f'Ref: {len(reference_dataset)}')
     prompt = reference_dataset[-1]
 else:
     prompt = None
@@ -174,7 +153,6 @@ def eval_model(
             # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
             # pseudo_prompt = deepcopy(batch)
             # print(batch[DataKey.time.name].max())
-            # ! Issue 1: It doesn't seem like we have enough timepoints precrop. Why?
             # print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
             batch = postcrop_batch(
                 batch,
@@ -183,7 +161,6 @@ def eval_model(
                     // cfg.dataset.bin_size_ms
                 ),
             )
-            # ! Issue 2: Consequently there's nothing left after this crop
             # print(batch[DataKey.time.name].max())
 
             # print(f'After: {batch[DataKey.constraint.name].shape}')
@@ -198,6 +175,7 @@ def eval_model(
             kin_mask_timesteps=kin_mask_timesteps,
             last_step_only=False,
         )
+        print(output.keys())
         outputs.append(output)
     outputs = stack_batch(outputs)
     print(outputs[DataKey.covariate_labels.name])
