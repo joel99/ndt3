@@ -12,12 +12,9 @@ from sklearn.metrics import r2_score
 from context_general_bci.model import transfer_model, BrainBertInterface
 from context_general_bci.dataset import SpikingDataset
 from context_general_bci.config import (
-    RootConfig,
-    ModelTask,
     Metric,
     Output,
     DataKey,
-    MetaKey,
 )
 from context_general_bci.contexts import context_registry
 
@@ -28,7 +25,6 @@ from context_general_bci.analyze_utils import (
     prep_plt,
     rolling_time_since_student,
     get_dataloader,
-    data_label_to_target,
 )
 from context_general_bci.streaming_utils import (
     precrop_batch,
@@ -38,13 +34,16 @@ from context_general_bci.streaming_utils import (
 
 query = 'small_40m_class-tpdlnrii'
 query = 'small_40m_class-crzzyj1d'
-# query = 'small_40m_class-2wmyxnhl'
+query = 'small_40m_class-2wmyxnhl'
+
+query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
+# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 tag = 'val_loss'
-# tag = "val_kinematic_r2"
+tag = "val_kinematic_r2"
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
 #%%
 ckpt = get_best_ckpt_from_wandb_id(cfg.wandb_project, wandb_run.id, tag=tag)
@@ -54,22 +53,18 @@ ckpt_epoch = int(str(ckpt).split("-")[1].split("=")[1])
 cfg.model.task.outputs = [
     Output.behavior,
     Output.behavior_pred,
+    Output.behavior_logits,
     Output.return_logits,
     Output.return_probs,
 ]
 
-
 target = [
-    # 'closed_loop_pitt_co_CRS02bLab_2049_1',
-    # 'closed_loop_pitt_co_CRS02bLab_2049_2',
-    # 'closed_loop_pitt_co_CRS02bLab_2049_4',
-    # "closed_loop_pitt_co_CRS02bLab_2049_7",
-    # "closed_loop_pitt_co_CRS02bLab_2049_8",
-    # "closed_loop_pitt_co_CRS02bLab_2045_17",
-    # "closed_loop_pitt_co_CRS02bLab_2045_18",
-    'CRS08Lab_59_2$',
-    'CRS08Lab_59_3$',
-    'CRS08Lab_59_6$',
+    # 'CRS08Lab_59_2$',
+    # 'CRS08Lab_59_3$',
+    # 'CRS08Lab_59_6$',
+
+    'CRSTest_206_3$',
+    'CRSTest_206_4$',
 
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
@@ -81,22 +76,12 @@ cfg.dataset.eval_datasets = []
 dataset = SpikingDataset(cfg.dataset)
 
 reference_target = [
-    # 'closed_loop_pitt_co_CRSTest_190_1',
-    # 'closed_loop_pitt_co_CRSTest_190_3',
-    # 'closed_loop_pitt_co_CRSTest_197_1',
-    # 'closed_loop_pitt_co_CRSTest_190_4',
-    # 'closed_loop_pitt_co_CRSTest_190_5',
-    # 'closed_loop_pitt_co_CRSTest_198_1',
-    # 'closed_loop_pitt_co_CRSTest_198_2',
-    # "closed_loop_pitt_co_CRS02bLab_2045_13",
-    # "closed_loop_pitt_co_CRS02bLab_2049_1",
-    # "closed_loop_pitt_co_CRS02bLab_2049_2",
-    # "closed_loop_pitt_co_CRS02bLab_2049_7",
-    # "closed_loop_pitt_co_CRS02bLab_2049_4",
-    # 'closed_loop_pitt_co_CRS02bLab_2049_8',
-    'CRS08Lab_59_2$',
-    'CRS08Lab_59_3$',
-    'CRS08Lab_59_6$',
+    # 'CRS08Lab_59_2$',
+    # 'CRS08Lab_59_3$',
+    # 'CRS08Lab_59_6$',
+
+    # 'CRSTest_206_3$',
+    # 'CRSTest_206_4$',
 
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
@@ -106,24 +91,25 @@ if reference_target:
     reference_cfg.dataset.datasets = reference_target
     reference_dataset = SpikingDataset(reference_cfg.dataset)
     reference_dataset.build_context_index()
-    print(len(reference_dataset))
+    print(f'Ref: {len(reference_dataset)}')
     prompt = reference_dataset[-1]
 else:
     prompt = None
 
 pl.seed_everything(0)
-print("Eval length: ", len(dataset))
+# Use val for parity with report
+train, val = dataset.create_tv_datasets()
 data_attrs = dataset.get_data_attrs()
+dataset = val
+print("Eval length: ", len(dataset))
 print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to("cuda")
 
-dataset.cfg.max_tokens = 8192
-
 # %%
-CUE_S = 3
-TAIL_S = 12
+CUE_S = 0
+TAIL_S = 15
 PROMPT_S = 3
 PROMPT_S = 0
 WORKING_S = 12
@@ -168,7 +154,6 @@ def eval_model(
             # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
             # pseudo_prompt = deepcopy(batch)
             # print(batch[DataKey.time.name].max())
-            # ! Issue 1: It doesn't seem like we have enough timepoints precrop. Why?
             # print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
             batch = postcrop_batch(
                 batch,
@@ -177,7 +162,6 @@ def eval_model(
                     // cfg.dataset.bin_size_ms
                 ),
             )
-            # ! Issue 2: Consequently there's nothing left after this crop
             # print(batch[DataKey.time.name].max())
 
             # print(f'After: {batch[DataKey.constraint.name].shape}')
@@ -194,7 +178,8 @@ def eval_model(
         )
         outputs.append(output)
     outputs = stack_batch(outputs)
-    print(outputs[DataKey.covariate_labels.name])
+
+    labels = outputs[DataKey.covariate_labels.name][0]
     prediction = outputs[Output.behavior_pred].cpu()
     # print(prediction.sum())
     target = outputs[Output.behavior].cpu()
@@ -218,12 +203,49 @@ def eval_model(
     print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
     # print(target.shape, prediction.shape, valid.shape)
     # print(is_student_rolling.shape)
+    loss = outputs[Output.behavior_loss].mean()
     mse = torch.mean((target[valid] - prediction[valid]) ** 2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
-
     print(f"Checkpoint: {ckpt_epoch} (tag: {tag})")
+    print(f'Loss: {loss:.3f}')
     print(f"MSE: {mse:.3f}")
     print(f"R2 Student: {r2_student:.3f}")
+
+    def plot_logits(ax, logits, title, bin_size_ms, vmin=-20, vmax=20, truth=None):
+        ax = prep_plt(ax, big=True)
+        sns.heatmap(logits.cpu().T, ax=ax, cmap="RdBu_r", vmin=vmin, vmax=vmax)
+        if truth is not None:
+            ax.plot(truth.cpu().T, color="k", linewidth=2, linestyle="--")
+        ax.set_xlabel("Time (ms)")
+        ax.set_ylabel("Bhvr (class)")
+        ax.set_title(title)
+        ax.set_yticks([])
+        ax.set_xticks(np.linspace(0, logits.shape[0], 3))
+        ax.set_xticklabels(np.linspace(0, logits.shape[0] * bin_size_ms, 3).astype(int))
+
+        # label colorbar
+        cbar = ax.collections[0].colorbar
+        cbar.ax.set_ylabel('Logit')
+
+    def plot_split_logits(full_logits, labels, cfg, truth=None):
+        f, axes = plt.subplots(2, 1, figsize=(15, 10), sharex=True, sharey=True)
+
+        # Split logits
+        stride = len(labels)
+        for i, label in enumerate(labels):
+            logits = full_logits[i::stride]
+            if truth is not None:
+                truth_i = truth[i::stride]
+            else:
+                truth_i = None
+            plot_logits(axes[i], logits, label, cfg.dataset.bin_size_ms, truth=truth_i)
+        f.suptitle(f"{query} Logits MSE {mse:.3f} Loss {loss:.3f}")
+        plt.tight_layout()
+
+    truth = outputs[Output.behavior].float()
+    truth = model.task_pipelines['kinematic_infill'].quantize(truth)
+    # Quantize the truth
+    plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
 
     # Get reported metrics
     history = wandb_run.history()
@@ -235,8 +257,10 @@ def eval_model(
     # Get last one
     reported_r2 = ckpt_rows[f"val_{Metric.kinematic_r2.name}"].values[-1]
     reported_loss = ckpt_rows[f"val_loss"].values[-1]
+    reported_kin_loss = ckpt_rows[f"val_kinematic_infill_loss"].values[-1]
     print(f"Reported R2: {reported_r2:.3f}")
     print(f"Reported Loss: {reported_loss:.3f}")
+    print(f"Reported Kin Loss: {reported_kin_loss:.3f}")
     return outputs, target, prediction, is_student, valid, r2_student
 
 

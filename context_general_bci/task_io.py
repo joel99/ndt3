@@ -2043,7 +2043,8 @@ class CovariateInfill(ClassificationMixin):
                 # zero it out - this is a bug that occurs when the target has minimal variance (i.e. a dull batch with tiny batch size)
                 # Occurs only because we can't easily full batch R2, i.e. uninteresting.
                 batch_out[Metric.kinematic_r2.value] = np.zeros_like(batch_out[Metric.kinematic_r2.value])
-            batch[DataKey.covariate_labels.name] = ['x'] # base default
+            if not eval_mode:
+                batch[DataKey.covariate_labels.name] = ['x'] # base default - used for reporting a uniform kin r2
             batch_out[Metric.kinematic_r2.value] = torch.as_tensor(batch_out[Metric.kinematic_r2.value])
         if Metric.kinematic_acc in self.cfg.metrics:
             acc = (bhvr.argmax(1) == self.quantize(bhvr_tgt))
