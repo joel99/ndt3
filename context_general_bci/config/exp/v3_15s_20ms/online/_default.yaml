@@ -29,7 +29,7 @@ model:
   task:
     return_mute: True
     context_prompt_time_thresh: -50 # 1s
-    context_prompt_time_thresh_min: -2
+    context_prompt_time_thresh_min: -25 # More timepoints - less noisy loss / R2 read
     prefix_ratio: 0.25
     tasks:
     - ModelTask.spike_infill

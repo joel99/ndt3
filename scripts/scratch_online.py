@@ -38,6 +38,7 @@ from context_general_bci.streaming_utils import (
 
 query = 'small_40m_class-tpdlnrii'
 query = 'small_40m_class-crzzyj1d'
+# query = 'small_40m_class-2wmyxnhl'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -69,6 +70,9 @@ target = [
     'CRS08Lab_59_2$',
     'CRS08Lab_59_3$',
     'CRS08Lab_59_6$',
+
+    # 'CRS02bLab_2065_1$',
+    # 'CRS02bLab_2066_1$',
 ]
 
 cfg.dataset.datasets = target
@@ -93,6 +97,9 @@ reference_target = [
     'CRS08Lab_59_2$',
     'CRS08Lab_59_3$',
     'CRS08Lab_59_6$',
+
+    # 'CRS02bLab_2065_1$',
+    # 'CRS02bLab_2066_1$',
 ]
 if reference_target:
     reference_cfg = deepcopy(cfg)
@@ -115,14 +122,20 @@ model = model.to("cuda")
 dataset.cfg.max_tokens = 8192
 
 # %%
+CUE_S = 3
+TAIL_S = 12
+PROMPT_S = 3
+PROMPT_S = 0
+WORKING_S = 12
+WORKING_S = 15
+
 def eval_model(
     model: BrainBertInterface,
     dataset,
-    cue_length_s=3,
-    tail_length_s=3,
-    precrop_prompt=3,  # For simplicity, all precrop for now. We can evaluate as we change precrop length
-    postcrop_working=3,
-    # postcrop_working=12,
+    cue_length_s=CUE_S,
+    tail_length_s=TAIL_S,
+    precrop_prompt=PROMPT_S,  # For simplicity, all precrop for now. We can evaluate as we change precrop length
+    postcrop_working=WORKING_S,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(
@@ -154,9 +167,9 @@ def eval_model(
             # Pseudo model
             # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
             # pseudo_prompt = deepcopy(batch)
-            print(batch[DataKey.time.name].max())
+            # print(batch[DataKey.time.name].max())
             # ! Issue 1: It doesn't seem like we have enough timepoints precrop. Why?
-            print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
+            # print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
             batch = postcrop_batch(
                 batch,
                 int(
@@ -170,9 +183,10 @@ def eval_model(
             # print(f'After: {batch[DataKey.constraint.name].shape}')
             # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
             # crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
-            batch = prepend_prompt(batch, crop_prompt)
+            if len(crop_prompt[DataKey.spikes]) > 0:
+                batch = prepend_prompt(batch, crop_prompt)
 
-            print(batch[DataKey.time.name].max())
+            # print(batch[DataKey.time.name].max())
         output = model.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
@@ -227,8 +241,7 @@ def eval_model(
 
 
 (outputs, target, prediction, is_student, valid, r2_student) = eval_model(
-    # model, dataset, cue_length_s=6, tail_length_s=6
-    model, dataset, cue_length_s=3, tail_length_s=9
+    model, dataset,
 )
 
 # %%
@@ -246,8 +259,6 @@ ax.scatter(target, prediction, s=3, alpha=alpha, color=colors)
 ax.set_xlabel("True")
 ax.set_ylabel("Pred")
 ax.set_title(f"{query} R2: {r2_student:.2f}")
-
-# %%
 
 # %%
 palette = sns.color_palette(n_colors=2)
