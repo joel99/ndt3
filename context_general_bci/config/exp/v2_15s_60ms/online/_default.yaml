@@ -92,7 +92,7 @@ train:
   patience: 40
   autoscale_batch_size: False
   batch_size: 4
-  effective_batch_size: 4
+  effective_batch_size: 0 # Take literally
 inherit_exp: v2_15s_60ms
 # inherit_explicit_dir: './data/pretrained' # Copy wandb ckpts from ./data/runs/ndt3 into ./data/pretrained/ndt3. Actually, we'll just use `runs` after all.
 

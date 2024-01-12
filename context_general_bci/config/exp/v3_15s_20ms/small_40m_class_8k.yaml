@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    spike_loss: cross_entropy
+dataset:
+  sparse_rewards: False
+train:
+  batch_size: 32
+notes: "40M dense reward"

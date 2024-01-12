@@ -732,10 +732,15 @@ class BrainBertInterface(pl.LightningModule):
     def predict_simple_batch(
         self,
         batch: Dict[BatchKey, torch.Tensor], # Should have batch=1 dimension
-        kin_mask_timesteps: torch.Tensor, # Time, dense. True if masking
-        last_step_only=False, # If true, used online. If false, used to try to get parity with offline eval `scripts/predict.py`
+        kin_mask_timesteps: torch.Tensor,
+        last_step_only=False,
         temperature=0.,
     ):
+        r"""
+            kin_mask_timesteps: T, Time to not provide kin input, dense. True if masking.
+            last_step_only: Only predict final timestep kinematic. Useful for online prediction.
+            - If false, used to try to get parity with offline eval `scripts/predict.py`
+        """
         # print(kin_mask_timesteps.sum())
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)

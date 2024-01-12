@@ -1,8 +1,5 @@
 # %%
 # Testing online parity, using open predict
-import os
-
-os.environ["CUDA_VISIBLE_DEVICES"] = "0"
 from copy import deepcopy
 from matplotlib import pyplot as plt
 import numpy as np
@@ -39,26 +36,8 @@ from context_general_bci.streaming_utils import (
     prepend_prompt,
 )
 
-query = "small_40m-0q2by8md"
-query = "small_40m_dense-ggg6z4ii"
-
-query = "small_40m_dense_q256_ablate-0grt5zqd"
-query = "small_40m_dense_q256_return-1pj8hmj4"
-query = "small_40m_dense_q256_ablate_cond_rew-vh12zgxm"
-query = "small_40m_dense_q256_return-1ag9txp7"
-query = "small_40m_dense_q256_return-sy19ja5h"
-query = "small_40m_dense_q256_return-m972f0fr"
-query = "small_40m_dense_q256_return-uk9j6tos"
-
-# Replication, 1,2,4,7 -> 8
-query = 'small_40m_dense_q256_return-rya8mped'
-query = 'small_40m_dense_q256_return-0dxr92bj'
-
-# 2048 1 2 5 13 -> 17 18
-query = 'small_40m_dense_q256_return-sx3b7msv'
-query = 'small_40m_dense_q256_return-vcbj43ct' # bsz 8
-
-query = 'small_40m_dense_q256_return-jgu8x4vp'
+query = 'small_40m_class-tpdlnrii'
+query = 'small_40m_class-crzzyj1d'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -66,6 +45,7 @@ print(wandb_run.id)
 tag = 'val_loss'
 # tag = "val_kinematic_r2"
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
+#%%
 ckpt = get_best_ckpt_from_wandb_id(cfg.wandb_project, wandb_run.id, tag=tag)
 # Parse epoch, format is `val-epoch=<>-other_metrics.ckpt`
 ckpt_epoch = int(str(ckpt).split("-")[1].split("=")[1])
@@ -86,8 +66,9 @@ target = [
     # "closed_loop_pitt_co_CRS02bLab_2049_8",
     # "closed_loop_pitt_co_CRS02bLab_2045_17",
     # "closed_loop_pitt_co_CRS02bLab_2045_18",
-
-    'closed_loop_pitt_co_CRS08Lab_59_1'
+    'CRS08Lab_59_2$',
+    'CRS08Lab_59_3$',
+    'CRS08Lab_59_6$',
 ]
 
 cfg.dataset.datasets = target
@@ -109,8 +90,9 @@ reference_target = [
     # "closed_loop_pitt_co_CRS02bLab_2049_7",
     # "closed_loop_pitt_co_CRS02bLab_2049_4",
     # 'closed_loop_pitt_co_CRS02bLab_2049_8',
-
-    'closed_loop_pitt_co_CRS08Lab_59_3'
+    'CRS08Lab_59_2$',
+    'CRS08Lab_59_3$',
+    'CRS08Lab_59_6$',
 ]
 if reference_target:
     reference_cfg = deepcopy(cfg)
@@ -130,6 +112,7 @@ model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to("cuda")
 
+dataset.cfg.max_tokens = 8192
 
 # %%
 def eval_model(
@@ -138,7 +121,8 @@ def eval_model(
     cue_length_s=3,
     tail_length_s=3,
     precrop_prompt=3,  # For simplicity, all precrop for now. We can evaluate as we change precrop length
-    postcrop_working=12,
+    postcrop_working=3,
+    # postcrop_working=12,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(
@@ -170,7 +154,9 @@ def eval_model(
             # Pseudo model
             # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
             # pseudo_prompt = deepcopy(batch)
-
+            print(batch[DataKey.time.name].max())
+            # ! Issue 1: It doesn't seem like we have enough timepoints precrop. Why?
+            print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
             batch = postcrop_batch(
                 batch,
                 int(
@@ -178,12 +164,15 @@ def eval_model(
                     // cfg.dataset.bin_size_ms
                 ),
             )
+            # ! Issue 2: Consequently there's nothing left after this crop
+            # print(batch[DataKey.time.name].max())
 
             # print(f'After: {batch[DataKey.constraint.name].shape}')
             # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
             # crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
             batch = prepend_prompt(batch, crop_prompt)
 
+            print(batch[DataKey.time.name].max())
         output = model.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
@@ -196,6 +185,10 @@ def eval_model(
     # print(prediction.sum())
     target = outputs[Output.behavior].cpu()
     is_student = outputs[Output.behavior_query_mask].cpu().bool()
+    # We unmask `cue_length` -
+    # ! Don't know why behavior queyr mask is not even.
+    # print(kin_mask_timesteps)
+    print(target.shape, outputs[Output.behavior_query_mask].shape)
 
     # Compute R2
     # r2 = r2_score(target, prediction)
@@ -209,6 +202,8 @@ def eval_model(
     # plt.plot(valid * 1000)
 
     print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
+    # print(target.shape, prediction.shape, valid.shape)
+    # print(is_student_rolling.shape)
     mse = torch.mean((target[valid] - prediction[valid]) ** 2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
 
@@ -251,6 +246,8 @@ ax.scatter(target, prediction, s=3, alpha=alpha, color=colors)
 ax.set_xlabel("True")
 ax.set_ylabel("Pred")
 ax.set_title(f"{query} R2: {r2_student:.2f}")
+
+# %%
 
 # %%
 palette = sns.color_palette(n_colors=2)
@@ -385,3 +382,5 @@ plt.tight_layout()
 # fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
 # %%
+
+

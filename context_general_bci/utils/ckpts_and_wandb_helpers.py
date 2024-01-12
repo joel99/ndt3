@@ -100,16 +100,24 @@ def wandb_query_several(
         ))
     return runs
 
+def get_ckpt_dir_from_wandb_id(
+        wandb_project,
+        wandb_id,
+        wandb_dir='./data/runs'
+):
+    if wandb_dir == "":
+        wandb_dir = './data/runs'
+    wandb_id = wandb_id.split('-')[-1]
+    ckpt_dir = Path(wandb_dir) / wandb_project / wandb_id / "checkpoints" # curious, something about checkpoint dumping isn't right
+    return ckpt_dir
+
 def get_best_ckpt_from_wandb_id(
         wandb_project,
         wandb_id,
         tag = "val_loss",
         wandb_dir='./data/runs'
     ):
-    if wandb_dir == "":
-        wandb_dir = './data/runs'
-    wandb_id = wandb_id.split('-')[-1]
-    ckpt_dir = Path(wandb_dir) / wandb_project / wandb_id / "checkpoints" # curious, something about checkpoint dumping isn't right
+    ckpt_dir = get_ckpt_dir_from_wandb_id(wandb_project, wandb_id, wandb_dir=wandb_dir)
     return get_best_ckpt_in_dir(ckpt_dir, tag=tag)
 
 def get_wandb_run(wandb_id, wandb_project='ndt3', wandb_user="joelye9"):
