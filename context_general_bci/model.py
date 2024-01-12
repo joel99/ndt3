@@ -779,6 +779,7 @@ class BrainBertInterface(pl.LightningModule):
             times=times,
             positions=space,
         ) # B x T x H. All at once, not autoregressive single step sampling
+
         # The order of logic here is following the order dictated in the task pipeline
         num_kin = len(batch[DataKey.covariate_space.name].unique())
 
@@ -790,7 +791,8 @@ class BrainBertInterface(pl.LightningModule):
             cov_query,
             compute_metrics=not last_step_only,
             backbone_padding=pipeline_padding[modalities == tks.index('kinematic_infill')] if not last_step_only else None,
-            temperature=temperature
+            temperature=temperature,
+            eval_mode=not last_step_only,
         )
 
         # Only last step supported atm
@@ -811,12 +813,12 @@ class BrainBertInterface(pl.LightningModule):
             Output.return_probs: return_probs,
         }
         if not last_step_only:
-            breakpoint()
-            out['behavior_loss'] = cov_query['loss']
+            out[Output.behavior_loss] = torch.tensor([cov_query['loss']])
+            out[Output.behavior_logits] = cov_query[Output.behavior_logits]
             if kin_mask_timesteps is not None:
                 out[Output.behavior_query_mask] = repeat(kin_mask_timesteps, 't -> (t b)', b=num_kin)
             out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
-            out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name][0]
+            out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name]
         return out
 
     @torch.inference_mode()

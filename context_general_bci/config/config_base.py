@@ -74,6 +74,7 @@ class Output(Enum):
     behavior_pred = 'behavior_pred' # pred, not logits (in classification case)
     behavior_logits = 'behavior_logits' # logits, not pred (in classification case)
     behavior_query_mask = 'behavior_query_mask' # Which ones were actual predictions vs inputs?
+    behavior_loss = 'behavior_loss'
 
     # Debug
     pooled_features = 'pooled_features'

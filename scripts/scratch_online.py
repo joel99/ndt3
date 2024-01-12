@@ -37,13 +37,13 @@ query = 'small_40m_class-crzzyj1d'
 query = 'small_40m_class-2wmyxnhl'
 
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
-query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
+# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 tag = 'val_loss'
-# tag = "val_kinematic_r2"
+tag = "val_kinematic_r2"
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
 #%%
 ckpt = get_best_ckpt_from_wandb_id(cfg.wandb_project, wandb_run.id, tag=tag)
@@ -53,6 +53,7 @@ ckpt_epoch = int(str(ckpt).split("-")[1].split("=")[1])
 cfg.model.task.outputs = [
     Output.behavior,
     Output.behavior_pred,
+    Output.behavior_logits,
     Output.return_logits,
     Output.return_probs,
 ]
@@ -62,11 +63,11 @@ target = [
     # 'CRS08Lab_59_3$',
     # 'CRS08Lab_59_6$',
 
-    # 'CRSTest_206_3$',
-    # 'CRSTest_206_4$',
+    'CRSTest_206_3$',
+    'CRSTest_206_4$',
 
-    'CRS02bLab_2065_1$',
-    'CRS02bLab_2066_1$',
+    # 'CRS02bLab_2065_1$',
+    # 'CRS02bLab_2066_1$',
 ]
 
 cfg.dataset.datasets = target
@@ -175,10 +176,10 @@ def eval_model(
             kin_mask_timesteps=kin_mask_timesteps,
             last_step_only=False,
         )
-        print(output.keys())
         outputs.append(output)
     outputs = stack_batch(outputs)
-    print(outputs[DataKey.covariate_labels.name])
+
+    labels = outputs[DataKey.covariate_labels.name][0]
     prediction = outputs[Output.behavior_pred].cpu()
     # print(prediction.sum())
     target = outputs[Output.behavior].cpu()
@@ -202,12 +203,49 @@ def eval_model(
     print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
     # print(target.shape, prediction.shape, valid.shape)
     # print(is_student_rolling.shape)
+    loss = outputs[Output.behavior_loss].mean()
     mse = torch.mean((target[valid] - prediction[valid]) ** 2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
-
     print(f"Checkpoint: {ckpt_epoch} (tag: {tag})")
+    print(f'Loss: {loss:.3f}')
     print(f"MSE: {mse:.3f}")
     print(f"R2 Student: {r2_student:.3f}")
+
+    def plot_logits(ax, logits, title, bin_size_ms, vmin=-20, vmax=20, truth=None):
+        ax = prep_plt(ax, big=True)
+        sns.heatmap(logits.cpu().T, ax=ax, cmap="RdBu_r", vmin=vmin, vmax=vmax)
+        if truth is not None:
+            ax.plot(truth.cpu().T, color="k", linewidth=2, linestyle="--")
+        ax.set_xlabel("Time (ms)")
+        ax.set_ylabel("Bhvr (class)")
+        ax.set_title(title)
+        ax.set_yticks([])
+        ax.set_xticks(np.linspace(0, logits.shape[0], 3))
+        ax.set_xticklabels(np.linspace(0, logits.shape[0] * bin_size_ms, 3).astype(int))
+
+        # label colorbar
+        cbar = ax.collections[0].colorbar
+        cbar.ax.set_ylabel('Logit')
+
+    def plot_split_logits(full_logits, labels, cfg, truth=None):
+        f, axes = plt.subplots(2, 1, figsize=(15, 10), sharex=True, sharey=True)
+
+        # Split logits
+        stride = len(labels)
+        for i, label in enumerate(labels):
+            logits = full_logits[i::stride]
+            if truth is not None:
+                truth_i = truth[i::stride]
+            else:
+                truth_i = None
+            plot_logits(axes[i], logits, label, cfg.dataset.bin_size_ms, truth=truth_i)
+        f.suptitle(f"{query} Logits MSE {mse:.3f} Loss {loss:.3f}")
+        plt.tight_layout()
+
+    truth = outputs[Output.behavior].float()
+    truth = model.task_pipelines['kinematic_infill'].quantize(truth)
+    # Quantize the truth
+    plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
 
     # Get reported metrics
     history = wandb_run.history()
@@ -219,8 +257,10 @@ def eval_model(
     # Get last one
     reported_r2 = ckpt_rows[f"val_{Metric.kinematic_r2.name}"].values[-1]
     reported_loss = ckpt_rows[f"val_loss"].values[-1]
+    reported_kin_loss = ckpt_rows[f"val_kinematic_infill_loss"].values[-1]
     print(f"Reported R2: {reported_r2:.3f}")
     print(f"Reported Loss: {reported_loss:.3f}")
+    print(f"Reported Kin Loss: {reported_kin_loss:.3f}")
     return outputs, target, prediction, is_student, valid, r2_student
 
 
