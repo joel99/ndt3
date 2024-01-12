@@ -686,6 +686,8 @@ class BrainBertInterface(pl.LightningModule):
         spike_array_lengths: List[int] = [], # For padding, see dataloader spike logic
     ):
         r"""
+            Data comes in in compact, realtime friendly forms.
+            We run casts so model works decently here.
             Assumes single item prediction, no padding.
             PREDICTS NEXT STEP OF KINEMATIC AND RETURN IF NEEDED
 
@@ -706,12 +708,12 @@ class BrainBertInterface(pl.LightningModule):
             cov,
             constraint,
             constraint_time,
-            task_reward,
-            task_return,
+            task_reward.int(),
+            task_return.int(),
             task_return_time,
             spike_array_lengths,
         )
-        if reference is not None:
+        if reference is not None and len(reference.get(DataKey.spikes, [])) > 0:
             batch = prepend_prompt(batch, reference)
         # comp = torch.load('/home/joy47/projects/ndt3/test.pth')
         # for k, v in reference.items():
@@ -745,7 +747,6 @@ class BrainBertInterface(pl.LightningModule):
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)
 
-        # breakpoint()
         tks, ps, pipeline_context, times, space, pipeline_padding, modalities, zero_mask = self.assemble_pipeline(batch)
         if kin_mask_timesteps is not None:
             # Make sparse, to index
