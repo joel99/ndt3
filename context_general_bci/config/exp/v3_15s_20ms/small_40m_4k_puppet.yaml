@@ -1,0 +1,20 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    spike_loss: cross_entropy
+    prefix_ratio: 1.0
+    context_prompt_time_thresh_min: 0
+    context_prompt_time_thresh: 750 # 15s
+    block_prefix_loss: True
+
+    constraint_mute: True
+    return_mute: True
+dataset:
+  max_tokens: 4096
+  sparse_rewards: False
+train:
+  batch_size: 16
+notes: "40M dense reward"

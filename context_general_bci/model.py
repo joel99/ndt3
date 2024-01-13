@@ -763,6 +763,7 @@ class BrainBertInterface(pl.LightningModule):
             last_step_only: Only predict final timestep kinematic. Useful for online prediction.
             - If false, used to try to get parity with offline eval `scripts/predict.py`
         """
+        # breakpoint()
         # print(kin_mask_timesteps.sum())
         for k in self.cfg.task.tasks:
             self.task_pipelines[k.value].update_batch(batch, eval_mode=True)

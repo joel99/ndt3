@@ -6,6 +6,7 @@ import numpy as np
 import seaborn as sns
 import torch
 import lightning.pytorch as pl
+from einops import rearrange
 
 from sklearn.metrics import r2_score
 
@@ -37,13 +38,14 @@ query = 'small_40m_class-crzzyj1d'
 query = 'small_40m_class-2wmyxnhl'
 
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
-# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
+query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 tag = 'val_loss'
 tag = "val_kinematic_r2"
+
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
 #%%
 ckpt = get_best_ckpt_from_wandb_id(cfg.wandb_project, wandb_run.id, tag=tag)
@@ -63,11 +65,12 @@ target = [
     # 'CRS08Lab_59_3$',
     # 'CRS08Lab_59_6$',
 
-    'CRSTest_206_3$',
-    'CRSTest_206_4$',
+    # 'CRSTest_206_3$',
+    # 'CRSTest_206_4$',
+    # 'CRSTest_207_10'
 
-    # 'CRS02bLab_2065_1$',
-    # 'CRS02bLab_2066_1$',
+    'CRS02bLab_2065_1$',
+    'CRS02bLab_2066_1$',
 ]
 
 cfg.dataset.datasets = target
@@ -106,7 +109,6 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to("cuda")
-
 # %%
 CUE_S = 0
 TAIL_S = 15
@@ -114,6 +116,11 @@ PROMPT_S = 3
 PROMPT_S = 0
 WORKING_S = 12
 WORKING_S = 15
+
+CONSTRAINT_COUNTERFACTUAL = False
+CONSTRAINT_COUNTERFACTUAL = True
+RETURN_COUNTERFACTUAL = False
+# RETURN_COUNTERFACTUAL = True
 
 def eval_model(
     model: BrainBertInterface,
@@ -147,6 +154,20 @@ def eval_model(
         batch = {
             k: v.cuda() if isinstance(v, torch.Tensor) else v for k, v in batch.items()
         }
+        if CONSTRAINT_COUNTERFACTUAL:
+            assist_constraint = batch[DataKey.constraint.name]
+            active_assist = rearrange(torch.tensor([1, 1, 0]).to(assist_constraint.device), 'c -> 1 1 c')
+            assist_constraint[(assist_constraint == active_assist).all(-1)] = 0
+            batch[DataKey.constraint.name] = assist_constraint
+        if RETURN_COUNTERFACTUAL:
+            assist_return = batch[DataKey.task_return.name]
+            assist_return = torch.ones_like(assist_return)
+            batch[DataKey.task_return.name] = assist_return
+
+            assist_reward = batch[DataKey.task_reward.name]
+            batch[DataKey.task_reward.name] = torch.ones_like(assist_reward)
+
+            print(batch[DataKey.task_return.name].sum())
         if prompt is not None:
             # breakpoint()
             # print(prompt.keys())
@@ -388,7 +409,7 @@ def plot_target_pred_overlay(
         text.set_color(color)
 
 
-labels = outputs[DataKey.covariate_labels.name]
+labels = outputs[DataKey.covariate_labels.name][0]
 num_dims = len(labels)
 if subset_cov:
     subset_dims = [i for i in range(num_dims) if labels[i] in subset_cov]

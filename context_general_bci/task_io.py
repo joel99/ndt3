@@ -1020,6 +1020,7 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
+        breakpoint()
         if self.cfg.return_mute:
             return_embed = self.return_enc(torch.zeros_like(batch[DataKey.task_return.name]))
         else:
@@ -1913,12 +1914,15 @@ class ClassificationMixin(QuantizeBehavior):
     def simplify_logits_to_prediction(self, logits: torch.Tensor, logit_dim=1, temperature=0.): # 0. -> argmax
         # breakpoint()
         if temperature > 0:
-            b, d, c = logits.shape
-            logits = rearrange(logits, 'b d c -> (b d) c')
+            batched = logits.ndim == 3
+            if batched:
+                b, d, c = logits.shape
+                logits = rearrange(logits, 'b d c -> (b d) c')
             logits = logits / temperature
             probabilities = torch.softmax(logits, dim=logit_dim) # TODO deprecate logit_dim
             choice = torch.multinomial(probabilities, 1)
-            choice = rearrange(choice, '(b d) 1 -> b d', b=b, d=d)
+            if batched:
+                choice = rearrange(choice, '(b d) 1 -> b d', b=b, d=d)
         else:
             choice = logits.argmax(logit_dim)
         return self.dequantize(choice)
