@@ -375,50 +375,55 @@ class BrainBertInterface(pl.LightningModule):
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < self.cfg.token_maskout
                     pipeline_context[:, mask] = 0
                 elif self.do_kin_maskout:
-                    # We want to make sure we always have at least one kin token on, even if it's dataloader-padding, so that we can get loss computed on our readout
+                    # We should always have at least one kin token, if there's no real kin data, getitem should still have injected. This is for loss computed on readout
                     # However, the padding is automatically put at the very last token, and kin is last modality - so that token is never used as input.
                     # It's the token that will get rolled and cancelled immediately below.
                     # Symmetric to this special case, however, is the notion that the first kinematic token is always valid, we have no prior that makes it trivial.
 
-                    # Meaning of `is_kin_mask` - is a kinematic input that should have received kin input that was masked out?
-                    is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
-                    is_kin_mask[:, 0] = False
-                    # if not is_kin_mask.any():
-                        # is_kin_mask[:, -1] = True
+                    # Meaning of `cued_kin_mask` - is this timestep kinematic _input_? (ia pre-roll, a kinematic output?)
+                    cued_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1)
+                    cued_kin_mask[:, 0] = False
                     mask = torch.rand(pipeline_context.size(1), device=pipeline_context.device) < kin_maskout
                     if not no_prefix_val:
-                        if prefix and self.cfg.task.context_prompt_time_thresh > 0:
-                            # Essentially - maskout only begins at timestamps past prompt threshold.
-                            sample_thresh = torch.randint(
-                                self.cfg.task.context_prompt_time_thresh_min,
-                                self.cfg.task.context_prompt_time_thresh,
-                                (1,),
-                                device=pipeline_context.device
-                            ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
-                            mask = mask & (times >= sample_thresh)
-                            # mask = mask & (times >= self.cfg.task.context_prompt_time_thresh)
-                        elif prefix and self.cfg.task.context_prompt_time_thresh < 0:
-                            # We still want mask to only apply at timestamps past prompt threshold, but we from end of trial.
-                            # ! Note this should be >= 1 step, so prompt_time_thresh_min must be < -1 - -1 itself, inclusive, means that we might make all steps illegal
-                            sample_thresh = torch.randint(
-                                self.cfg.task.context_prompt_time_thresh,
-                                self.cfg.task.context_prompt_time_thresh_min,
-                                (1,),
-                                device=pipeline_context.device
-                            ) if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
-                            non_pad_times = times.clone()
-                            non_pad_times[pipeline_padding] = -1
-                            times_from_end = times - non_pad_times.max(-1, keepdim=True).values
-                            if not mask.any():
-                                breakpoint()
-                            mask = mask & (times_from_end >= sample_thresh)
-                            if not mask.any():
-                                breakpoint()
-                                # ? I still don't really get why this happens, waiting to trigger again
-                    mask = is_kin_mask & mask
-                    if not (mask & ~pipeline_padding).any():
-                        breakpoint()
+                        if prefix:
+                            if self.cfg.task.context_prompt_time_thresh:
+                                non_pad_times = times.clone()
+                                non_pad_times[pipeline_padding] = -1
+                            if self.cfg.task.context_prompt_time_thresh > 0:
+                                # Essentially - maskout only begins at timestamps past prompt threshold.
+                                context_thresh: int = min(self.cfg.task.context_prompt_time_thresh, times.max().item()) # Should allow 1 off of full prefix at extreme
+                                sample_thresh = torch.randint(
+                                    self.cfg.task.context_prompt_time_thresh_min,
+                                    context_thresh,
+                                    (times.size(0),), # Randomize across batch
+                                    device=times.device
+                                ) # if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
+                                mask = mask & (times >= sample_thresh.unsqueeze(-1))
+                            if self.cfg.task.context_prompt_time_thresh < 0:
+                                # Clip magnitude of prefix to be at most length of trial, for balanced sampling
+                                context_thresh = max(self.cfg.task.context_prompt_time_thresh, -times.max().item() + 1) # Should allow 1 off of full prefix at extreme
+                                # We still want mask to only apply at timestamps past prompt threshold, but from end of trial.
+                                # ! Note this should be >= 1 step, so prompt_time_thresh_min must be < -1 - -1 itself, inclusive, means that we might make all steps illegal
+                                sample_thresh = torch.randint(
+                                    context_thresh,
+                                    self.cfg.task.context_prompt_time_thresh_min,
+                                    (times.size(0),), # Randomize across batch
+                                    device=times.device
+                                ) # if self.cfg.task.context_prompt_time_thresh_min else self.cfg.task.context_prompt_time_thresh
+                                non_pad_times = times.clone()
+                                non_pad_times[pipeline_padding] = -1
+                                times_from_end = times - non_pad_times.max(-1, keepdim=True).values
+                                if not mask.any():
+                                    breakpoint()
+                                mask = mask & (times_from_end >= sample_thresh.unsqueeze(-1))
+                                if not mask.any():
+                                    breakpoint()
+                                    # ? I still don't really get why this happens, waiting to trigger again
+                    mask = cued_kin_mask & mask
+                    # if not (mask & ~pipeline_padding).any():
+                        # breakpoint()
                     # if not mask.any():
+                        # Then, we have no kin target receiving loss. This is fine - this implies only the final timestep is loss.
                         # breakpoint()
                     pipeline_context[mask] = 0
             pipeline_context[:, 0] = self.start_of_sentence
@@ -535,22 +540,20 @@ class BrainBertInterface(pl.LightningModule):
         for task in self.cfg.task.tasks:
             self.task_pipelines[task.value].update_batch(batch, eval_mode=eval_mode)
         if use_prefix: # commanded externally, e.g. for eval
-            prefix_loss = True
+            block_prefix_loss = True
             kin_maskout = 1.0
         else:
             if self.cfg.task.prefix_ratio > 0:
                 use_prefix = torch.rand(1) < self.cfg.task.prefix_ratio
-                prefix_loss = use_prefix
+                block_prefix_loss = getattr(self.cfg.task, 'block_prefix_loss')
                 kin_maskout = 1.0 # Never include kinematic input in suffix
             else:
                 use_prefix = True # feel free to use if available
-                prefix_loss = False
+                block_prefix_loss = False
                 kin_maskout = self.kin_maskout
         # breakpoint()
         features, times, space, padding, modalities, zero_mask = self(
             batch, use_prefix=use_prefix, kin_maskout=kin_maskout, no_prefix_val=no_prefix_val) # B T H
-        # if ((times > 750) & (times < 1500)).any():
-        #     breakpoint() # This is an invalid value... what's happening
         if self.cfg.log_backbone_norm:
             # expected to track sqrt N. If it's not, then we're not normalizing properly
             self.log('backbone_norm', torch.linalg.vector_norm(
@@ -571,11 +574,17 @@ class BrainBertInterface(pl.LightningModule):
                 # was_modality_input[:, 0] = False # Nope, keep this for even batches downstream. Probably the source of an insiduous bug, but should wash out.
                 # If this token will be masked, it is strong indication we have reached the ICL-suffix (zero mask is only returned/used in suffix mode), so it is sufficient
                 if zero_mask is not None and 'kinematic' in task.value:
-                    # Exclude prefix in loss mask
-                    # Restrict loss to only compute on tokens that are masked out. This is a heuristic for tokens that themselves, aren't receiving kinematic input. Only valid if we mask continuous spans, as in ICL.
+                    # zero-mask describes timesteps with kinematic inputs - that were muted for being in suffix.
+                    # zero-mask, rolled backward one, describes timesteps that _are_ kinematic targets, that will be muted in suffix.
+                    # * We restrict loss with zero-mask to only include loss on tokens that will be masked, as a heuristic for tokens that themselves are not receiving cues.
+                    # Only valid if we mask continuous spans, as in ICL.
+                    # ? Do we do this restriction for non-prefix path?
+                    # This is a heuristic for tokens that themselves, aren't receiving kinematic input.
                     # TBH I doubt this masking is necessary - the masking and increased difficulty will upweight the loss naturally.
                     target_will_mask = zero_mask.roll(-1, dims=1)
                     if not target_will_mask.any():
+                        # * Note there's an edge case I have a really hard time thinking about, which is when the only kin-tokens are the final timesteps, which aren't masked because they roll-off - so we don't compute loss on them, either.
+                        # target_will_mask[:, -1] = True # Last token is always "masked", in a sense
                         sub_loss_mask = target_will_mask[modalities == i]
                         sub_loss_mask[:] = True # forcibly turn on all kin tokens if we're not finding any masked kin tokens. All sequences should have at least one, dataloader injected token in this case, absent collator padding.
                     else:
@@ -597,7 +606,7 @@ class BrainBertInterface(pl.LightningModule):
                 sub_times,
                 sub_space,
                 sub_padding,
-                loss_mask=sub_loss_mask if prefix_loss else None,
+                loss_mask=sub_loss_mask if block_prefix_loss else None,
                 eval_mode=eval_mode
             )
             batch_out.update(update)
