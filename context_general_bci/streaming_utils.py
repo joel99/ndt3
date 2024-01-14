@@ -22,7 +22,8 @@ def precrop_batch(
 
     flatten = spike_time.ndim == 2
     if flatten:
-        logging.warning("Assuming consistent time across batch")
+        if spike_time.shape[0] > 1:
+            logging.warning(f"Assuming consistent time across batch ({spike_time.shape[0]})")
         spike_time = spike_time[0]
         cov_time = cov_time[0]
         return_time = return_time[0]
@@ -77,7 +78,8 @@ def postcrop_batch(
     return_time = batch[sanitize(DataKey.task_return_time)]
     constraint_time = batch[sanitize(DataKey.constraint_time)]
     if flatten:
-        logging.warning("Assuming consistent time across batch")
+        if spike_time.shape[0] > 1:
+            logging.warning(f"Assuming consistent time across batch ({spike_time.shape[0]})")
         spike_time = spike_time[0]
         cov_time = cov_time[0]
         return_time = return_time[0]

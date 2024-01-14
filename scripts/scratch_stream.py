@@ -17,7 +17,6 @@ from context_general_bci.config import (
     Output,
     DataKey,
 )
-from context_general_bci.contexts import context_registry
 
 from context_general_bci.utils import wandb_query_latest, get_best_ckpt_from_wandb_id
 from context_general_bci.analyze_utils import (
@@ -78,29 +77,8 @@ cfg.dataset.exclude_datasets = []
 cfg.dataset.eval_datasets = []
 dataset = SpikingDataset(cfg.dataset)
 
-reference_target = [
-    # 'CRS08Lab_59_2$',
-    # 'CRS08Lab_59_3$',
-    # 'CRS08Lab_59_6$',
-
-    # 'CRSTest_206_3$',
-    # 'CRSTest_206_4$',
-
-    # 'CRS02bLab_2065_1$',
-    # 'CRS02bLab_2066_1$',
-]
-if reference_target:
-    reference_cfg = deepcopy(cfg)
-    reference_cfg.dataset.datasets = reference_target
-    reference_dataset = SpikingDataset(reference_cfg.dataset)
-    reference_dataset.build_context_index()
-    print(f'Ref: {len(reference_dataset)}')
-    prompt = reference_dataset[-1]
-else:
-    prompt = None
-
+prompt = None
 pl.seed_everything(0)
-# Use val for parity with report
 train, val = dataset.create_tv_datasets()
 data_attrs = dataset.get_data_attrs()
 dataset = val
@@ -117,9 +95,11 @@ PROMPT_S = 0
 WORKING_S = 12
 WORKING_S = 15
 
-STREAM_BUFFER_S = 1
-STREAM_BUFFER_S = 0.
 COMPUTE_BUFFER_S = 1 # Timestep in seconds to begin computing loss for parity with stream buffer
+
+STREAM_BUFFER_S = 0.
+# STREAM_BUFFER_S = COMPUTE_BUFFER_S
+
 TEMPERATURE = 0.
 
 CONSTRAINT_COUNTERFACTUAL = False
@@ -134,6 +114,8 @@ def eval_model(
     tail_length_s=TAIL_S,
     precrop_prompt=PROMPT_S,  # For simplicity, all precrop for now. We can evaluate as we change precrop length
     postcrop_working=WORKING_S,
+    stream_buffer_s=STREAM_BUFFER_S,
+    compute_buffer_s=COMPUTE_BUFFER_S,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(
@@ -142,7 +124,6 @@ def eval_model(
     eval_bins = round(tail_length_s * 1000 // cfg.dataset.bin_size_ms)
     prompt_bins = int(precrop_prompt * 1000 // cfg.dataset.bin_size_ms)
     working_bins = int(postcrop_working * 1000 // cfg.dataset.bin_size_ms)
-    # total_bins = round(cfg.dataset.pitt_co.chop_size_ms // cfg.dataset.bin_size_ms)
     total_bins = prompt_bins + working_bins
 
     model.cfg.eval.student_gap = (
@@ -174,13 +155,6 @@ def eval_model(
 
             print(batch[DataKey.task_return.name].sum())
         if prompt is not None:
-            # breakpoint()
-            # print(prompt.keys())
-            # Pseudo model
-            # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
-            # pseudo_prompt = deepcopy(batch)
-            # print(batch[DataKey.time.name].max())
-            # print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
             batch = postcrop_batch(
                 batch,
                 int(
@@ -188,17 +162,14 @@ def eval_model(
                     // cfg.dataset.bin_size_ms
                 ),
             )
-            # print(batch[DataKey.time.name].max())
-
-            # print(f'After: {batch[DataKey.constraint.name].shape}')
-            # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
-            # crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
             if len(crop_prompt[DataKey.spikes]) > 0:
                 batch = prepend_prompt(batch, crop_prompt)
 
-        if STREAM_BUFFER_S > 0:
+        labels = batch[DataKey.covariate_labels.name][0]
+
+        if stream_buffer_s:
             timesteps = batch[DataKey.time.name].max() + 1 # number of distinct timesteps
-            buffer_steps = STREAM_BUFFER_S * 1000 // cfg.dataset.bin_size_ms
+            buffer_steps = stream_buffer_s * 1000 // cfg.dataset.bin_size_ms
             stream_output = []
             for end_time_exclusive in range(buffer_steps, timesteps + 1): # +1 because range is exlusive
                 stream_batch = deepcopy(batch)
@@ -227,27 +198,33 @@ def eval_model(
                     last_step_only=True,
                     temperature=TEMPERATURE
                 )
+                del output[Output.return_probs]
                 stream_output.append(output)
-            breakpoint()
-            stream_total = stack_batch(stream_output) # TODO
-            outputs = stack_batch(stream_total)
+            stream_total = stack_batch(stream_output) # concat behavior preds
+            stream_total[Output.behavior] = batch[DataKey.bhvr_vel.name][0,(buffer_steps-1) * len(labels):,0]
+            outputs.append(stream_total)
         else:
             output = model.predict_simple_batch(
                 batch,
                 kin_mask_timesteps=kin_mask_timesteps,
                 last_step_only=False,
             )
+            if compute_buffer_s:
+                compute_steps = compute_buffer_s * 1000 // cfg.dataset.bin_size_ms
+                for k in [Output.behavior_pred, Output.behavior_logits, Output.behavior_query_mask, Output.behavior]:
+                    output[k] = output[k][(compute_steps - 1) * len(labels):]
             outputs.append(output)
-        labels = batch[DataKey.covariate_labels.name][0]
+
     outputs = stack_batch(outputs)
 
     print(f"Checkpoint: {ckpt_epoch} (tag: {tag})")
-    if STREAM_BUFFER_S:
+    prediction = outputs[Output.behavior_pred].cpu()
+    target = outputs[Output.behavior].cpu()
+    if stream_buffer_s:
         valid = torch.ones(prediction.shape[0], dtype=torch.bool)
+        is_student = valid
         loss = 0.
     else:
-        prediction = outputs[Output.behavior_pred].cpu()
-        target = outputs[Output.behavior].cpu()
         is_student = outputs[Output.behavior_query_mask].cpu().bool()
         print(target.shape, outputs[Output.behavior_query_mask].shape)
         is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
@@ -297,11 +274,11 @@ def eval_model(
     truth = outputs[Output.behavior].float()
     truth = model.task_pipelines['kinematic_infill'].quantize(truth)
     # Quantize the truth
-    plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
+    if not stream_buffer_s and not compute_buffer_s:
+        plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
 
     # Get reported metrics
     history = wandb_run.history()
-    # drop nan
     history = history.dropna(subset=["epoch"])
     history.loc[:, "epoch"] = history["epoch"].astype(int)
     ckpt_rows = history[history["epoch"] == ckpt_epoch]
@@ -313,12 +290,55 @@ def eval_model(
     print(f"Reported R2: {reported_r2:.3f}")
     print(f"Reported Loss: {reported_loss:.3f}")
     print(f"Reported Kin Loss: {reported_kin_loss:.3f}")
-    return outputs, target, prediction, is_student, valid, r2_student
+    return outputs, target, prediction, is_student, valid, r2_student, mse
 
 
-(outputs, target, prediction, is_student, valid, r2_student) = eval_model(
-    model, dataset,
-)
+# (outputs, target, prediction, is_student, valid, r2_student, mse) = eval_model(
+#     model, dataset, stream_buffer_s=STREAM_BUFFER_S
+# )
+
+scores = []
+for i in range(1, 14, 2):
+    (outputs, target, prediction, is_student, valid, r2_stream, mse_stream) = eval_model(
+        model, dataset, stream_buffer_s=i
+    )
+    (outputs, target, prediction, is_student, valid, r2_full, mse_full) = eval_model(
+        model, dataset, stream_buffer_s=0, compute_buffer_s=i
+    )
+    scores.append({
+        'stream_buffer_s': i,
+        'r2_stream': r2_stream,
+        'r2_full': r2_full,
+        'mse_stream': mse_stream,
+        'mse_full': mse_full,
+    })
+
+#%%
+import pandas as pd
+# plot r2 and mse
+df = pd.DataFrame(scores)
+
+# Create subplots
+f, axes = plt.subplots(2, 1, figsize=(10, 15), sharex=True)  # Two subplots
+palette = sns.color_palette(n_colors=2)
+
+axes = prep_plt(axes, big=True)
+# Plot R2 scores
+axes[0].plot(df['stream_buffer_s'], df['r2_stream'], color=palette[0], label='Stream R2')
+axes[0].plot(df['stream_buffer_s'], df['r2_full'], color=palette[1], label='Full R2')
+axes[0].set_xlabel('Stream Buffer (s)')
+axes[0].set_ylabel('R2')
+axes[0].legend()
+axes[0].set_title('R2 Scores')
+
+# Plot MSE scores
+axes[1].plot(df['stream_buffer_s'], df['mse_stream'], color=palette[0], label='Stream MSE')
+axes[1].plot(df['stream_buffer_s'], df['mse_full'], color=palette[1], label='Full MSE')
+axes[1].set_xlabel('Stream Buffer (s)')
+axes[1].set_ylabel('MSE')
+axes[1].legend()
+axes[1].set_title('MSE Scores')
+
 
 # %%
 f = plt.figure(figsize=(10, 10))
@@ -327,11 +347,6 @@ palette = sns.color_palette(n_colors=2)
 colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
 alpha = [0.1 if is_student[i] else 0.8 for i in range(len(is_student))]
 ax.scatter(target, prediction, s=3, alpha=alpha, color=colors)
-# target_student = target[is_student]
-# prediction_student = prediction[is_student]
-# target_student = target_student[prediction_student.abs() < 0.8]
-# prediction_student = prediction_student[prediction_student.abs() < 0.8]
-# robust_r2_student = r2_score(target_student, prediction_student)
 ax.set_xlabel("True")
 ax.set_ylabel("Pred")
 ax.set_title(f"{query} R2: {r2_student:.2f}")
