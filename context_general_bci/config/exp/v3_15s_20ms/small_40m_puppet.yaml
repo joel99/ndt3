@@ -6,7 +6,8 @@ model:
   task:
     spike_loss: cross_entropy
     prefix_ratio: 1.0
-    context_prompt_time_thresh: -750 # 15s
+    context_prompt_time_thresh_min: 0 # 15s
+    context_prompt_time_thresh: 750 # 15s
 
     constraint_mute: True
     return_mute: True
