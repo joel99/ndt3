@@ -37,13 +37,13 @@ query = 'small_40m_class-crzzyj1d'
 query = 'small_40m_class-2wmyxnhl'
 
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
-query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
+# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
 tag = 'val_loss'
-tag = "val_kinematic_r2"
+# tag = "val_kinematic_r2"
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
 #%%
@@ -64,12 +64,12 @@ target = [
     # 'CRS08Lab_59_3$',
     # 'CRS08Lab_59_6$',
 
-    # 'CRSTest_206_3$',
-    # 'CRSTest_206_4$',
-    # 'CRSTest_207_10'
+    'CRSTest_206_3$',
+    'CRSTest_206_4$',
+    'CRSTest_207_10'
 
-    'CRS02bLab_2065_1$',
-    'CRS02bLab_2066_1$',
+    # 'CRS02bLab_2065_1$',
+    # 'CRS02bLab_2066_1$',
 ]
 
 cfg.dataset.datasets = target
@@ -169,7 +169,7 @@ def eval_model(
 
         if stream_buffer_s:
             timesteps = batch[DataKey.time.name].max() + 1 # number of distinct timesteps
-            buffer_steps = stream_buffer_s * 1000 // cfg.dataset.bin_size_ms
+            buffer_steps = int(stream_buffer_s * 1000 // cfg.dataset.bin_size_ms)
             stream_output = []
             for end_time_exclusive in range(buffer_steps, timesteps + 1): # +1 because range is exlusive
                 stream_batch = deepcopy(batch)
@@ -201,7 +201,13 @@ def eval_model(
                 del output[Output.return_probs]
                 stream_output.append(output)
             stream_total = stack_batch(stream_output) # concat behavior preds
-            stream_total[Output.behavior] = batch[DataKey.bhvr_vel.name][0,(buffer_steps-1) * len(labels):,0]
+            if compute_buffer_s:
+                compute_steps = int(compute_buffer_s * 1000 // cfg.dataset.bin_size_ms)
+                stream_total[Output.behavior] = batch[DataKey.bhvr_vel.name][0,(compute_steps-1) * len(labels):,0]
+                stream_total[Output.behavior_pred] = stream_total[Output.behavior_pred][(compute_steps-buffer_steps) * len(labels):]
+            else:
+                stream_total[Output.behavior] = batch[DataKey.bhvr_vel.name][0,(buffer_steps-1) * len(labels):,0]
+
             outputs.append(stream_total)
         else:
             output = model.predict_simple_batch(
@@ -210,7 +216,7 @@ def eval_model(
                 last_step_only=False,
             )
             if compute_buffer_s:
-                compute_steps = compute_buffer_s * 1000 // cfg.dataset.bin_size_ms
+                compute_steps = int(compute_buffer_s * 1000 // cfg.dataset.bin_size_ms)
                 for k in [Output.behavior_pred, Output.behavior_logits, Output.behavior_query_mask, Output.behavior]:
                     output[k] = output[k][(compute_steps - 1) * len(labels):]
             outputs.append(output)
@@ -298,9 +304,10 @@ def eval_model(
 # )
 
 scores = []
-for i in range(1, 14, 2):
+COMPUTE_BUFFER_S = 9 # Fix comparison to last N seconds
+for i in np.arange(1, COMPUTE_BUFFER_S, 0.5):
     (outputs, target, prediction, is_student, valid, r2_stream, mse_stream) = eval_model(
-        model, dataset, stream_buffer_s=i
+        model, dataset, stream_buffer_s=i, compute_buffer_s=COMPUTE_BUFFER_S
     )
     (outputs, target, prediction, is_student, valid, r2_full, mse_full) = eval_model(
         model, dataset, stream_buffer_s=0, compute_buffer_s=i
@@ -339,6 +346,8 @@ axes[1].set_ylabel('MSE')
 axes[1].legend()
 axes[1].set_title('MSE Scores')
 
+f.suptitle(f"{query} {cfg.dataset.datasets[0]} {tag}")
+plt.tight_layout()
 
 # %%
 f = plt.figure(figsize=(10, 10))
