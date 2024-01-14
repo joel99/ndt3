@@ -804,6 +804,8 @@ class BrainBertInterface(pl.LightningModule):
             temperature=temperature,
             eval_mode=not last_step_only,
         )
+        if temperature > 0:
+            cov_query[Output.behavior_pred] = cov_query[Output.behavior_pred].squeeze(-1) # Remove excess dim
 
         # Only last step supported atm
         if ModelTask.return_infill in self.cfg.task.tasks:

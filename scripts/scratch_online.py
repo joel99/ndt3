@@ -40,6 +40,7 @@ query = 'small_40m_class-2wmyxnhl'
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
 query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
+# query = 'small_40m_4k_prefix_block_loss-nefapbwj' # CRSTest 208 2, 3, 4
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -71,6 +72,10 @@ target = [
 
     'CRS02bLab_2065_1$',
     'CRS02bLab_2066_1$',
+
+    # 'CRSTest_208_2$',
+    # 'CRSTest_208_3$',
+    # 'CRSTest_208_4$',
 ]
 
 cfg.dataset.datasets = target
@@ -117,8 +122,13 @@ PROMPT_S = 0
 WORKING_S = 12
 WORKING_S = 15
 
+TEMPERATURE = 0.
+TEMPERATURE = 0.5
+# TEMPERATURE = 1.0
+# TEMPERATURE = 2.0
+
 CONSTRAINT_COUNTERFACTUAL = False
-CONSTRAINT_COUNTERFACTUAL = True
+# CONSTRAINT_COUNTERFACTUAL = True
 RETURN_COUNTERFACTUAL = False
 # RETURN_COUNTERFACTUAL = True
 
@@ -169,13 +179,6 @@ def eval_model(
 
             print(batch[DataKey.task_return.name].sum())
         if prompt is not None:
-            # breakpoint()
-            # print(prompt.keys())
-            # Pseudo model
-            # print(f'Before: {batch[DataKey.constraint.name].shape}') # Confirm we actually have new constraint annotations
-            # pseudo_prompt = deepcopy(batch)
-            # print(batch[DataKey.time.name].max())
-            # print(cfg.dataset.pitt_co.chop_size_ms - postcrop_working * 1000)
             batch = postcrop_batch(
                 batch,
                 int(
@@ -183,19 +186,14 @@ def eval_model(
                     // cfg.dataset.bin_size_ms
                 ),
             )
-            # print(batch[DataKey.time.name].max())
-
-            # print(f'After: {batch[DataKey.constraint.name].shape}')
-            # crop_prompt = precrop_batch(pseudo_prompt, prompt_bins) # Debug
-            # crop_prompt = {k: v[0] if isinstance(v, torch.Tensor) else v for k, v in crop_prompt.items()}
             if len(crop_prompt[DataKey.spikes]) > 0:
                 batch = prepend_prompt(batch, crop_prompt)
 
-            # print(batch[DataKey.time.name].max())
         output = model.predict_simple_batch(
             batch,
             kin_mask_timesteps=kin_mask_timesteps,
             last_step_only=False,
+            temperature=TEMPERATURE
         )
         outputs.append(output)
     outputs = stack_batch(outputs)
@@ -225,8 +223,10 @@ def eval_model(
     # print(target.shape, prediction.shape, valid.shape)
     # print(is_student_rolling.shape)
     loss = outputs[Output.behavior_loss].mean()
+    breakpoint()
     mse = torch.mean((target[valid] - prediction[valid]) ** 2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
+    print(mse)
     print(f"Checkpoint: {ckpt_epoch} (tag: {tag})")
     print(f'Loss: {loss:.3f}')
     print(f"MSE: {mse:.3f}")
@@ -435,8 +435,8 @@ for i, dim in enumerate(subset_dims):
 plt.tight_layout()
 
 
+fig.suptitle(f'{query} R2: {r2_student:.2f} Temp: {TEMPERATURE}')
 # fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
 
-# %%
 
 

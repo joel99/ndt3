@@ -1916,7 +1916,7 @@ class ClassificationMixin(QuantizeBehavior):
         if temperature > 0:
             batched = logits.ndim == 3
             if batched:
-                b, d, c = logits.shape
+                b, d, c = logits.shape # batch, kin dim, class
                 logits = rearrange(logits, 'b d c -> (b d) c')
             logits = logits / temperature
             probabilities = torch.softmax(logits, dim=logit_dim) # TODO deprecate logit_dim

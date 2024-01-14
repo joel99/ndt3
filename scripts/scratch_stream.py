@@ -37,13 +37,15 @@ query = 'small_40m_class-crzzyj1d'
 query = 'small_40m_class-2wmyxnhl'
 
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
-# query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
+query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
+
+query = 'small_40m_4k_prefix_block_loss-nefapbwj' # CRSTest 208 2, 3, 4
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
-tag = 'val_loss'
-# tag = "val_kinematic_r2"
+# tag = 'val_loss'
+tag = "val_kinematic_r2"
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
 #%%
@@ -64,12 +66,16 @@ target = [
     # 'CRS08Lab_59_3$',
     # 'CRS08Lab_59_6$',
 
-    'CRSTest_206_3$',
-    'CRSTest_206_4$',
-    'CRSTest_207_10'
+    # 'CRSTest_206_3$',
+    # 'CRSTest_206_4$',
+    # 'CRSTest_207_10$',
 
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
+
+    'CRSTest_208_2$',
+    'CRSTest_208_3$',
+    'CRSTest_208_4$',
 ]
 
 cfg.dataset.datasets = target
@@ -305,7 +311,7 @@ def eval_model(
 
 scores = []
 COMPUTE_BUFFER_S = 9 # Fix comparison to last N seconds
-for i in np.arange(1, COMPUTE_BUFFER_S, 0.5):
+for i in np.arange(1, COMPUTE_BUFFER_S + 0.5, 0.5):
     (outputs, target, prediction, is_student, valid, r2_stream, mse_stream) = eval_model(
         model, dataset, stream_buffer_s=i, compute_buffer_s=COMPUTE_BUFFER_S
     )
@@ -320,7 +326,6 @@ for i in np.arange(1, COMPUTE_BUFFER_S, 0.5):
         'mse_full': mse_full,
     })
 
-#%%
 import pandas as pd
 # plot r2 and mse
 df = pd.DataFrame(scores)
@@ -332,19 +337,33 @@ palette = sns.color_palette(n_colors=2)
 axes = prep_plt(axes, big=True)
 # Plot R2 scores
 axes[0].plot(df['stream_buffer_s'], df['r2_stream'], color=palette[0], label='Stream R2')
-axes[0].plot(df['stream_buffer_s'], df['r2_full'], color=palette[1], label='Full R2')
+# axes[0].plot(df['stream_buffer_s'], df['r2_full'], color=palette[1], label='Full R2')
 axes[0].set_xlabel('Stream Buffer (s)')
 axes[0].set_ylabel('R2')
 axes[0].legend()
 axes[0].set_title('R2 Scores')
+full_at_buffer = df[df['stream_buffer_s'] == COMPUTE_BUFFER_S]['r2_full'].values[0]
+axes[0].axhline(full_at_buffer, color='k', linestyle='--', label='Threshold')
+# Annotate line with text: untruncated perf
+axes[0].text(x=1, y=full_at_buffer + 0.01,
+    s=f"Untruncated R2", size=20
+)
 
 # Plot MSE scores
 axes[1].plot(df['stream_buffer_s'], df['mse_stream'], color=palette[0], label='Stream MSE')
-axes[1].plot(df['stream_buffer_s'], df['mse_full'], color=palette[1], label='Full MSE')
+# axes[1].plot(df['stream_buffer_s'], df['mse_full'], color=palette[1], label='Full MSE')
 axes[1].set_xlabel('Stream Buffer (s)')
 axes[1].set_ylabel('MSE')
 axes[1].legend()
 axes[1].set_title('MSE Scores')
+full_at_buffer = df[df['stream_buffer_s'] == COMPUTE_BUFFER_S]['mse_full'].values[0]
+axes[1].axhline(full_at_buffer, color='k', linestyle='--', label='Threshold')
+axes[1].text(
+    x=1,
+    # x=COMPUTE_BUFFER_S,
+    y=full_at_buffer + 0.001,
+    s=f"Untruncated MSE", size=20
+)
 
 f.suptitle(f"{query} {cfg.dataset.datasets[0]} {tag}")
 plt.tight_layout()
