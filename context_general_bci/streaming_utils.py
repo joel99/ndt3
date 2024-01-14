@@ -11,6 +11,9 @@ def precrop_batch(
     batch: Dict[BatchKey, torch.Tensor], # item also works (no batch dimension), due to broadcasting
     crop_timesteps: int,
 ):
+    r"""
+        Keep timestep to < crop_timesteps
+    """
     sanitize = lambda x: x.name if DataKey.time.name in batch else x # stringify - needed while we have weird dataloader misparity
     spike_time = batch[sanitize(DataKey.time)]
     cov_time = batch[sanitize(DataKey.covariate_time)]
@@ -62,6 +65,9 @@ def postcrop_batch(
     batch: Dict[BatchKey, torch.Tensor],
     crop_timesteps: int,
 ):
+    r"""
+        Take suffix crop by ABSOLUTE crop_timesteps, >= given timestep ! NOT number of timesteps.
+    """
     # ! In place mod
     # Hm. This will flatten the batch, since there's no guarantees. OK, we'll just squeeze out the time dimension
     sanitize = lambda x: x.name if x.name in batch else x  # stringify

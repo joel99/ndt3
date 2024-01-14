@@ -733,7 +733,7 @@ class BrainBertInterface(pl.LightningModule):
             task_return_time,
             spike_array_lengths,
         )
-        if reference is not None and len(reference.get(DataKey.spikes, [])) > 0:
+        if reference is not None and len(reference) > 0 and len(reference.get(DataKey.spikes, [])) > 0:
             batch = prepend_prompt(batch, reference)
         # comp = torch.load('/home/joy47/projects/ndt3/test.pth')
         # for k, v in reference.items():
@@ -779,7 +779,7 @@ class BrainBertInterface(pl.LightningModule):
                 zero_mask = torch.zeros_like(times, dtype=torch.bool)
             # * Risk point - we should examine this mask carefully.
             is_kin_mask = (modalities == tks.index('kinematic_infill')).roll(1, dims=1) # Is kinematic input - one after is kin target
-            is_kin_mask[:, 0] = False # First token is always valid
+            is_kin_mask[:, 0] = False # First token is always valid (not kinematic input), it's SOS
             # breakpoint()
             zero_mask &= is_kin_mask
             pipeline_context[zero_mask] = 0
