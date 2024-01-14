@@ -440,12 +440,11 @@ class PittCOLoader(ExperimentalTaskLoader):
                 vec: torch.Tensor | None = payload.get(key, None)
                 if vec is None:
                     return None
-                return vec.int().clamp(0, 1).half()
+                return vec.float().clamp(0, 1).half()
             brain_control = cast_constraint('brain_control')
             active_assist = cast_constraint('active_assist')
             passive_assist = cast_constraint('passive_assist')
             override_assist = cast_constraint('override_assist') # Override is sub-domain specific active assist, used for partial domain control e.g. in robot tasks
-
             # * Reward and return!
             passed = payload.get('passed', None) # Not dense
             trial_num: torch.Tensor = payload['trial_num'] # Dense

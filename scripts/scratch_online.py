@@ -40,7 +40,9 @@ query = 'small_40m_class-2wmyxnhl'
 query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
 query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
-# query = 'small_40m_4k_prefix_block_loss-nefapbwj' # CRSTest 208 2, 3, 4
+query = 'small_40m_4k_prefix_block_loss-nefapbwj' # CRSTest 208 2, 3, 4
+query = 'small_40m_4k_prefix_block_loss-zkv3uqb3' # CRSTest 208 33, 34, 35
+
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -70,12 +72,16 @@ target = [
     # 'CRSTest_206_4$',
     # 'CRSTest_207_10'
 
-    'CRS02bLab_2065_1$',
-    'CRS02bLab_2066_1$',
+    # 'CRS02bLab_2065_1$',
+    # 'CRS02bLab_2066_1$',
 
     # 'CRSTest_208_2$',
     # 'CRSTest_208_3$',
     # 'CRSTest_208_4$',
+
+    'CRSTest_208_33$',
+    'CRSTest_208_34$',
+    'CRSTest_208_35$',
 ]
 
 cfg.dataset.datasets = target
@@ -114,8 +120,10 @@ print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
 model.eval()
 model = model.to("cuda")
+
 # %%
 CUE_S = 0
+# CUE_S = 12
 TAIL_S = 15
 PROMPT_S = 3
 PROMPT_S = 0
@@ -123,14 +131,25 @@ WORKING_S = 12
 WORKING_S = 15
 
 TEMPERATURE = 0.
-TEMPERATURE = 0.5
+# TEMPERATURE = 0.5
 # TEMPERATURE = 1.0
 # TEMPERATURE = 2.0
 
 CONSTRAINT_COUNTERFACTUAL = False
-# CONSTRAINT_COUNTERFACTUAL = True
+CONSTRAINT_COUNTERFACTUAL = True
+# Active assist counterfactual specification
+CONSTRAINT_CORRECTION = 0.0
+CONSTRAINT_CORRECTION = 1.0
+CONSTRAINT_CORRECTION = 0.0
+CONSTRAINT_CORRECTION = 0.5
+CONSTRAINT_QUERY = 0.5
 RETURN_COUNTERFACTUAL = False
 # RETURN_COUNTERFACTUAL = True
+
+do_plot = True
+do_plot = False
+
+tag = f'Constraint: {CONSTRAINT_CORRECTION}'
 
 def eval_model(
     model: BrainBertInterface,
@@ -139,6 +158,7 @@ def eval_model(
     tail_length_s=TAIL_S,
     precrop_prompt=PROMPT_S,  # For simplicity, all precrop for now. We can evaluate as we change precrop length
     postcrop_working=WORKING_S,
+    constraint_correction=CONSTRAINT_CORRECTION,
 ):
     dataloader = get_dataloader(dataset, batch_size=1, num_workers=0)
     model.cfg.eval.teacher_timesteps = int(
@@ -166,8 +186,11 @@ def eval_model(
         }
         if CONSTRAINT_COUNTERFACTUAL:
             assist_constraint = batch[DataKey.constraint.name]
-            active_assist = rearrange(torch.tensor([1, 1, 0]).to(assist_constraint.device), 'c -> 1 1 c')
-            assist_constraint[(assist_constraint == active_assist).all(-1)] = 0
+            print(assist_constraint)
+            cf_constraint = torch.tensor([
+                constraint_correction, constraint_correction, 0, # How much is brain NOT participating, how much active assist is on
+            ], dtype=assist_constraint.dtype, device=assist_constraint.device)
+            assist_constraint[(assist_constraint != 0).sum(-1) == 2] = cf_constraint
             batch[DataKey.constraint.name] = assist_constraint
         if RETURN_COUNTERFACTUAL:
             assist_return = batch[DataKey.task_return.name]
@@ -260,13 +283,13 @@ def eval_model(
             else:
                 truth_i = None
             plot_logits(axes[i], logits, label, cfg.dataset.bin_size_ms, truth=truth_i)
-        f.suptitle(f"{query} Logits MSE {mse:.3f} Loss {loss:.3f}")
+        f.suptitle(f"{query} Logits MSE {mse:.3f} Loss {loss:.3f} {tag}")
         plt.tight_layout()
 
     truth = outputs[Output.behavior].float()
     truth = model.task_pipelines['kinematic_infill'].quantize(truth)
-    # Quantize the truth
-    plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
+    if do_plot:
+        plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
 
     # Get reported metrics
     history = wandb_run.history()
@@ -282,12 +305,43 @@ def eval_model(
     print(f"Reported R2: {reported_r2:.3f}")
     print(f"Reported Loss: {reported_loss:.3f}")
     print(f"Reported Kin Loss: {reported_kin_loss:.3f}")
-    return outputs, target, prediction, is_student, valid, r2_student
+    return outputs, target, prediction, is_student, valid, r2_student, mse, loss
 
 
-(outputs, target, prediction, is_student, valid, r2_student) = eval_model(
+(outputs, target, prediction, is_student, valid, r2_student, mse, loss) = eval_model(
     model, dataset,
 )
+
+scores = []
+for constraint_correction in np.arange(0, 1.1, 0.1):
+    (outputs, target, prediction, is_student, valid, r2_student, mse, loss) = eval_model(
+        model, dataset, constraint_correction=constraint_correction
+    )
+    scores.append({
+        'constraint_correction': constraint_correction,
+        'r2': r2_student,
+        'mse': mse.item(),
+        'loss': loss.item(),
+    })
+
+#%%
+import pandas as pd
+# Plot all three metrics, side by side
+f, axes = plt.subplots(1, 3, figsize=(15, 5), sharex=True)
+scores = pd.DataFrame(scores)
+print(scores['mse'])
+for i, metric in enumerate(['r2', 'mse', 'loss']):
+    sns.lineplot(
+        x='constraint_correction',
+        y=metric,
+        data=scores,
+        ax=axes[i],
+    )
+    axes[i].set_title(metric)
+tag = "Train: 50% | Eval: OL "
+f.suptitle(f"{query} {tag}")
+# f.suptitle(f"{query} Eval: {dataset.cfg.datasets[0]}")
+f.tight_layout()
 
 # %%
 f = plt.figure(figsize=(10, 10))
