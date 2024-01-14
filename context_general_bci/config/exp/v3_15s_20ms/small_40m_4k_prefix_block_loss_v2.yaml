@@ -1,0 +1,17 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    spike_loss: cross_entropy
+    prefix_ratio: 1.0
+    context_prompt_time_thresh_min: 0
+    context_prompt_time_thresh: 750 # 15s
+    block_prefix_loss: True
+dataset:
+  max_tokens: 4096
+  sparse_rewards: False
+train:
+  batch_size: 32
+notes: "Observing `40m_full` underperform this standard return-muted model, is it because of new data or the muting? This model has identical data as 40m_full - so how does it compare?"

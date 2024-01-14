@@ -1020,7 +1020,7 @@ class ReturnContext(ContextPipeline):
         # self.norm = nn.LayerNorm(cfg.hidden_size)
 
     def get_context(self, batch: Dict[BatchKey, torch.Tensor]):
-        breakpoint()
+        # breakpoint()
         if self.cfg.return_mute:
             return_embed = self.return_enc(torch.zeros_like(batch[DataKey.task_return.name]))
         else:
