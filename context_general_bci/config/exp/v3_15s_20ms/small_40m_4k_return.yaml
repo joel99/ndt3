@@ -1,0 +1,30 @@
+# @package _global_
+
+defaults:
+  - _default
+model:
+  task:
+    spike_loss: cross_entropy
+    prefix_ratio: 1.0
+    context_prompt_time_thresh_min: 0
+    context_prompt_time_thresh: 750 # 15s
+    block_prefix_loss: True
+
+    constraint_mute: False
+    return_mute: False
+    tasks:
+    - ModelTask.spike_infill
+    - ModelTask.kinematic_infill
+    - ModelTask.constraints
+    - ModelTask.return_infill
+    task_weights: [1.0, 1.0, 0., 1.0]
+    metrics:
+    - Metric.kinematic_r2
+    - Metric.kinematic_acc
+    - Metric.return_acc
+dataset:
+  max_tokens: 4096
+  sparse_rewards: False
+train:
+  batch_size: 16
+notes: "40M dense reward"
