@@ -6,8 +6,6 @@ import numpy as np
 import seaborn as sns
 import torch
 import lightning.pytorch as pl
-from einops import rearrange
-
 from sklearn.metrics import r2_score
 
 from context_general_bci.model import transfer_model, BrainBertInterface
@@ -16,8 +14,8 @@ from context_general_bci.config import (
     Metric,
     Output,
     DataKey,
+    MetaKey
 )
-from context_general_bci.contexts import context_registry
 
 from context_general_bci.utils import wandb_query_latest, get_best_ckpt_from_wandb_id
 from context_general_bci.analyze_utils import (
@@ -41,7 +39,10 @@ query = 'small_40m_class-fgf2xd2p' # CRSTest 206_3, 206_4
 query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 query = 'small_40m_4k_prefix_block_loss-nefapbwj' # CRSTest 208 2, 3, 4
-query = 'small_40m_4k_prefix_block_loss-zkv3uqb3' # CRSTest 208 33, 34, 35
+# query = 'small_40m_4k_prefix_block_loss-zkv3uqb3' # CRSTest 208 33, 34, 35 BUGGED
+query = 'small_40m_4k_prefix_block_loss-pz6j1cow'
+query = 'small_40m_4k_prefix_block_loss-1qla3ato' # OL 208 2, 3, 4
+query = 'small_40m_4k_prefix_block_loss-w7wghmc6'
 
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
@@ -75,9 +76,9 @@ target = [
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
 
-    # 'CRSTest_208_2$',
-    # 'CRSTest_208_3$',
-    # 'CRSTest_208_4$',
+    'CRSTest_208_2$',
+    'CRSTest_208_3$',
+    'CRSTest_208_4$',
 
     'CRSTest_208_33$',
     'CRSTest_208_34$',
@@ -115,6 +116,17 @@ pl.seed_everything(0)
 train, val = dataset.create_tv_datasets()
 data_attrs = dataset.get_data_attrs()
 dataset = val
+print(dataset.meta_df[MetaKey.session].unique())
+subset_datasets = [
+    'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_2',
+    'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_3',
+    'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_4',
+    'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_33',
+    'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_34',
+    'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_35',
+]
+dataset.subset_by_key(subset_datasets, key=MetaKey.session)
+
 print("Eval length: ", len(dataset))
 print(data_attrs)
 model = transfer_model(src_model, cfg.model, data_attrs)
@@ -136,20 +148,23 @@ TEMPERATURE = 0.
 # TEMPERATURE = 2.0
 
 CONSTRAINT_COUNTERFACTUAL = False
-CONSTRAINT_COUNTERFACTUAL = True
+# CONSTRAINT_COUNTERFACTUAL = True
 # Active assist counterfactual specification
 CONSTRAINT_CORRECTION = 0.0
 CONSTRAINT_CORRECTION = 1.0
-CONSTRAINT_CORRECTION = 0.0
-CONSTRAINT_CORRECTION = 0.5
-CONSTRAINT_QUERY = 0.5
 RETURN_COUNTERFACTUAL = False
-# RETURN_COUNTERFACTUAL = True
+RETURN_COUNTERFACTUAL = True
+REWARD_SCALE = 0
+REWARD_SCALE = 1. # Vary density of rewards added
+REWARD_SCALE = 0.1 # Vary density of rewards added
+REWARD_SCRAMBLE = False
+REWARD_SCRAMBLE = True # Vary timing
 
 do_plot = True
-do_plot = False
+# do_plot = False
 
-tag = f'Constraint: {CONSTRAINT_CORRECTION}'
+tag = f'Reward: {REWARD_SCALE} Scramble: {REWARD_SCRAMBLE}'
+# tag = f'Constraint: {CONSTRAINT_CORRECTION}'
 
 def eval_model(
     model: BrainBertInterface,
@@ -186,7 +201,6 @@ def eval_model(
         }
         if CONSTRAINT_COUNTERFACTUAL:
             assist_constraint = batch[DataKey.constraint.name]
-            print(assist_constraint)
             cf_constraint = torch.tensor([
                 constraint_correction, constraint_correction, 0, # How much is brain NOT participating, how much active assist is on
             ], dtype=assist_constraint.dtype, device=assist_constraint.device)
@@ -198,7 +212,14 @@ def eval_model(
             batch[DataKey.task_return.name] = assist_return
 
             assist_reward = batch[DataKey.task_reward.name]
-            batch[DataKey.task_reward.name] = torch.ones_like(assist_reward)
+            if REWARD_SCALE:
+                injected = torch.bernoulli(torch.ones_like(assist_reward) * REWARD_SCALE).int()
+                batch[DataKey.task_reward.name] = (assist_reward + injected).clamp(1, 2)
+
+            if REWARD_SCRAMBLE:
+                assist_reward = batch[DataKey.task_reward.name]
+                assist_reward = assist_reward[:, torch.randperm(assist_reward.shape[1])]
+                batch[DataKey.task_reward.name] = assist_reward
 
             print(batch[DataKey.task_return.name].sum())
         if prompt is not None:
@@ -226,21 +247,13 @@ def eval_model(
     # print(prediction.sum())
     target = outputs[Output.behavior].cpu()
     is_student = outputs[Output.behavior_query_mask].cpu().bool()
-    # We unmask `cue_length` -
-    # ! Don't know why behavior queyr mask is not even.
-    # print(kin_mask_timesteps)
     print(target.shape, outputs[Output.behavior_query_mask].shape)
 
     # Compute R2
-    # r2 = r2_score(target, prediction)
     is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
     valid = is_student_rolling > (
         model.cfg.eval.student_gap * len(outputs[DataKey.covariate_labels.name])
     )
-    # print(gap * len(outputs[DataKey.covariate_labels.name]))
-    # plt.plot(is_student_rolling)
-    # plt.hlines(gap * len(outputs[DataKey.covariate_labels.name]), 0, 1000, )
-    # plt.plot(valid * 1000)
 
     print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
     # print(target.shape, prediction.shape, valid.shape)
@@ -312,17 +325,17 @@ def eval_model(
     model, dataset,
 )
 
-scores = []
-for constraint_correction in np.arange(0, 1.1, 0.1):
-    (outputs, target, prediction, is_student, valid, r2_student, mse, loss) = eval_model(
-        model, dataset, constraint_correction=constraint_correction
-    )
-    scores.append({
-        'constraint_correction': constraint_correction,
-        'r2': r2_student,
-        'mse': mse.item(),
-        'loss': loss.item(),
-    })
+# scores = []
+# for constraint_correction in np.arange(0, 1.1, 0.1):
+#     (outputs, target, prediction, is_student, valid, r2_student, mse, loss) = eval_model(
+#         model, dataset, constraint_correction=constraint_correction
+#     )
+#     scores.append({
+#         'constraint_correction': constraint_correction,
+#         'r2': r2_student,
+#         'mse': mse.item(),
+#         'loss': loss.item(),
+#     })
 
 #%%
 import pandas as pd
@@ -337,9 +350,20 @@ for i, metric in enumerate(['r2', 'mse', 'loss']):
         data=scores,
         ax=axes[i],
     )
+    axes[i] = prep_plt(axes[i], big=True)
     axes[i].set_title(metric)
-tag = "Train: 50% | Eval: OL "
-f.suptitle(f"{query} {tag}")
+if 'CRSTest_208_33$' in dataset.cfg.datasets:
+    eval_tag = "Eval: 50%"
+else:
+    eval_tag = "Eval: OL"
+# eval_tag = 'Eval: Mixed'
+if 'nefa' in query or '1qla3ato' in query:
+    train_tag = 'Train: OL'
+elif 'pz6j1cow' in query:
+    train_tag = 'Train: 50%'
+else:
+    train_tag = 'Train: Mixed'
+f.suptitle(f"{query} {train_tag} {eval_tag}")
 # f.suptitle(f"{query} Eval: {dataset.cfg.datasets[0]}")
 f.tight_layout()
 
