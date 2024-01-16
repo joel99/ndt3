@@ -383,7 +383,8 @@ class PittCOLoader(ExperimentalTaskLoader):
                     # Assumes that raw data .mats are of the format, <Subject>_session_<session>_set_<set>.mat. Aim is to crawl as session level, not subject level
                     session_root = datapath.stem.split('_set')[0]
                     norm_path = cache_root.parent / f'{session_root}_norm.pth'
-                    if not norm_path.exists():
+                    # Create a session-level norm file if it doesn't exist (batch, offline), or older than latest data (for online experiments, where new data and possibly new effectors keep coming in)
+                    if not norm_path.exists() or norm_path.stat().st_mtime < datapath.stat().st_mtime:
                         session_covs = []
                         for file in sorted(datapath.parent.glob(f'{session_root}_*.mat')):
                             session_covs.append(cls.load_raw_covariates(file, cfg, subject, task))

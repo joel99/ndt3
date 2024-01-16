@@ -1,6 +1,5 @@
 # %%
 # Testing online parity, using open predict
-from copy import deepcopy
 from matplotlib import pyplot as plt
 import numpy as np
 import seaborn as sns
@@ -50,11 +49,16 @@ query = 'small_40m_4k_prefix_block_loss-tpm2gllb'
 query = 'small_40m_4k_prefix_block_loss-k2lpe653' # https://wandb.ai/joelye9/ndt3/runs/k2lpe653?workspace=user-joelye9
 query = 'small_40m_4k_prefix_block_loss-wgvb6m90'
 query = 'small_40m_4k_return_only-82dlavhy'
+query = 'small_40m_4k_return-lyvk6zuu'
 
+# query = 'small_40m_4k_return-gih4kyon' # NO FINE-TUNING! PRETAINED
+query = 'small_40m_4k_return-jf2pdzsl' # ol
+# query = 'small_40m_4k_return-pwecifa0' # mixed ol + 50%
+# query = 'small_40m_4k_return-5g11tdvw' # 50%
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
-tag = 'val_loss'
+# tag = 'val_loss'
 tag = "val_kinematic_r2"
 
 src_model, cfg, old_data_attrs = load_wandb_run(wandb_run, tag=tag)
@@ -68,21 +72,10 @@ cfg.model.task.outputs = [
     Output.behavior_pred,
     Output.behavior_logits,
     Output.return_logits,
-    Output.return_probs,
+    Output.return_target
 ]
 
 target = [
-    # 'CRS08Lab_59_2$',
-    # 'CRS08Lab_59_3$',
-    # 'CRS08Lab_59_6$',
-
-    # 'CRSTest_206_3$',
-    # 'CRSTest_206_4$',
-    # 'CRSTest_207_10'
-
-    # 'CRS02bLab_2065_1$',
-    # 'CRS02bLab_2066_1$',
-
     # 'CRSTest_208_2$',
     # 'CRSTest_208_3$',
     # 'CRSTest_208_4$',
@@ -97,35 +90,25 @@ target = [
     # 'CRSTest_209_16$',
     # 'CRSTest_209_19$',
 
-    'CRS02bLab_2067_15$',
-    'CRS02bLab_2067_16$',
+    'CRS02bLab_2067_2$',
+    'CRS02bLab_2067_3$',
+    # 'CRS02bLab_2067_8$',
+    # 'CRS02bLab_2067_9$',
+
+    # 'CRS02bLab_2067_8$',
+    # 'CRS02bLab_2067_9$',
+
+    # 'CRS02bLab_2067_15$',
+    # 'CRS02bLab_2067_16$',
 ]
 
 cfg.dataset.datasets = target
 cfg.dataset.exclude_datasets = []
 cfg.dataset.eval_datasets = []
+cfg.dataset.max_tokens = 8192
 dataset = SpikingDataset(cfg.dataset)
 
-reference_target = [
-    # 'CRS08Lab_59_2$',
-    # 'CRS08Lab_59_3$',
-    # 'CRS08Lab_59_6$',
-
-    # 'CRSTest_206_3$',
-    # 'CRSTest_206_4$',
-
-    # 'CRS02bLab_2065_1$',
-    # 'CRS02bLab_2066_1$',
-]
-if reference_target:
-    reference_cfg = deepcopy(cfg)
-    reference_cfg.dataset.datasets = reference_target
-    reference_dataset = SpikingDataset(reference_cfg.dataset)
-    reference_dataset.build_context_index()
-    print(f'Ref: {len(reference_dataset)}')
-    prompt = reference_dataset[-1]
-else:
-    prompt = None
+prompt = None
 
 pl.seed_everything(0)
 # Use val for parity with report
@@ -134,12 +117,10 @@ data_attrs = dataset.get_data_attrs()
 dataset = val
 print(dataset.meta_df[MetaKey.session].unique())
 # subset_datasets = [
-#     'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_2',
-#     'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_3',
-#     'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_4',
-#     'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_33',
-#     'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_34',
-#     'ExperimentalTask.pitt_co-CRSTest-208-closed_loop_pitt_co_CRSTest_208_35',
+#     'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_2',
+#     'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_3',
+#     # 'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_8',
+#     # 'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_9',
 # ]
 # dataset.subset_by_key(subset_datasets, key=MetaKey.session)
 
@@ -158,16 +139,6 @@ model = model.to("cuda")
 # plt.plot(dataset[3][DataKey.task_return_time], dataset[3][DataKey.task_return])
 # plt.plot(dataset[4][DataKey.task_return_time], dataset[4][DataKey.task_return])
 # plt.plot(dataset[5][DataKey.task_return_time], dataset[5][DataKey.task_return])
-#%%
-sample = dataset[0][DataKey.constraint]
-print(sample)
-# sample = dataset[0][DataKey.bhvr_vel]
-# space = dataset[0][DataKey.covariate_space]
-# plt.plot(sample[space == 2])
-# plt.plot(sample[space == 1])
-# plt.plot(sample[space == 0])
-# Normalization seems to not be working for click...?
-
 # %%
 CUE_S = 0
 # CUE_S = 12
@@ -183,7 +154,7 @@ TEMPERATURE = 0.
 # TEMPERATURE = 2.0
 
 CONSTRAINT_COUNTERFACTUAL = False
-CONSTRAINT_COUNTERFACTUAL = True
+# CONSTRAINT_COUNTERFACTUAL = True
 # Active assist counterfactual specification
 CONSTRAINT_CORRECTION = 0.0
 CONSTRAINT_CORRECTION = 1.0
@@ -200,6 +171,34 @@ do_plot = True
 
 tag = f'Reward: {REWARD_SCALE} Scramble: {REWARD_SCRAMBLE}'
 # tag = f'Constraint: {CONSTRAINT_CORRECTION}'
+def plot_logits(
+    ax,
+    logits,
+    title,
+    bin_size_ms,
+    vmin=0,
+    vmax=0,
+    truth=None,
+    mute_yticks=True,
+):
+    ax = prep_plt(ax, big=True)
+    if not vmin and not vmax:
+        sns.heatmap(logits.cpu().T, ax=ax, cmap="RdBu_r")
+    else:
+        sns.heatmap(logits.cpu().T, ax=ax, cmap="RdBu_r", vmin=vmin, vmax=vmax)
+    if truth is not None:
+        ax.plot(truth.cpu().T, color="k", linewidth=2, linestyle="--")
+    ax.set_xlabel("Time (ms)")
+    ax.set_ylabel("Class")
+    ax.set_title(title)
+    if mute_yticks:
+        ax.set_yticks([])
+    ax.set_xticks(np.linspace(0, logits.shape[0], 3))
+    ax.set_xticklabels(np.linspace(0, logits.shape[0] * bin_size_ms, 3).astype(int))
+
+    # label colorbar
+    cbar = ax.collections[0].colorbar
+    cbar.ax.set_ylabel('Logit')
 
 def eval_model(
     model: BrainBertInterface,
@@ -243,8 +242,8 @@ def eval_model(
             batch[DataKey.constraint.name] = assist_constraint
         if RETURN_COUNTERFACTUAL:
             assist_return = batch[DataKey.task_return.name]
-            assist_return = torch.ones_like(assist_return)
-            batch[DataKey.task_return.name] = assist_return
+            # assist_return = torch.ones_like(assist_return)
+            # batch[DataKey.task_return.name] = assist_return
 
             assist_reward = batch[DataKey.task_reward.name]
             if REWARD_SCALE:
@@ -256,7 +255,7 @@ def eval_model(
                 assist_reward = assist_reward[:, torch.randperm(assist_reward.shape[1])]
                 batch[DataKey.task_reward.name] = assist_reward
 
-            print(batch[DataKey.task_return.name].sum())
+            # print(batch[DataKey.task_return.name].sum())
         if prompt is not None:
             batch = postcrop_batch(
                 batch,
@@ -276,13 +275,12 @@ def eval_model(
         )
         outputs.append(output)
     outputs = stack_batch(outputs)
-
     labels = outputs[DataKey.covariate_labels.name][0]
     prediction = outputs[Output.behavior_pred].cpu()
     # print(prediction.sum())
     target = outputs[Output.behavior].cpu()
     is_student = outputs[Output.behavior_query_mask].cpu().bool()
-    print(target.shape, outputs[Output.behavior_query_mask].shape)
+    # print(target.shape, outputs[Output.behavior_query_mask].shape)
 
     # Compute R2
     is_student_rolling, trial_change_points = rolling_time_since_student(is_student)
@@ -291,10 +289,10 @@ def eval_model(
     )
 
     print(f"Computing R2 on {valid.sum()} of {valid.shape} points")
+
     # print(target.shape, prediction.shape, valid.shape)
     # print(is_student_rolling.shape)
     loss = outputs[Output.behavior_loss].mean()
-    breakpoint()
     mse = torch.mean((target[valid] - prediction[valid]) ** 2, dim=0)
     r2_student = r2_score(target[valid], prediction[valid])
     print(mse)
@@ -302,22 +300,6 @@ def eval_model(
     print(f'Loss: {loss:.3f}')
     print(f"MSE: {mse:.3f}")
     print(f"R2 Student: {r2_student:.3f}")
-
-    def plot_logits(ax, logits, title, bin_size_ms, vmin=-20, vmax=20, truth=None):
-        ax = prep_plt(ax, big=True)
-        sns.heatmap(logits.cpu().T, ax=ax, cmap="RdBu_r", vmin=vmin, vmax=vmax)
-        if truth is not None:
-            ax.plot(truth.cpu().T, color="k", linewidth=2, linestyle="--")
-        ax.set_xlabel("Time (ms)")
-        ax.set_ylabel("Bhvr (class)")
-        ax.set_title(title)
-        ax.set_yticks([])
-        ax.set_xticks(np.linspace(0, logits.shape[0], 3))
-        ax.set_xticklabels(np.linspace(0, logits.shape[0] * bin_size_ms, 3).astype(int))
-
-        # label colorbar
-        cbar = ax.collections[0].colorbar
-        cbar.ax.set_ylabel('Logit')
 
     def plot_split_logits(full_logits, labels, cfg, truth=None):
         f, axes = plt.subplots(len(labels), 1, figsize=(15, 10), sharex=True, sharey=True)
@@ -330,14 +312,20 @@ def eval_model(
                 truth_i = truth[i::stride]
             else:
                 truth_i = None
-            # if i == 2: # Grasp dim is dead
-                # truth_i = 255 + (255 - truth_i) * 10
-            plot_logits(axes[i], logits, label, cfg.dataset.bin_size_ms, truth=truth_i)
+            plot_logits(
+                axes[i],
+                logits,
+                label,
+                cfg.dataset.bin_size_ms,
+                truth=truth_i,
+                vmin=-20,
+                vmax=20,
+            )
         f.suptitle(f"{query} Logits MSE {mse:.3f} Loss {loss:.3f} {tag}")
         plt.tight_layout()
 
     truth = outputs[Output.behavior].float()
-    print(truth.shape)
+    # print(truth.shape)
     truth = model.task_pipelines['kinematic_infill'].quantize(truth)
     if do_plot:
         plot_split_logits(outputs[Output.behavior_logits].float(), labels, cfg, truth)
@@ -350,12 +338,15 @@ def eval_model(
     ckpt_rows = history[history["epoch"] == ckpt_epoch]
     # Cast epoch to int or 0 if nan, use df loc to set in place
     # Get last one
-    reported_r2 = ckpt_rows[f"val_{Metric.kinematic_r2.name}"].values[-1]
-    reported_loss = ckpt_rows[f"val_loss"].values[-1]
-    reported_kin_loss = ckpt_rows[f"val_kinematic_infill_loss"].values[-1]
-    print(f"Reported R2: {reported_r2:.3f}")
-    print(f"Reported Loss: {reported_loss:.3f}")
-    print(f"Reported Kin Loss: {reported_kin_loss:.3f}")
+    try:
+        reported_r2 = ckpt_rows[f"val_{Metric.kinematic_r2.name}"].values[-1]
+        reported_loss = ckpt_rows[f"val_loss"].values[-1]
+        reported_kin_loss = ckpt_rows[f"val_kinematic_infill_loss"].values[-1]
+        print(f"Reported R2: {reported_r2:.3f}")
+        print(f"Reported Loss: {reported_loss:.3f}")
+        print(f"Reported Kin Loss: {reported_kin_loss:.3f}")
+    except IndexError:
+        print("No reported metrics found")
     return outputs, target, prediction, is_student, valid, r2_student, mse, loss
 
 
@@ -363,196 +354,76 @@ def eval_model(
     model, dataset,
 )
 
-# scores = []
-# for constraint_correction in np.arange(0, 1.1, 0.1):
-#     (outputs, target, prediction, is_student, valid, r2_student, mse, loss) = eval_model(
-#         model, dataset, constraint_correction=constraint_correction
-#     )
-#     scores.append({
-#         'constraint_correction': constraint_correction,
-#         'r2': r2_student,
-#         'mse': mse.item(),
-#         'loss': loss.item(),
-#     })
-
 #%%
-import pandas as pd
-# Plot all three metrics, side by side
-f, axes = plt.subplots(1, 3, figsize=(15, 5), sharex=True)
-scores = pd.DataFrame(scores)
-print(scores['mse'])
-for i, metric in enumerate(['r2', 'mse', 'loss']):
-    sns.lineplot(
-        x='constraint_correction',
-        y=metric,
-        data=scores,
-        ax=axes[i],
-    )
-    axes[i] = prep_plt(axes[i], big=True)
-    axes[i].set_title(metric)
-if 'CRSTest_208_33$' in dataset.cfg.datasets:
-    eval_tag = "Eval: 50%"
-else:
-    eval_tag = "Eval: OL"
-# eval_tag = 'Eval: Mixed'
-if 'nefa' in query or '1qla3ato' in query:
-    train_tag = 'Train: OL'
-elif 'pz6j1cow' in query:
-    train_tag = 'Train: 50%'
-else:
-    train_tag = 'Train: Mixed'
-f.suptitle(f"{query} {train_tag} {eval_tag}")
-# f.suptitle(f"{query} Eval: {dataset.cfg.datasets[0]}")
-f.tight_layout()
-
-# %%
-f = plt.figure(figsize=(10, 10))
-ax = prep_plt(f.gca(), big=True)
-palette = sns.color_palette(n_colors=2)
-colors = [palette[0] if is_student[i] else palette[1] for i in range(len(is_student))]
-alpha = [0.1 if is_student[i] else 0.8 for i in range(len(is_student))]
-ax.scatter(target, prediction, s=3, alpha=alpha, color=colors)
-# target_student = target[is_student]
-# prediction_student = prediction[is_student]
-# target_student = target_student[prediction_student.abs() < 0.8]
-# prediction_student = prediction_student[prediction_student.abs() < 0.8]
-# robust_r2_student = r2_score(target_student, prediction_student)
-ax.set_xlabel("True")
-ax.set_ylabel("Pred")
-ax.set_title(f"{query} R2: {r2_student:.2f}")
-
-# %%
-palette = sns.color_palette(n_colors=2)
-camera_label = {
-    "x": "Vel X",
-    "y": "Vel Y",
-    "z": "Vel Z",
-    "EMG_FCU": "FCU",
-    "EMG_ECRl": "ECRl",
-    "EMG_FDP": "FDP",
-    "EMG_FCR": "FCR",
-    "EMG_ECRb": "ECRb",
-    "EMG_EDCr": "EDCr",
-}
-xlim = [0, 1500]
-# xlim = [0, 750]
-# xlim = [0, 3000]
-# xlim = [0, 5000]
-# xlim = [3000, 4000]
-subset_cov = []
-# subset_cov = ['EMG_FCU', 'EMG_ECRl']
-
-
-def plot_prediction_spans(ax, is_student, prediction, color, model_label):
-    # Convert boolean tensor to numpy for easier manipulation
-    is_student_np = is_student.cpu().numpy()
-
-    # Find the changes in the boolean array
-    change_points = np.where(is_student_np[:-1] != is_student_np[1:])[0] + 1
-
-    # Include the start and end points for complete spans
-    change_points = np.concatenate(([0], change_points, [len(is_student_np)]))
-
-    # Initialize a variable to keep track of whether the first line is plotted
-    first_line = True
-
-    # Plot the lines
-    for start, end in zip(change_points[:-1], change_points[1:]):
-        if is_student_np[start]:  # Check if the span is True
-            label = model_label if first_line else None  # Label only the first line
-            ax.plot(
-                np.arange(start, end),
-                prediction[start:end],
-                color=color,
-                label=label,
-                alpha=0.8,
-                linestyle="-",
-                linewidth=2,
-            )
-            first_line = False  # Update the flag as the first line is plotted
-
-
-def plot_target_pred_overlay(
-    target,
-    prediction,
-    is_student,
-    valid_pred,
-    label,
-    model_label="Pred",
-    ax=None,
-    palette=palette,
-    plot_xlabel=False,
-    xlim=None,
-):
-    ax = prep_plt(ax, big=True)
-    palette[0] = "k"
-    r2_subset = r2_score(target[valid_pred], prediction[valid_pred])
-    is_student = valid_pred
-    if xlim:
-        target = target[xlim[0] : xlim[1]]
-        prediction = prediction[xlim[0] : xlim[1]]
-        is_student = is_student[xlim[0] : xlim[1]]
-    # Plot true and predicted values
-    ax.plot(target, label=f"True", linestyle="-", alpha=0.5, color=palette[0])
-    model_label = f"{model_label} ({r2_subset:.2f})"
-    plot_prediction_spans(ax, is_student, prediction, palette[1], model_label)
-    if xlim is not None:
-        ax.set_xlim(0, xlim[1] - xlim[0])
-    xticks = ax.get_xticks()
-    ax.set_xticks(xticks)
-    ax.set_xticklabels(xticks * cfg.dataset.bin_size_ms / 1000)
-    if plot_xlabel:
-        ax.set_xlabel("Time (s)")
-
-    ax.set_yticks([-1, 0, 1])
-    # Set minor y-ticks
-    ax.set_yticks(np.arange(-1, 1.1, 0.25), minor=True)
-    # Enable minor grid lines
-    ax.grid(which="minor", linestyle=":", linewidth="0.5", color="gray", alpha=0.3)
-    ax.set_ylabel(f"{camera_label.get(label, label)} (au)")
-
-    legend = ax.legend(
-        loc="upper center",  # Positions the legend at the top center
-        bbox_to_anchor=(0.8, 1.1),  # Adjusts the box anchor to the top center
-        ncol=len(
-            palette
-        ),  # Sets the number of columns equal to the length of the palette to display horizontally
-        frameon=False,
-        fontsize=20,
-    )
-    # Make text in legend colored accordingly
-    for color, text in zip(palette, legend.get_texts()):
-        text.set_color(color)
-
-
-labels = outputs[DataKey.covariate_labels.name][0]
-num_dims = len(labels)
-if subset_cov:
-    subset_dims = [i for i in range(num_dims) if labels[i] in subset_cov]
-    labels = [labels[i] for i in subset_dims]
-else:
-    subset_dims = range(num_dims)
-fig, axs = plt.subplots(
-    len(subset_dims), 1, figsize=(16, 2.5 * len(subset_dims)), sharex=True, sharey=True
+ax = plt.subplot(1, 1, 1)
+ax.invert_yaxis()
+plot_logits(
+    ax,
+    outputs[Output.return_logits].float(),
+    f'{query} Pred Return',
+    cfg.dataset.bin_size_ms,
+    mute_yticks=False,
+    truth=outputs[Output.return_target].float() + 0.5, # offset line into bins
+    vmin=-10,
+    vmax=20,
 )
 
-for i, dim in enumerate(subset_dims):
-    plot_target_pred_overlay(
-        target[dim::num_dims],
-        prediction[dim::num_dims],
-        is_student[dim::num_dims],
-        valid[dim::num_dims],
-        label=labels[i],
-        ax=axs[i],
-        plot_xlabel=i == subset_dims[-1],
-        xlim=xlim,
-    )
+print(outputs[Output.return_target].float())
 
-plt.tight_layout()
+x_min = 0
+# x_min = 120
+# x_min = 140
+# x_min = 200
+# x_min = 2000
+
+# x_max = 20
+# x_max = 250
+x_max = 800
+# x_max = 2500
+
+ax.set_xlim(x_min, x_max)
+ax.set_ylim(0, 20)
+ax.set_xticks(np.linspace(x_min, x_max, 3))
+ax.set_xticklabels(np.linspace(x_min * cfg.dataset.bin_size_ms, x_max * cfg.dataset.bin_size_ms, 3).astype(int))
+
+# ? Shouldn't timestep 0 be very uncertain?
+# This is the "teacher forced" performance - not reflective of when we start with a shitty guess.
+# TODO See what happens when we seed with a shitty or unrealistic guess
+# ! Plot the truth
+#%%
+import numpy as np
+from torch.nn.functional import softmax
+import matplotlib.cm as cm
+import matplotlib.colorbar as colorbar
+
+logits = outputs[Output.return_logits].float()
+kappa = 10
+logits_opt = torch.linspace(0.0, 1.0, logits.shape[-1]).unsqueeze(0).to(logits.device)
+# Sample from log[P(optimality=1|return)*P(return)].
+logits_offset = logits + kappa * logits_opt
+probs = softmax(logits, -1).cpu()
+probs_offset = softmax(logits_offset, -1).cpu()
+# Create the logits array
+ax = prep_plt(plt.subplot(1, 1, 1), big=True)  # Assuming prep_plt is a predefined function
+steps = 1
+start = 0
+palette = sns.color_palette("mako_r", steps + 1)
 
 
-fig.suptitle(f'{query} R2: {r2_student:.2f} Temp: {TEMPERATURE}')
-# fig.suptitle(f'{query}: {data_label_camera.get(data_label, data_label)} Velocity $R^2$ ($\\uparrow$): {r2_student:.2f}')
+# Create a ScalarMappable with the colormap
+norm = plt.Normalize(start * cfg.dataset.bin_size_ms, (start + steps) * cfg.dataset.bin_size_ms)
+sm = cm.ScalarMappable(cmap="mako_r", norm=norm)
 
+for i, step in enumerate(np.arange(start, start + steps)):
+    ax.plot(np.arange(probs.shape[1]), probs[step], color=palette[i])
+    ax.plot(np.arange(probs.shape[1]), probs_offset[step], color=palette[i], linestyle="--")
 
+# ax.set_xlim(0, 10)
 
+# Add color bar
+sm.set_array([])
+cbar = plt.colorbar(sm, ax=ax)
+cbar.set_label('Time (ms)')
+
+ax.set_xlabel("pred return")
+ax.set_ylabel("prob")

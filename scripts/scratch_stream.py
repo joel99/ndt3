@@ -41,6 +41,10 @@ query = 'small_40m_class-98zvc4s4' # CRS02b 2065_1, 2066_1
 
 query = 'small_40m_4k_prefix_block_loss-nefapbwj' # CRSTest 208 2, 3, 4
 
+query = 'small_40m_4k_prefix_block_loss-u2c4fmt4'
+
+query = 'small_40m_4k_return_only-82dlavhy'
+
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -58,7 +62,7 @@ cfg.model.task.outputs = [
     Output.behavior_pred,
     Output.behavior_logits,
     Output.return_logits,
-    Output.return_probs,
+    # Output.return_,
 ]
 
 target = [
@@ -73,9 +77,15 @@ target = [
     # 'CRS02bLab_2065_1$',
     # 'CRS02bLab_2066_1$',
 
-    'CRSTest_208_2$',
-    'CRSTest_208_3$',
-    'CRSTest_208_4$',
+    # 'CRSTest_208_2$',
+    # 'CRSTest_208_3$',
+    # 'CRSTest_208_4$',
+
+    # 'CRS02bLab_2067_2$',
+    # 'CRS02bLab_2067_3$',
+
+    'CRS02bLab_2067_15$',
+    'CRS02bLab_2067_16$',
 ]
 
 cfg.dataset.datasets = target
@@ -204,7 +214,7 @@ def eval_model(
                     last_step_only=True,
                     temperature=TEMPERATURE
                 )
-                del output[Output.return_probs]
+                del output[Output.return_logits]
                 stream_output.append(output)
             stream_total = stack_batch(stream_output) # concat behavior preds
             if compute_buffer_s:

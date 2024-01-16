@@ -15,7 +15,8 @@ def compute_return_to_go(rewards: torch.Tensor, horizon=100):
     # rewards: T
     if horizon:
         padded_reward = F.pad(rewards, (0, horizon - 1), value=0)
-        return padded_reward.unfold(0, horizon, 1)[..., 1:].sum(-1) # T. Don't include current timestep
+        return padded_reward.unfold(0, horizon, 1).sum(-1)  # T. Include current timestep. I don't remember why we would exclude, but including is valuable for model. https://www.notion.so/joelye/Offline-reward-return-analysis-a956158e53864957b506e8bde80f835d?pvs=4#2b64221ca4604f9c9c9c6dbb810db35f
+        # return padded_reward.unfold(0, horizon, 1)[..., 1:].sum(-1) # T. Don't include current timestep
     reversed_rewards = torch.flip(rewards, [0])
     returns_to_go_reversed = torch.cumsum(reversed_rewards, dim=0)
     return torch.flip(returns_to_go_reversed, [0])

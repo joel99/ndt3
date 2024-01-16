@@ -792,7 +792,6 @@ class BrainBertInterface(pl.LightningModule):
 
         # The order of logic here is following the order dictated in the task pipeline
         num_kin = len(batch[DataKey.covariate_space.name].unique())
-
         cov_query = outputs[modalities == tks.index('kinematic_infill')]
         if last_step_only:
             cov_query = cov_query[-num_kin:]
@@ -807,22 +806,24 @@ class BrainBertInterface(pl.LightningModule):
         if temperature > 0:
             cov_query[Output.behavior_pred] = cov_query[Output.behavior_pred].squeeze(-1) # Remove excess dim
 
-        # Only last step supported atm
         if ModelTask.return_infill in self.cfg.task.tasks:
             return_query = outputs[modalities == tks.index('return_infill')]
+            if last_step_only:
+                return_query = return_query[-1:]
             return_logits = self.task_pipelines[ModelTask.return_infill.value](
                 batch,
-                return_query[-1:],
+                return_query,
                 compute_metrics=False,
-            )[Output.return_logits][0]
-            return_probs = torch.softmax(return_logits, dim=-1)
+            )[Output.return_logits]
+            if last_step_only:
+                return_logits = return_logits[0]
         else:
-            return_probs = None
+            return_logits = None
 
         # Satisfy onlne eval interface
         out: Dict[BatchKey, Any] = {
             Output.behavior_pred: cov_query[Output.behavior_pred],
-            Output.return_probs: return_probs,
+            Output.return_logits: return_logits,
         }
         if not last_step_only:
             out[Output.behavior_loss] = torch.tensor([cov_query['loss']])
@@ -830,6 +831,7 @@ class BrainBertInterface(pl.LightningModule):
             if kin_mask_timesteps is not None:
                 out[Output.behavior_query_mask] = repeat(kin_mask_timesteps, 't -> (t b)', b=num_kin)
             out[Output.behavior] = batch[DataKey.bhvr_vel.name].flatten()
+            out[Output.return_target] = batch[DataKey.task_return.name].flatten()
             out[DataKey.covariate_labels.name] = batch[DataKey.covariate_labels.name]
         return out
 
