@@ -54,7 +54,7 @@ query = 'small_40m_4k_return-lyvk6zuu'
 # query = 'small_40m_4k_return-gih4kyon' # NO FINE-TUNING! PRETAINED
 query = 'small_40m_4k_return-jf2pdzsl' # ol
 # query = 'small_40m_4k_return-pwecifa0' # mixed ol + 50%
-# query = 'small_40m_4k_return-5g11tdvw' # 50%
+query = 'small_40m_4k_return-5g11tdvw' # 50%
 wandb_run = wandb_query_latest(query, allow_running=True, use_display=True)[0]
 print(wandb_run.id)
 
@@ -92,8 +92,8 @@ target = [
 
     'CRS02bLab_2067_2$',
     'CRS02bLab_2067_3$',
-    # 'CRS02bLab_2067_8$',
-    # 'CRS02bLab_2067_9$',
+    'CRS02bLab_2067_8$',
+    'CRS02bLab_2067_9$',
 
     # 'CRS02bLab_2067_8$',
     # 'CRS02bLab_2067_9$',
@@ -116,13 +116,13 @@ train, val = dataset.create_tv_datasets()
 data_attrs = dataset.get_data_attrs()
 dataset = val
 print(dataset.meta_df[MetaKey.session].unique())
-# subset_datasets = [
+subset_datasets = [
 #     'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_2',
 #     'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_3',
-#     # 'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_8',
-#     # 'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_9',
-# ]
-# dataset.subset_by_key(subset_datasets, key=MetaKey.session)
+    'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_8',
+    'ExperimentalTask.pitt_co-CRS02b-2067-closed_loop_pitt_co_CRS02bLab_2067_9',
+]
+dataset.subset_by_key(subset_datasets, key=MetaKey.session)
 
 print("Eval length: ", len(dataset))
 print(data_attrs)
@@ -377,8 +377,8 @@ x_min = 0
 # x_min = 2000
 
 # x_max = 20
-# x_max = 250
-x_max = 800
+x_max = 250
+# x_max = 800
 # x_max = 2500
 
 ax.set_xlim(x_min, x_max)
@@ -418,7 +418,7 @@ for i, step in enumerate(np.arange(start, start + steps)):
     ax.plot(np.arange(probs.shape[1]), probs[step], color=palette[i])
     ax.plot(np.arange(probs.shape[1]), probs_offset[step], color=palette[i], linestyle="--")
 
-# ax.set_xlim(0, 10)
+ax.set_xlim(0, 10)
 
 # Add color bar
 sm.set_array([])
