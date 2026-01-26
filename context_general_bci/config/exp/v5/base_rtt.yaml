@@ -1,0 +1,19 @@
+# @package _global_
+
+defaults:
+  - _default
+  - _200h
+  - _45m
+
+dataset:
+  datasets:
+  - odoherty_rtt-Indy.*
+  eval_datasets: []
+  exclude_datasets: []
+train:
+  batch_size: 64
+  effective_batch_size: 256
+notes: "Nanda requests comparison"
+
+wandb_user: joelye9
+wandb_project: jy-misc
